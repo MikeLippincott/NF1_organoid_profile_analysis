@@ -1,0 +1,27 @@
+name: GFF_analysis
+
+channels:
+  - conda-forge
+  - defaults
+  - pytorch
+
+dependencies:
+  - conda-forge::python=3.12
+  - conda-forge::ipykernel
+  - conda-forge::jupyter
+  - conda-forge::nbconvert
+  - conda-forge::nb_conda_kernels
+  - conda-forge::pip
+  - conda-forge::numpy
+  - conda-forge::matplotlib
+  - conda-forge::pandas
+  - conda-forge::scikit-learn
+  - conda-forge::pyarrow
+  - conda-forge::umap-learn
+  - conda-forge::scikit-image
+  - conda-forge::tqdm
+  - conda-forge::seaborn
+  - conda-forge::tabulate
+  - pip:
+    - copairs
+
