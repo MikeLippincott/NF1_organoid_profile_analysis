@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+# This notebooks looks at and finds the inter and intra patient distances for each patient profile.
+# The goal of this is to find how similar or different profiles are within and across patients.
+#
+
 # In[1]:
 
 

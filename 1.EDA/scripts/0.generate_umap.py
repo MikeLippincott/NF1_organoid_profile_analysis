@@ -5,32 +5,29 @@
 
 
 import pathlib
+import sys
 
 import pandas as pd
 import umap
 
-try:
-    cfg = get_ipython().config
-    in_notebook = True
-except NameError:
-    in_notebook = False
-
-    # Get the current working directory
 cwd = pathlib.Path.cwd()
 
 if (cwd / ".git").is_dir():
     root_dir = cwd
-
 else:
     root_dir = None
     for parent in cwd.parents:
         if (parent / ".git").is_dir():
             root_dir = parent
             break
+sys.path.append(str(root_dir / "utils"))
+from notebook_init_utils import bandicoot_check, init_notebook
 
-# Check if a Git root directory was found
-if root_dir is None:
-    raise FileNotFoundError("No Git root directory found.")
+root_dir, in_notebook = init_notebook()
+
+profile_base_dir = bandicoot_check(
+    pathlib.Path("/home/lippincm/mnt/bandicoot").resolve(), root_dir
+)
 
 
 # In[2]:
@@ -40,13 +37,13 @@ if root_dir is None:
 data_dict = {
     "sc": {
         "input": pathlib.Path(
-            f"{root_dir}/data/all_patient_profiles/sc_profiles.parquet"
+            f"{profile_base_dir}/data/all_patient_profiles/sc_profiles.parquet"
         ).resolve(strict=True),
         "output": pathlib.Path(f"{root_dir}/5.EDA/results/sc_umap.parquet").resolve(),
     },
     "sc_fs": {
         "input": pathlib.Path(
-            f"{root_dir}/data/all_patient_profiles/sc_fs_profiles.parquet"
+            f"{profile_base_dir}/data/all_patient_profiles/sc_fs_profiles.parquet"
         ).resolve(strict=True),
         "output": pathlib.Path(
             f"{root_dir}/5.EDA/results/sc_fs_umap.parquet"
@@ -54,7 +51,7 @@ data_dict = {
     },
     "sc_agg": {
         "input": pathlib.Path(
-            f"{root_dir}/data/all_patient_profiles/sc_agg_profiles.parquet"
+            f"{profile_base_dir}/data/all_patient_profiles/sc_agg_profiles.parquet"
         ).resolve(strict=True),
         "output": pathlib.Path(
             f"{root_dir}/5.EDA/results/sc_agg_umap.parquet"
@@ -62,7 +59,7 @@ data_dict = {
     },
     "organoid": {
         "input": pathlib.Path(
-            f"{root_dir}/data/all_patient_profiles/organoid_profiles.parquet"
+            f"{profile_base_dir}/data/all_patient_profiles/organoid_profiles.parquet"
         ).resolve(strict=True),
         "output": pathlib.Path(
             f"{root_dir}/5.EDA/results/organoid_umap.parquet"
@@ -70,7 +67,7 @@ data_dict = {
     },
     "organoid_fs": {
         "input": pathlib.Path(
-            f"{root_dir}/data/all_patient_profiles/organoid_fs_profiles.parquet"
+            f"{profile_base_dir}/data/all_patient_profiles/organoid_fs_profiles.parquet"
         ).resolve(strict=True),
         "output": pathlib.Path(
             f"{root_dir}/5.EDA/results/organoid_fs_umap.parquet"
@@ -78,7 +75,7 @@ data_dict = {
     },
     "organoid_agg": {
         "input": pathlib.Path(
-            f"{root_dir}/data/all_patient_profiles/organoid_agg_profiles.parquet"
+            f"{profile_base_dir}/data/all_patient_profiles/organoid_agg_profiles.parquet"
         ).resolve(strict=True),
         "output": pathlib.Path(
             f"{root_dir}/5.EDA/results/organoid_agg_umap.parquet"
@@ -86,7 +83,7 @@ data_dict = {
     },
     "sc_consensus": {
         "input": pathlib.Path(
-            f"{root_dir}/data/all_patient_profiles/sc_consensus_profiles.parquet"
+            f"{profile_base_dir}/data/all_patient_profiles/sc_consensus_profiles.parquet"
         ).resolve(strict=True),
         "output": pathlib.Path(
             f"{root_dir}/5.EDA/results/sc_consensus_umap.parquet"
@@ -94,7 +91,7 @@ data_dict = {
     },
     "organoid_consensus": {
         "input": pathlib.Path(
-            f"{root_dir}/data/all_patient_profiles/organoid_consensus_profiles.parquet"
+            f"{profile_base_dir}/data/all_patient_profiles/organoid_consensus_profiles.parquet"
         ).resolve(strict=True),
         "output": pathlib.Path(
             f"{root_dir}/5.EDA/results/organoid_consensus_umap.parquet"
@@ -108,27 +105,6 @@ data_dict["organoid"]["output"].parent.mkdir(parents=True, exist_ok=True)
 # In[3]:
 
 
-metadata_columns = [
-    "patient",
-    "object_id",
-    "unit",
-    "dose",
-    "treatment",
-    "image_set",
-    "Well",
-    "single_cell_count",
-    "parent_organoid",
-    "Treatment",
-    "Target",
-    "Function",
-    "Class",
-    "Therapeutic_Categories",
-]
-
-
-# In[4]:
-
-
 umap_object = umap.UMAP(
     n_neighbors=15, min_dist=0.1, metric="euclidean", random_state=0
 )
@@ -136,18 +112,13 @@ umap_object = umap.UMAP(
 for dataset, paths in data_dict.items():
     # Load the data
     df = pd.read_parquet(data_dict[dataset]["input"])
-
+    metadata_columns = [x for x in df.columns if "Metadata_" in x]
     metadata_df = df.copy()
-    metadata_subset = []
-    for col in metadata_columns:
-        if col in df.columns:
-            metadata_subset.append(col)
-
-    metadata_df = df[metadata_subset]
+    metadata_df = df[metadata_columns]
     features_df = df.drop(columns=metadata_columns, errors="ignore")
     print(features_df.shape)
     # remove NaN values
-    features_df = features_df.dropna(axis=0, how="any")
+    # features_df = features_df.dropna(axis=0, how="any")
     print(f"Data shape after dropping NaN values: {features_df.shape}")
     # Extract features and apply UMAP
 
@@ -160,9 +131,9 @@ for dataset, paths in data_dict.items():
     umap_df.to_parquet(data_dict[dataset]["output"], index=False)
 
 
-# Individual umaps
+# ## Individual umaps
 
-# In[5]:
+# In[ ]:
 
 
 patients = pd.read_csv(
@@ -172,7 +143,7 @@ patients = pd.read_csv(
 )["patient"].to_list()
 
 
-# In[6]:
+# In[ ]:
 
 
 file_dict = {}
@@ -241,7 +212,7 @@ for patient in patients:
     }
 
 
-# In[7]:
+# In[ ]:
 
 
 for patient in file_dict.keys():
@@ -279,6 +250,3 @@ for patient in file_dict.keys():
                 umap_df.to_parquet(
                     file_dict[patient][level][profile_type]["output"], index=False
                 )
-
-
-# In[ ]:

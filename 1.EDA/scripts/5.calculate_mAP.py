@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[ ]:
 
 
 import pathlib
@@ -10,7 +10,7 @@ from typing import Union
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from copairs import Matcher, MatcherMultilabel, map
+from copairs import map
 from copairs.matching import assign_reference_index
 
 # Get the current working directory
