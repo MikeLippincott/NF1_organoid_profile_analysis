@@ -36,6 +36,10 @@ profile_base_dir = bandicoot_check(
 
 
 platemap_dir = pathlib.Path(f"{profile_base_dir}/data").resolve()
+drug_information_file_path = pathlib.Path(
+    f"{root_dir}/data/drug_information.csv"
+).resolve(strict=True)
+drug_information = pd.read_csv(drug_information_file_path)
 # get a list of all dirs within the dir
 list_of_patients_file_path = pathlib.Path(
     f"{profile_base_dir}/data/patient_IDs.txt"
@@ -51,7 +55,6 @@ platemaps = pd.concat([pd.read_csv(path) for path in platemap_file_paths_list])
 platemaps.drop_duplicates(inplace=True)
 drugs = platemaps["treatment"].unique()
 drugs.sort()
-drugs
 
 
 # In[3]:
@@ -119,31 +122,70 @@ drugs_df.sort_values(
     by=["numerical_approval", "drug"], ascending=[False, True], inplace=True
 )
 drugs_df.reset_index(drop=True, inplace=True)
+drug_information
+drugs_df = pd.merge(
+    drugs_df,
+    drug_information,
+    how="left",
+    left_on="drug",
+    right_on="Treatment",
+    validate="one_to_one",
+)
 
 
 # In[4]:
 
 
+# set custom colors for each MOA
+custom_MOA_palette = {
+    "Control": "#5a5c5d",
+    "MEK1/2 inhibitor": "#882E8B",
+    "HDAC inhibitor": "#1E6B61",
+    "PI3K and HDAC inhibitor": "#2E6B8B",
+    "PI3K inhibitor": "#0092E0",
+    "receptor tyrosine kinase inhibitor": "#576A20",
+    "tyrosine kinase inhibitor": "#646722",
+    "mTOR inhibitor": "#ACE089",
+    "IGF-1R inhibitor": "#ACE040",
+    "HSP90 inhibitor": "#33206A",
+    "Apoptosis induction": "#272267",
+    "Na+/K+ pump inhibitor": "#A16C28",
+    "histamine H1 receptor antagonist": "#3A8F00",
+    "DNA binding": "#174F17",
+    "BRD4 inhibitor": "#ff0000",
+}
+
+
+# In[5]:
+
+
+drugs_df["Target"].unique()
+# order the dataframe by Target
+drugs_df.sort_values(
+    by=["numerical_approval", "Target", "drug"],
+    ascending=[False, False, True],
+    inplace=True,
+)
+
+
+# In[6]:
+
+
 # plot the drug and the approval status as graph
 plt.figure(figsize=(10, 6))
 sns.set_style("whitegrid")
-sns.barplot(
+sns.scatterplot(
     data=drugs_df,
     x="drug",
     y="numerical_approval",
-    hue="FDA_status",
-    dodge=False,
-    palette={
-        "NF1 Approved": "darkgreen",
-        "Approved": "green",
-        "Phase 3": "blue",
-        "Phase 2": "orange",
-        "Phase 1/2": "purple",
-        "Investigational": "gray",
-        "Withdrawn": "red",
-    },
+    hue="Target",
+    palette=custom_MOA_palette,
+    s=200,
 )
-plt.xticks(rotation=45, ha="right")
+plt.xticks(
+    rotation=90,
+    # ha="right"
+)
 plt.yticks(
     ticks=[0, 1, 2, 3, 4, 5],
     labels=[
