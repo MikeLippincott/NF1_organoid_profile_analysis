@@ -17,12 +17,12 @@ for (package in list_of_packages) {
 find_git_root <- function() {
     # Get current working directory
     cwd <- getwd()
-
+    
     # Check if current directory has .git
     if (dir.exists(file.path(cwd, ".git"))) {
         return(cwd)
     }
-
+    
     # If not, search parent directories
     current_path <- cwd
     while (dirname(current_path) != current_path) {  # While not at root
@@ -32,7 +32,7 @@ find_git_root <- function() {
         }
         current_path <- parent_path
     }
-
+    
     # If no Git root found, stop with error
     stop("No Git root directory found.")
 }
@@ -41,7 +41,7 @@ find_git_root <- function() {
 root_dir <- find_git_root()
 cat("Git root directory:", root_dir, "\n")
 
-figures_path <- file.path(root_dir,"5.EDA/figures/umaps")
+figures_path <- file.path(root_dir,"1.EDA/figures/umaps")
 if (!dir.exists(figures_path)) {
   dir.create(figures_path, recursive = TRUE)
 }
@@ -54,16 +54,33 @@ umap_theme <- theme(
         legend.text = element_text(size = 12)
     )
 
-organoid_umap_results <- arrow::read_parquet(file.path(root_dir,"5.EDA/results/organoid_fs_umap.parquet"))
-head(organoid_umap_results)
-sc_umap_results <- arrow::read_parquet(file.path(root_dir,"5.EDA/results/sc_fs_umap.parquet"))
-head(sc_umap_results)
+#SETTING UP INPUTS FOR GRAPHS
+
+#organoid_umap_results <- arrow::read_parquet(file.path(root_dir,"1.EDA/results/umap/organoid_fs_umap.parquet"))
+#head(organoid_umap_results)
+
+max_projection_2D_sc_umap_results <- arrow::read_parquet(file.path(root_dir,"1.EDA/results/umap/2D/max_projection/sc_fs_umap.parquet"))
+head(max_projection_2D_sc_umap_results)
+#Combining STAURO and Staurosporine into one label
+max_projection_2D_sc_umap_results <- max_projection_2D_sc_umap_results %>%
+    mutate(Metadata_treatment = ifelse(Metadata_treatment == "STAURO", "Staurosporine", Metadata_treatment))
+
+sc_3D_umap_results <- arrow::read_parquet(file.path(root_dir,"1.EDA/results/umap/3D/sc_fs_umap.parquet"))
+head(sc_3D_umap_results)
+sc_3D_umap_results <- sc_3D_umap_results %>%
+    mutate(Metadata_treatment = ifelse(Metadata_treatment == "STAURO", "Staurosporine", Metadata_treatment))
+
+
+middle_slice_2D_sc_umap_results <- arrow::read_parquet(file.path(root_dir,"1.EDA/results/umap/2D/middle_slice/sc_fs_umap.parquet"))
+head(middle_slice_2D_sc_umap_results)
+middle_slice_2D_sc_umap_results <- middle_slice_2D_sc_umap_results %>%
+    mutate(Metadata_treatment = ifelse(Metadata_treatment == "STAURO", "Staurosporine", Metadata_treatment))
 
 # set custom colors for each MOA
 custom_MOA_palette <- c(
     'Control' = "#5a5c5d",
     'MEK1/2 inhibitor' = "#882E8B",
-
+    
 
     'HDAC inhibitor' = "#1E6B61",
     'PI3K and HDAC inhibitor' = "#2E6B8B",
@@ -72,7 +89,7 @@ custom_MOA_palette <- c(
     'receptor tyrosine kinase inhibitor' = "#576A20",
     'tyrosine kinase inhibitor' = "#646722",
 
-    'mTOR inhibitor' = "#ACE089",
+    'mTOR inhibitor' = "#ACE089",  
     'IGF-1R inhibitor' = "#ACE040",
 
     'HSP90 inhibitor'="#33206A",
@@ -81,9 +98,35 @@ custom_MOA_palette <- c(
     'histamine H1 receptor antagonist' = "#3A8F00",
     'DNA binding' = "#174F17",
     'BRD4 inhibitor' = "#ff0000"
-
+    
 )
+    
 
+# Set custom colors for each treatment
+custom_treatment_palette <- c(
+    'DMSO' = "#5a5c5d",              # Control - gray
+    'Staurosporine' = "#7D2780",     # Dark purple
+    
+    'Fimepinostat' = "#1E6B61",      # Teal (HDAC inhibitor)
+    'Copanlisib' = "#0092E0",        # Blue (PI3K inhibitor)
+    
+    'Imatinib' = "#576A20",          # Olive green
+    'Nilotinib' = "#646722",         # Yellow-green
+    'Cabozantinib' = "#758B2D",      # Light olive
+    
+    'Everolimus' = "#ACE089",        # Light green (mTOR inhibitor)
+    'Rapamycin' = "#90D070",         # Medium green (mTOR inhibitor)
+    'Linsitinib' = "#ACE040",        # Yellow-green (IGF-1R inhibitor)
+    
+    'Onalespib' = "#33206A",         # Dark purple (HSP90 inhibitor)
+    'Digoxin' = "#A16C28",           # Orange-brown
+    'Ketotifen' = "#3A8F00",         # Green
+    
+    'Binimetinib' = "#ff0000",       # Red (MEK inhibitor)
+    'Mirdametinib' = "#cc0000",      # Dark red (MEK inhibitor)
+    'Trametinib' = "#ff3333",        # Light red (MEK inhibitor)
+    'Selumetinib' = "#ff6666"        # Lighter red (MEK inhibitor)
+)
 
 head(organoid_umap_results)
 
@@ -97,12 +140,12 @@ umap_organoid_plot <- (
     + labs(title = "All patients: Organoid FS Profiles", x = "UMAP 0", y = "UMAP 1")
     + theme_bw()
     + umap_theme
-
+    
     + guides(
         size = guide_legend(
             title = "Single Cell Count",
             text = element_text(size = 16, hjust = 0.5, position = "top"),
-            nrow = 1,
+            nrow = 1,            
             ),
         color = guide_legend(
             title = "Target",
@@ -197,24 +240,71 @@ width <- 10
 height <- 5
 options(repr.plot.width = width, repr.plot.height = height)
 umap_sc_plot <- (
-    ggplot(sc_umap_results, aes(x = UMAP1, y = UMAP2, color = Target))
+    ggplot(max_projection_2D_sc_umap_results, aes(x = UMAP1, y = UMAP2, color = Metadata_treatment))
     + geom_point(alpha = 0.5, size = 1)
-    + scale_color_manual(values = custom_MOA_palette)
-    + labs(title = "All patients: Single Cell FS Profiles", x = "UMAP 0", y = "UMAP 1")
+    + scale_color_manual(values = custom_treatment_palette)
+    + labs(title = "All patients: 2D MIP Single Cell FS Profiles", x = "UMAP 0", y = "UMAP 1")
     + theme_bw()
     + umap_theme
 
     + guides(
         color = guide_legend(
-            title = "Target",
-            text = element_text(size = 16, hjust = 0.5),
+            title = "Treatment",
             override.aes = list(alpha = 1,size = 5),
             ncol = 1
         )
     )
-    + facet_wrap(~patient, nrow = 2)
+    + facet_wrap(~Metadata_patient, nrow = 2)
 )
-sc_features_path <- file.path(figures_path, "all_patients_umap_sc_features_facet_by_patient.png")
+sc_features_path <- file.path(figures_path, "all_patients_umap_2D_Max_intensity_sc_features_facet_by_patient.png")
+ggsave(umap_sc_plot, file = sc_features_path, width = width, height = height, dpi = 300)
+umap_sc_plot
+
+width <- 10
+height <- 5
+options(repr.plot.width = width, repr.plot.height = height)
+umap_sc_plot <- (
+    ggplot(middle_slice_2D_sc_umap_results, aes(x = UMAP1, y = UMAP2, color = Metadata_treatment))
+    + geom_point(alpha = 0.5, size = 1)
+    + scale_color_manual(values = custom_treatment_palette)
+    + labs(title = "All patients: 2D Middle Slice Single Cell FS Profiles", x = "UMAP 0", y = "UMAP 1")
+    + theme_bw()
+    + umap_theme
+
+    + guides(
+        color = guide_legend(
+            title = "Treatment",
+            override.aes = list(alpha = 1,size = 5),
+            ncol = 1
+        )
+    )
+    + facet_wrap(~Metadata_patient, nrow = 2)
+)
+sc_features_path <- file.path(figures_path, "all_patients_umap_2D_middle_slice_sc_features_facet_by_patient.png")
+ggsave(umap_sc_plot, file = sc_features_path, width = width, height = height, dpi = 300)
+umap_sc_plot
+
+width <- 10
+height <- 5
+options(repr.plot.width = width, repr.plot.height = height)
+umap_sc_plot <- (
+    ggplot(sc_3D_umap_results, aes(x = UMAP1, y = UMAP2, color = Metadata_treatment))
+    + geom_point(alpha = 0.5, size = 1)
+    + scale_color_manual(values = custom_treatment_palette)
+    + labs(title = "All patients: 3D Single Cell FS Profiles", x = "UMAP 0", y = "UMAP 1")
+    + theme_bw()
+    + umap_theme
+
+    + guides(
+        color = guide_legend(
+            title = "Treatment",
+            override.aes = list(alpha = 1,size = 5),
+            ncol = 1
+        )
+    )
+    + facet_wrap(~Metadata_patient, nrow = 2)
+)
+sc_features_path <- file.path(figures_path, "all_patients_umap_3D_sc_features_facet_by_patient.png")
 ggsave(umap_sc_plot, file = sc_features_path, width = width, height = height, dpi = 300)
 umap_sc_plot
 
@@ -289,6 +379,78 @@ sc_features_path <- file.path(figures_path, "all_patients_controls_only_umap_sc_
 ggsave(umap_sc_plot, file = sc_features_path, width = width, height = height, dpi = 300)
 umap_sc_plot
 
+width <- 10
+height <- 5
+options(repr.plot.width = width, repr.plot.height = height)
+umap_sc_plot <- (
+    ggplot(max_projection_2D_sc_umap_results, aes(x = UMAP1, y = UMAP2, color = Metadata_treatment))
+    + geom_point(alpha = 0.7, size = 1)
+    + scale_color_manual(values = custom_treatment_palette)
+    + labs(title = "All patients: 2D MIP Single Cell FS Profiles", x = "UMAP 0", y = "UMAP 1")
+    + theme_bw()
+    + umap_theme
+
+    + guides(
+        color = guide_legend(
+            title = "Treatment",
+            override.aes = list(alpha = 1, size = 5),
+            ncol = 1
+        )
+    )
+)
+sc_features_path <- file.path(figures_path, "all_patients_umap_2D_max_intensity_sc_features_by_treatment.png")
+
+ggsave(umap_sc_plot, file = sc_features_path, width = width, height = height, dpi = 300)
+umap_sc_plot
+
+width <- 10
+height <- 5
+options(repr.plot.width = width, repr.plot.height = height)
+umap_sc_plot <- (
+    ggplot(middle_slice_2D_sc_umap_results, aes(x = UMAP1, y = UMAP2, color = Metadata_treatment))
+    + geom_point(alpha = 0.7, size = 1)
+    + scale_color_manual(values = custom_treatment_palette)
+    + labs(title = "All patients: 2D Middle Slice Single Cell FS Profiles", x = "UMAP 0", y = "UMAP 1")
+    + theme_bw()
+    + umap_theme
+
+    + guides(
+        color = guide_legend(
+            title = "Treatment",
+            override.aes = list(alpha = 1, size = 5),
+            ncol = 1
+        )
+    )
+)
+sc_features_path <- file.path(figures_path, "all_patients_umap_2D_middle_slice_sc_features_by_treatment.png")
+
+ggsave(umap_sc_plot, file = sc_features_path, width = width, height = height, dpi = 300)
+umap_sc_plot
+
+width <- 10
+height <- 5
+options(repr.plot.width = width, repr.plot.height = height)
+umap_sc_plot <- (
+    ggplot(sc_3D_umap_results, aes(x = UMAP1, y = UMAP2, color = Metadata_treatment))
+    + geom_point(alpha = 0.7, size = 1)
+    + scale_color_manual(values = custom_treatment_palette)
+    + labs(title = "All patients: 3D Single Cell FS Profiles", x = "UMAP 0", y = "UMAP 1")
+    + theme_bw()
+    + umap_theme
+
+    + guides(
+        color = guide_legend(
+            title = "Treatment",
+            override.aes = list(alpha = 1, size = 5),
+            ncol = 1
+        )
+    )
+)
+sc_features_path <- file.path(figures_path, "all_patients_umap_3D_sc_features_by_treatment.png")
+
+ggsave(umap_sc_plot, file = sc_features_path, width = width, height = height, dpi = 300)
+umap_sc_plot
+
 for (patient in patients) {
     patient_umap_file_path <- file.path(root_dir, paste0("5.EDA/results/patient_results/",patient,"_organoid_fs_umap.parquet"))
     umap_results_patient <- arrow::read_parquet(patient_umap_file_path)
@@ -315,7 +477,7 @@ for (patient in patients) {
 
                 # move to bottom
                 # position = "bottom"
-
+                
                 ),
             color = guide_legend(
                 title = "Target",
@@ -326,7 +488,7 @@ for (patient in patients) {
                 # position = "bottom"
             )
         )
-
+        
     )
     print(umap_organoid_plot)
     patient_umap_file_path <- file.path(root_dir, paste0("5.EDA/results/patient_results/",patient,"_sc_fs_umap.parquet"))
@@ -353,7 +515,7 @@ for (patient in patients) {
                 # position = "bottom"
             )
         )
-
+        
     )
     print(umap_sc_color_by_target_plot)
 
@@ -382,7 +544,7 @@ height <- 8
             )
         )
         + facet_wrap(~Target, nrow = 4)
-
+        
     )
     print(umap_sc_color_by_parent_organoid)
 

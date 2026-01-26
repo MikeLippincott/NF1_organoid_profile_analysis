@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[19]:
 
 
 import pathlib
@@ -30,79 +30,69 @@ profile_base_dir = bandicoot_check(
 )
 
 
-# In[2]:
+# In[17]:
 
 
-# paths to data
+# Configuration: Choose dimension and projection method
+
+DIMENSION = "2D"  # (2D or 3D)
+PROJECTION_METHOD = "max_projection"  # Only used for 2D. Options: "max_intensity", "middle_slice"
+
+#Data paths
+if DIMENSION == "3D":
+    input_base = f"{profile_base_dir}/data/3D_all_patient_profiles"
+    output_base = f"{root_dir}/1.EDA/results/umap/3D"
+elif DIMENSION == "2D":
+    input_base = f"{profile_base_dir}/data/2D_all_patient_profiles/{PROJECTION_METHOD}"
+    output_base = f"{root_dir}/1.EDA/results/umap/2D/{PROJECTION_METHOD}"
+else:
+    raise ValueError(f"DIMENSION must be '2D' or '3D', got '{DIMENSION}'")
+
+# Data dictionary (only for single cell profiles for now)
 data_dict = {
     "sc": {
         "input": pathlib.Path(
-            f"{profile_base_dir}/data/all_patient_profiles/sc_profiles.parquet"
+            f"{input_base}/sc_profiles.parquet"
         ).resolve(strict=True),
-        "output": pathlib.Path(f"{root_dir}/5.EDA/results/sc_umap.parquet").resolve(),
+        "output": pathlib.Path(
+            f"{output_base}/sc_umap.parquet"
+        ).resolve(),
     },
     "sc_fs": {
         "input": pathlib.Path(
-            f"{profile_base_dir}/data/all_patient_profiles/sc_fs_profiles.parquet"
+            f"{input_base}/sc_fs_profiles.parquet"
         ).resolve(strict=True),
         "output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/sc_fs_umap.parquet"
+            f"{output_base}/sc_fs_umap.parquet"
         ).resolve(),
     },
     "sc_agg": {
         "input": pathlib.Path(
-            f"{profile_base_dir}/data/all_patient_profiles/sc_agg_profiles.parquet"
+            f"{input_base}/sc_agg_profiles.parquet"
         ).resolve(strict=True),
         "output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/sc_agg_umap.parquet"
-        ).resolve(),
-    },
-    "organoid": {
-        "input": pathlib.Path(
-            f"{profile_base_dir}/data/all_patient_profiles/organoid_profiles.parquet"
-        ).resolve(strict=True),
-        "output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/organoid_umap.parquet"
-        ).resolve(),
-    },
-    "organoid_fs": {
-        "input": pathlib.Path(
-            f"{profile_base_dir}/data/all_patient_profiles/organoid_fs_profiles.parquet"
-        ).resolve(strict=True),
-        "output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/organoid_fs_umap.parquet"
-        ).resolve(),
-    },
-    "organoid_agg": {
-        "input": pathlib.Path(
-            f"{profile_base_dir}/data/all_patient_profiles/organoid_agg_profiles.parquet"
-        ).resolve(strict=True),
-        "output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/organoid_agg_umap.parquet"
+            f"{output_base}/sc_agg_umap.parquet"
         ).resolve(),
     },
     "sc_consensus": {
         "input": pathlib.Path(
-            f"{profile_base_dir}/data/all_patient_profiles/sc_consensus_profiles.parquet"
+            f"{input_base}/sc_consensus_profiles.parquet"
         ).resolve(strict=True),
         "output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/sc_consensus_umap.parquet"
-        ).resolve(),
-    },
-    "organoid_consensus": {
-        "input": pathlib.Path(
-            f"{profile_base_dir}/data/all_patient_profiles/organoid_consensus_profiles.parquet"
-        ).resolve(strict=True),
-        "output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/organoid_consensus_umap.parquet"
+            f"{output_base}/sc_consensus_umap.parquet"
         ).resolve(),
     },
 }
 
-data_dict["organoid"]["output"].parent.mkdir(parents=True, exist_ok=True)
+# Create output directory
+data_dict["sc"]["output"].parent.mkdir(parents=True, exist_ok=True)
+
+if DIMENSION == "2D":
+    print(f"Using projection method: {PROJECTION_METHOD}")
+print(f"Output directory: {data_dict['sc']['output'].parent}")
 
 
-# In[3]:
+# In[18]:
 
 
 umap_object = umap.UMAP(
@@ -118,7 +108,7 @@ for dataset, paths in data_dict.items():
     features_df = df.drop(columns=metadata_columns, errors="ignore")
     print(features_df.shape)
     # remove NaN values
-    # features_df = features_df.dropna(axis=0, how="any")
+    features_df = features_df.dropna(axis=0, how="any")
     print(f"Data shape after dropping NaN values: {features_df.shape}")
     # Extract features and apply UMAP
 
@@ -131,9 +121,15 @@ for dataset, paths in data_dict.items():
     umap_df.to_parquet(data_dict[dataset]["output"], index=False)
 
 
+# In[ ]:
+
+
+
+
+
 # ## Individual umaps
 
-# In[ ]:
+# In[14]:
 
 
 patients = pd.read_csv(
@@ -250,3 +246,4 @@ for patient in file_dict.keys():
                 umap_df.to_parquet(
                     file_dict[patient][level][profile_type]["output"], index=False
                 )
+
