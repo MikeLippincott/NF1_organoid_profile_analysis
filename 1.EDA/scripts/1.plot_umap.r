@@ -17,12 +17,12 @@ for (package in list_of_packages) {
 find_git_root <- function() {
     # Get current working directory
     cwd <- getwd()
-    
+
     # Check if current directory has .git
     if (dir.exists(file.path(cwd, ".git"))) {
         return(cwd)
     }
-    
+
     # If not, search parent directories
     current_path <- cwd
     while (dirname(current_path) != current_path) {  # While not at root
@@ -32,7 +32,7 @@ find_git_root <- function() {
         }
         current_path <- parent_path
     }
-    
+
     # If no Git root found, stop with error
     stop("No Git root directory found.")
 }
@@ -80,7 +80,7 @@ middle_slice_2D_sc_umap_results <- middle_slice_2D_sc_umap_results %>%
 custom_MOA_palette <- c(
     'Control' = "#5a5c5d",
     'MEK1/2 inhibitor' = "#882E8B",
-    
+
 
     'HDAC inhibitor' = "#1E6B61",
     'PI3K and HDAC inhibitor' = "#2E6B8B",
@@ -89,7 +89,7 @@ custom_MOA_palette <- c(
     'receptor tyrosine kinase inhibitor' = "#576A20",
     'tyrosine kinase inhibitor' = "#646722",
 
-    'mTOR inhibitor' = "#ACE089",  
+    'mTOR inhibitor' = "#ACE089",
     'IGF-1R inhibitor' = "#ACE040",
 
     'HSP90 inhibitor'="#33206A",
@@ -98,30 +98,30 @@ custom_MOA_palette <- c(
     'histamine H1 receptor antagonist' = "#3A8F00",
     'DNA binding' = "#174F17",
     'BRD4 inhibitor' = "#ff0000"
-    
+
 )
-    
+
 
 # Set custom colors for each treatment
 custom_treatment_palette <- c(
     'DMSO' = "#5a5c5d",              # Control - gray
     'Staurosporine' = "#7D2780",     # Dark purple
-    
+
     'Fimepinostat' = "#1E6B61",      # Teal (HDAC inhibitor)
     'Copanlisib' = "#0092E0",        # Blue (PI3K inhibitor)
-    
+
     'Imatinib' = "#576A20",          # Olive green
     'Nilotinib' = "#646722",         # Yellow-green
     'Cabozantinib' = "#758B2D",      # Light olive
-    
+
     'Everolimus' = "#ACE089",        # Light green (mTOR inhibitor)
     'Rapamycin' = "#90D070",         # Medium green (mTOR inhibitor)
     'Linsitinib' = "#ACE040",        # Yellow-green (IGF-1R inhibitor)
-    
+
     'Onalespib' = "#33206A",         # Dark purple (HSP90 inhibitor)
     'Digoxin' = "#A16C28",           # Orange-brown
     'Ketotifen' = "#3A8F00",         # Green
-    
+
     'Binimetinib' = "#ff0000",       # Red (MEK inhibitor)
     'Mirdametinib' = "#cc0000",      # Dark red (MEK inhibitor)
     'Trametinib' = "#ff3333",        # Light red (MEK inhibitor)
@@ -140,12 +140,12 @@ custom_treatment_palette <- c(
 #     + labs(title = "All patients: Organoid FS Profiles", x = "UMAP 0", y = "UMAP 1")
 #     + theme_bw()
 #     + umap_theme
-    
+
 #     + guides(
 #         size = guide_legend(
 #             title = "Single Cell Count",
 #             text = element_text(size = 16, hjust = 0.5, position = "top"),
-#             nrow = 1,            
+#             nrow = 1,
 #             ),
 #         color = guide_legend(
 #             title = "Target",
@@ -465,7 +465,7 @@ umap_sc_plot_MS_facet_treatment <- (
             ncol = 1
         )
     )
-    + facet_wrap(~Metadata_treatment, nrow = 4)  
+    + facet_wrap(~Metadata_treatment, nrow = 4)
 )
 sc_features_2D_MS_facet_by_treatment_path <- file.path(figures_path, "2D", "middle_slice", "all_patients_umap_2D_middle_slice_sc_features_facet_by_treatment.png")
 ggsave(umap_sc_plot_MS_facet_treatment, file = sc_features_2D_MS_facet_by_treatment_path, width = width, height = height, dpi = 300)
@@ -554,7 +554,7 @@ options(repr.plot.width = width, repr.plot.height = height)
 umap_sc_plot_by_treatment <- (
     ggplot(sc_3D_umap_results, aes(x = UMAP1, y = UMAP2, color = Metadata_treatment))
     + geom_point(alpha = 0.7, size = 1)
-    + scale_color_manual(values = custom_treatment_palette) 
+    + scale_color_manual(values = custom_treatment_palette)
     + labs(title = "All patients: 3D Single Cell FS Profiles", x = "UMAP 0", y = "UMAP 1")
     + theme_bw()
     + umap_theme
@@ -588,7 +588,7 @@ umap_sc_plot_facet_treatment <- (
             ncol = 1
         )
     )
-    + facet_wrap(~Metadata_treatment, nrow = 4)  
+    + facet_wrap(~Metadata_treatment, nrow = 4)
 )
 sc_3D_features_facet_treatment_path <- file.path(figures_path, "3D", "all_patients_umap_3D_sc_features_facet_by_treatment.png")
 ggsave(umap_sc_plot_facet_treatment, file = sc_3D_features_facet_treatment_path, width = width, height = height, dpi = 300)
@@ -662,7 +662,7 @@ for (patient in individual_patients) {
 
     #             # move to bottom
     #             # position = "bottom"
-                
+
     #             ),
     #         color = guide_legend(
     #             title = "Target",
@@ -673,17 +673,17 @@ for (patient in individual_patients) {
     #             # position = "bottom"
     #         )
     #     )
-        
+
     # )
     # print(umap_organoid_plot)
-    
+
     patient_umap_file_path <- file.path(root_dir, paste0("1.EDA/results/umap/patient_results/2D/max_projection/",patient,"_sc_fs_umap.parquet"))
     umap_results_patient <- arrow::read_parquet(patient_umap_file_path)
-    
+
     width <- 10
     height <- 5
     options(repr.plot.width = width, repr.plot.height = height)
-    
+
     umap_sc_2D_MIP_color_by_treatment_plot <- (
         ggplot(umap_results_patient, aes(x = UMAP1, y = UMAP2, color = Metadata_treatment))
         + geom_point(alpha = 0.6)
@@ -699,16 +699,16 @@ for (patient in individual_patients) {
             )
         )
     )
-    
+
     print(umap_sc_2D_MIP_color_by_treatment_plot)
 
     patient_umap_file_path <- file.path(root_dir, paste0("1.EDA/results/umap/patient_results/2D/middle_slice/",patient,"_sc_fs_umap.parquet"))
     umap_results_patient <- arrow::read_parquet(patient_umap_file_path)
-    
+
     width <- 10
     height <- 5
     options(repr.plot.width = width, repr.plot.height = height)
-    
+
     umap_sc_2D_middle_slice_color_by_treatment_plot <- (
         ggplot(umap_results_patient, aes(x = UMAP1, y = UMAP2, color = Metadata_treatment))
         + geom_point(alpha = 0.6)
@@ -724,11 +724,11 @@ for (patient in individual_patients) {
             )
         )
     )
-    
+
     print(umap_sc_2D_middle_slice_color_by_treatment_plot)
-    
+
     single_cell_MIP_features_path <- file.path(figures_path, "2D", "max_projection", paste0(patient, "_sc_fs_umap_color_by_treatment.png"))
     ggsave(umap_sc_2D_MIP_color_by_treatment_plot, file = single_cell_MIP_features_path, width = width, height = height, dpi = 400)
-    single_cell_MS_features_path <- file.path(figures_path, "2D", "middle_slice", paste0(patient, "_sc_fs_umap_color_by_treatment.png"))  
+    single_cell_MS_features_path <- file.path(figures_path, "2D", "middle_slice", paste0(patient, "_sc_fs_umap_color_by_treatment.png"))
     ggsave(umap_sc_2D_middle_slice_color_by_treatment_plot, file = single_cell_MS_features_path, width = width, height = height, dpi = 400)
 }

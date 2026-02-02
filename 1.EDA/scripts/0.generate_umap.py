@@ -191,7 +191,7 @@ patients = pd.read_csv(
 # In[ ]:
 
 
-#Individual patients, 2D single cell aggregate and fs only
+# Individual patients, 2D single cell aggregate and fs only
 file_dict = {}
 
 for patient in patients:
@@ -221,7 +221,9 @@ for patient in patients:
 # Create output directories for all combinations
 for patient in file_dict:
     for projection_key in file_dict[patient]:
-        file_dict[patient][projection_key]["sc_fs"]["output"].parent.mkdir(parents=True, exist_ok=True)
+        file_dict[patient][projection_key]["sc_fs"]["output"].parent.mkdir(
+            parents=True, exist_ok=True
+        )
 
 
 # In[ ]:
@@ -234,7 +236,6 @@ umap_object = umap.UMAP(
 for patient in file_dict:
     for projection_key in file_dict[patient]:
         for dataset, paths in file_dict[patient][projection_key].items():
-
             # Load the data
             df = pd.read_parquet(paths["input"])
             metadata_columns = [x for x in df.columns if "Metadata_" in x]
@@ -242,7 +243,7 @@ for patient in file_dict:
             metadata_df = df[metadata_columns]
             features_df = df.drop(columns=metadata_columns, errors="ignore")
 
-            # Remove NaN values 
+            # Remove NaN values
             features_df = features_df.dropna(axis=0, how="any")
 
             # Extract features and apply UMAP
@@ -254,4 +255,3 @@ for patient in file_dict:
 
             # Save the UMAP results
             umap_df.to_parquet(paths["output"], index=False)
-
