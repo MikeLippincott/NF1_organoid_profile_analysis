@@ -101,33 +101,6 @@ custom_MOA_palette <- c(
 
 )
 
-
-# Set custom colors for each treatment
-custom_treatment_palette <- c(
-    'DMSO' = "#5a5c5d",              # Control - gray
-    'Staurosporine' = "#7D2780",     # Dark purple
-
-    'Fimepinostat' = "#1E6B61",      # Teal (HDAC inhibitor)
-    'Copanlisib' = "#0092E0",        # Blue (PI3K inhibitor)
-
-    'Imatinib' = "#576A20",          # Olive green
-    'Nilotinib' = "#646722",         # Yellow-green
-    'Cabozantinib' = "#758B2D",      # Light olive
-
-    'Everolimus' = "#ACE089",        # Light green (mTOR inhibitor)
-    'Rapamycin' = "#90D070",         # Medium green (mTOR inhibitor)
-    'Linsitinib' = "#ACE040",        # Yellow-green (IGF-1R inhibitor)
-
-    'Onalespib' = "#33206A",         # Dark purple (HSP90 inhibitor)
-    'Digoxin' = "#A16C28",           # Orange-brown
-    'Ketotifen' = "#3A8F00",         # Green
-
-    'Binimetinib' = "#ff0000",       # Red (MEK inhibitor)
-    'Mirdametinib' = "#cc0000",      # Dark red (MEK inhibitor)
-    'Trametinib' = "#ff3333",        # Light red (MEK inhibitor)
-    'Selumetinib' = "#ff6666"        # Lighter red (MEK inhibitor)
-)
-
 # head(organoid_umap_results)
 
 # width <- 10
