@@ -1,3 +1,5 @@
+# Ignore 3D UMAP figures
+1.EDA/figures/umaps/3D/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
