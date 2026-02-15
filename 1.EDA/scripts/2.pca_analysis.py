@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[8]:
+# In[1]:
 
 
 import pathlib
@@ -9,7 +9,7 @@ import pathlib
 import pandas as pd
 from sklearn.decomposition import PCA
 
-# In[9]:
+# In[2]:
 
 
 # Configuration
@@ -20,7 +20,7 @@ root_dir = pathlib.Path.cwd().parent.parent
 N_COMPONENTS = 2
 
 
-# In[10]:
+# In[3]:
 
 
 # Data Paths
@@ -169,7 +169,7 @@ for projection_key in data_dict:
         pca_embeddings = pca_model.transform(features_df)
 
         # Create DataFrame with PCA coordinates
-        pca_columns = [f"PC{i + 1}" for i in range(N_COMPONENTS)]
+        pca_columns = [f"PC{i}" for i in range(N_COMPONENTS)]
         pca_df = pd.DataFrame(pca_embeddings, columns=pca_columns)
 
         # Combine metadata with PCA coordinates
