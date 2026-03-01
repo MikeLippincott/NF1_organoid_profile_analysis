@@ -46,13 +46,21 @@ figures_dir <- file.path(root_dir, "1.EDA", "figures", "correlation")
 
 dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
 
-# Function to generate a correlation heatmap
 plot_correlation_heatmap <- function(
     corr_long_df,
     patient_id,
     profile_type,
     output_path
 ) {
+    #' Generate and save a clustered heatmap of Pearson correlations
+    #' between 2D and 3D features.
+    #'
+    #' @param corr_long_df data.frame - Long-form data with feature_2d, feature_3d, pearson_r columns.
+    #' @param patient_id character - Patient identifier for the plot title.
+    #' @param profile_type character - Profile label (e.g., "organoid_agg", "sc_agg").
+    #' @param output_path character - File path to save the output PNG.
+
+    ...
     # Filter to patient
     patient_data <- corr_long_df
 
