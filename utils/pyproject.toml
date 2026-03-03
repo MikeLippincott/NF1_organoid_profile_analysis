@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "notebook_init_utils"
+version = "0.1.0"
+description = "Utility functions for notebook initialization"
+requires-python = ">=3.8"
+
+[tool.setuptools.packages.find]
+where = ["src"]
