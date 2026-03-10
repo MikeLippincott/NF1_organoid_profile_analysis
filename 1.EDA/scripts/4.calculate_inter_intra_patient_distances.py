@@ -40,233 +40,191 @@ if root_dir is None:
 # In[2]:
 
 
-def calculate_inter_patient_metrics(
-    df: pd.DataFrame, metadata_columns: list, results_path: str = None
-) -> Union[pd.DataFrame, None]:
+def calculate_intra_patient_distance_metrics(
+    df: pd.DataFrame,
+    metadata_columns: list,
+    col_for_reference: str = "Metadata_treatment_dose",
+    reference_group: str = "DMSO_1",
+    output_path: pathlib.Path = None,
+) -> Union[None, pd.DataFrame]:
     """
-    Description
-    -----------
-    Calculate inter-patient distance metrics for each treatment in the DataFrame.
+    Calculate intra-patient distance metrics between each treatment and the reference group.
 
     Parameters
     ----------
     df : pd.DataFrame
-        DataFrame containing patient data with a 'treatment' column and other features.
+        DataFrame containing profiles and metadata.
     metadata_columns : list
-        List of metadata columns to be excluded from distance calculations.
-    results_path : str, optional
-        Path to save the results as a parquet file. If None, the DataFrame is returned.
+        List of metadata columns to exclude from distance calculations.
+    col_for_reference : str
+        Column name for treatment grouping.
+    reference_group : str
+        Reference treatment label.
+    output_path : pathlib.Path, optional
+        Path to save results as parquet.
+
     Returns
-    -------
-    pd.DataFrame or None
-        DataFrame containing inter-patient distance metrics for each treatment, or None if results_path is
-        provided and the DataFrame is saved to that path.
+    ----------
+    Union[None, pd.DataFrame]
+        DataFrame with distance metrics per patient per treatment.
     """
-    inter_patient_distance_metric_dict = {
-        "treatment": [],
-        "euclidean_distance_mean": [],
-        "euclidean_distance_std": [],
-        "cosine_distance_mean": [],
-        "cosine_distance_std": [],
-        "correlation_distance_mean": [],
-        "correlation_distance_std": [],
-    }
-    treatments = df["treatment"].unique()
-    for drug in treatments:
-        if drug == "DMSO":
+    results = []
+    for patient in df["Metadata_patient"].unique():
+        patient_df = df[df["Metadata_patient"] == patient]
+        for drug in patient_df[col_for_reference].unique():
+            if drug == reference_group:
+                continue
+
+            drug_df = patient_df.loc[patient_df[col_for_reference] == drug].copy()
+            dmso_df = patient_df.loc[
+                patient_df[col_for_reference] == reference_group
+            ].copy()
+
+            # Drop metadata columns
+            drug_features = drug_df.drop(columns=metadata_columns)
+            dmso_features = dmso_df.drop(columns=metadata_columns)
+
+            # Drop columns with any NaN
+            valid_cols = drug_features.columns[
+                ~drug_features.isna().any() & ~dmso_features.isna().any()
+            ]
+            drug_features = drug_features[valid_cols]
+            dmso_features = dmso_features[valid_cols]
+
+            if drug_features.shape[0] == 0 or dmso_features.shape[0] == 0:
+                continue
+
+            cosine_dist = sklearn.metrics.pairwise.cosine_distances(
+                dmso_features.values, drug_features.values
+            ).reshape(-1)
+
+            results.append(
+                {
+                    "Metadata_patient": patient,
+                    "Metadata_treatment_dose": drug,
+                    "cosine_distance_mean": cosine_dist.mean(),
+                    "cosine_distance_std": cosine_dist.std(),
+                }
+            )
+
+    output_df = pd.DataFrame(results)
+    if output_path is not None:
+        output_df.to_parquet(output_path, index=False)
+    return output_df
+
+
+def calculate_inter_patient_distance_metrics(
+    df: pd.DataFrame,
+    metadata_columns: list,
+    col_for_reference: str = "Metadata_treatment_dose",
+    reference_group: str = "DMSO_1",
+    output_path: pathlib.Path = None,
+) -> Union[None, pd.DataFrame]:
+    """
+    Calculate inter-patient distance metrics between each treatment and the reference group.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing profiles and metadata.
+    metadata_columns : list
+        List of metadata columns to exclude from distance calculations.
+    col_for_reference : str
+        Column name for treatment grouping.
+    reference_group : str
+        Reference treatment label.
+    output_path : pathlib.Path, optional
+        Path to save results as parquet.
+
+    Returns
+    ----------
+    Union[None, pd.DataFrame]
+        DataFrame with distance metrics per treatment across all patients.
+    """
+    results = []
+    for drug in df[col_for_reference].unique():
+        if drug == reference_group:
             continue
-        dmso_df = df.loc[df["treatment"] == "DMSO"]
-        drug_df = df.loc[df["treatment"] == drug]
-        dmso_df = dmso_df.drop(columns=metadata_columns)
-        drug_df = drug_df.drop(columns=metadata_columns)
-        # drop NaN values
-        dmso_df = dmso_df.dropna(axis=0, how="any")
-        drug_df = drug_df.dropna(axis=0, how="any")
-        euclidean_distance = sklearn.metrics.pairwise.euclidean_distances(
-            dmso_df.values, drug_df.values
+
+        drug_df = df.loc[df[col_for_reference] == drug].copy()
+        dmso_df = df.loc[df[col_for_reference] == reference_group].copy()
+
+        drug_features = drug_df.drop(columns=metadata_columns)
+        dmso_features = dmso_df.drop(columns=metadata_columns)
+
+        valid_cols = drug_features.columns[
+            ~drug_features.isna().any() & ~dmso_features.isna().any()
+        ]
+        drug_features = drug_features[valid_cols]
+        dmso_features = dmso_features[valid_cols]
+
+        if drug_features.shape[0] == 0 or dmso_features.shape[0] == 0:
+            continue
+
+        cosine_dist = sklearn.metrics.pairwise.cosine_distances(
+            dmso_features.values, drug_features.values
         ).reshape(-1)
 
-        cosine_distance = sklearn.metrics.pairwise.cosine_distances(
-            dmso_df.values, drug_df.values
-        ).reshape(-1)
-
-        correlation_distance = sklearn.metrics.pairwise.pairwise_distances(
-            dmso_df.values, drug_df.values, metric="correlation"
-        ).reshape(-1)
-
-        inter_patient_distance_metric_dict["treatment"].append(drug)
-        inter_patient_distance_metric_dict["euclidean_distance_mean"].append(
-            euclidean_distance.mean()
-        )
-        inter_patient_distance_metric_dict["euclidean_distance_std"].append(
-            euclidean_distance.std()
-        )
-        inter_patient_distance_metric_dict["cosine_distance_mean"].append(
-            cosine_distance.mean()
-        )
-        inter_patient_distance_metric_dict["cosine_distance_std"].append(
-            cosine_distance.std()
-        )
-        inter_patient_distance_metric_dict["correlation_distance_mean"].append(
-            correlation_distance.mean()
-        )
-        inter_patient_distance_metric_dict["correlation_distance_std"].append(
-            correlation_distance.std()
+        results.append(
+            {
+                "Metadata_treatment_dose": drug,
+                "cosine_distance_mean": cosine_dist.mean(),
+                "cosine_distance_std": cosine_dist.std(),
+            }
         )
 
-    inter_patient_metric_df = pd.DataFrame(inter_patient_distance_metric_dict)
-    if results_path is not None:
-        inter_patient_metric_df.to_parquet(results_path, index=False)
-    else:
-        return inter_patient_metric_df
+    output_df = pd.DataFrame(results)
+    if output_path is not None:
+        output_df.to_parquet(output_path, index=False)
+    return output_df
 
 
-def calculate_intra_patient_metrics(
-    df: pd.DataFrame, metadata_columns: list, results_path: str = None
-) -> Union[pd.DataFrame, None]:
-    """
-    Description
-    -----------
-    Calculate intra-patient distance metrics for each treatment in the DataFrame.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame containing patient data with a 'treatment' column and other features.
-    metadata_columns : list
-        List of metadata columns to be excluded from distance calculations.
-    results_path : str, optional
-        Path to save the results as a parquet file. If None, the DataFrame is returned.
-    Returns
-    -------
-    pd.DataFrame or None
-        DataFrame containing inter-patient distance metrics for each treatment, or None if results_path is
-        provided and the DataFrame is saved to that path.
-    """
-    intra_patient_distance_metric_dict = {
-        "patient": [],
-        "treatment": [],
-        "euclidean_distance_mean": [],
-        "euclidean_distance_std": [],
-        "cosine_distance_mean": [],
-        "cosine_distance_std": [],
-        "correlation_distance_mean": [],
-        "correlation_distance_std": [],
-    }
-    patients = df["patient"].unique()
-    for patient in patients:
-        patient_df = df[df["patient"] == patient]
-        # get the dmso data
-        for drug in patient_df["treatment"].unique():
-            if drug == "DMSO":
-                continue
-
-            # get both dmso and drug data
-            test_df = patient_df.loc[patient_df["treatment"] == drug]
-            dmso_df = patient_df.loc[patient_df["treatment"] == "DMSO"]
-            test_df = test_df.drop(columns=metadata_columns)
-            dmso_df = dmso_df.drop(columns=metadata_columns)
-            # drop NaN values
-            test_df = test_df.dropna(axis=0, how="any")
-            dmso_df = dmso_df.dropna(axis=0, how="any")
-            # check the test_df shape
-            if test_df.shape[0] == 0 or dmso_df.shape[0] == 0:
-                print(
-                    f"Skipping patient {patient} and drug {drug} due to empty DataFrame."
-                )
-                continue
-
-            # calculate the distance between the drug and the DMSO
-            euclidean_distance = sklearn.metrics.pairwise.euclidean_distances(
-                dmso_df.values, test_df.values
-            ).reshape(-1)
-            cosine_distance = sklearn.metrics.pairwise.cosine_distances(
-                dmso_df.values, test_df.values
-            ).reshape(-1)
-            correlation_distance = sklearn.metrics.pairwise.pairwise_distances(
-                dmso_df.values, test_df.values, metric="correlation"
-            ).reshape(-1)
-            intra_patient_distance_metric_dict["patient"].append(patient)
-            intra_patient_distance_metric_dict["treatment"].append(drug)
-            intra_patient_distance_metric_dict["euclidean_distance_mean"].append(
-                euclidean_distance.mean()
-            )
-            intra_patient_distance_metric_dict["euclidean_distance_std"].append(
-                euclidean_distance.std()
-            )
-            intra_patient_distance_metric_dict["cosine_distance_mean"].append(
-                cosine_distance.mean()
-            )
-            intra_patient_distance_metric_dict["cosine_distance_std"].append(
-                cosine_distance.std()
-            )
-            intra_patient_distance_metric_dict["correlation_distance_mean"].append(
-                correlation_distance.mean()
-            )
-            intra_patient_distance_metric_dict["correlation_distance_std"].append(
-                correlation_distance.std()
-            )
-    intra_patient_distance_metric_df = pd.DataFrame(intra_patient_distance_metric_dict)
-    if results_path is not None:
-        intra_patient_distance_metric_df.to_parquet(results_path, index=False)
-    else:
-        return intra_patient_distance_metric_df
-
-
-# ## Set paths
+# ## Set Paths
 
 # In[3]:
 
 
-paths_to_process_dict = {
-    "organoid_fs": {
-        "input": pathlib.Path(
-            f"{root_dir}/data/all_patient_profiles/organoid_fs_profiles.parquet"
-        ).resolve(strict=True),
-        "inter_patient_results_path": pathlib.Path(
-            f"{root_dir}/5.EDA/results/distance_metrics/organoid_fs_inter_patient_distance_metrics.parquet"
-        ).resolve(),
-        "intra_patient_results_path": pathlib.Path(
-            f"{root_dir}/5.EDA/results/distance_metrics/organoid_fs_intra_patient_distance_metrics.parquet"
-        ).resolve(),
-        "metadata_columns": [
-            "patient",
-            "object_id",
-            "unit",
-            "dose",
-            "treatment",
-            "Target",
-            "Class",
-            "Therapeutic_Categories",
-            "image_set",
-            "Well",
-            "single_cell_count",
-        ],
-    },
-    "single_cell_fs": {
-        "input": pathlib.Path(
-            f"{root_dir}/data/all_patient_profiles/sc_fs_profiles.parquet"
-        ).resolve(strict=True),
-        "inter_patient_results_path": pathlib.Path(
-            f"{root_dir}/5.EDA/results/distance_metrics/sc_fs_inter_patient_distance_metrics.parquet"
-        ).resolve(),
-        "intra_patient_results_path": pathlib.Path(
-            f"{root_dir}/5.EDA/results/distance_metrics/sc_fs_intra_patient_distance_metrics.parquet"
-        ).resolve(),
-        "metadata_columns": [
-            "patient",
-            "object_id",
-            "unit",
-            "dose",
-            "treatment",
-            "Target",
-            "Class",
-            "Therapeutic_Categories",
-            "image_set",
-            "Well",
-        ],
-    },
-}
+# Define input paths
+path_2d_organoid = pathlib.Path(
+    f"{root_dir}/data/2D_profiles/all_patient_profiles/max_projection/organoid_agg_profiles.parquet"
+).resolve(strict=True)
+path_2d_sc = pathlib.Path(
+    f"{root_dir}/data/2D_profiles/all_patient_profiles/max_projection/sc_agg_profiles.parquet"
+).resolve(strict=True)
+path_3d_organoid = pathlib.Path(
+    f"{root_dir}/data/3D_profiles/all_patient_profiles/organoid_agg_profiles.parquet"
+).resolve(strict=True)
+path_3d_sc = pathlib.Path(
+    f"{root_dir}/data/3D_profiles/all_patient_profiles/sc_agg_profiles.parquet"
+).resolve(strict=True)
+
+# Define output paths
+results_dir = pathlib.Path(f"{root_dir}/1.EDA/results/mAP").resolve()
+results_dir.mkdir(parents=True, exist_ok=True)
+dist_results_dir = pathlib.Path(f"{root_dir}/1.EDA/results/distance_metrics").resolve()
+dist_results_dir.mkdir(parents=True, exist_ok=True)
+
+# Load data
+df_2d_organoid = pd.read_parquet(path_2d_organoid)
+df_2d_sc = pd.read_parquet(path_2d_sc)
+df_3d_organoid = pd.read_parquet(path_3d_organoid)
+df_3d_sc = pd.read_parquet(path_3d_sc)
+
+# Create treatment_dose column
+for df in [df_2d_organoid, df_3d_organoid, df_2d_sc, df_3d_sc]:
+    df["Metadata_treatment_dose"] = (
+        df["Metadata_treatment"] + "_" + df["Metadata_dose"].astype(str)
+    )
+
+# Define metadata columns
+metadata_cols_2d_organoid = [
+    col for col in df_2d_organoid.columns if col.startswith("Metadata_")
+]
+metadata_cols_3d_organoid = [
+    col for col in df_3d_organoid.columns if col.startswith("Metadata_")
+]
+metadata_cols_2d_sc = [col for col in df_2d_sc.columns if col.startswith("Metadata_")]
+metadata_cols_3d_sc = [col for col in df_3d_sc.columns if col.startswith("Metadata_")]
 
 
 # ## Run the functions
@@ -274,16 +232,64 @@ paths_to_process_dict = {
 # In[4]:
 
 
-for key, paths in paths_to_process_dict.items():
-    # make the parent directories for the results paths if they do not exist
-    paths["intra_patient_results_path"].parent.mkdir(parents=True, exist_ok=True)
-    calculate_intra_patient_metrics(
-        df=pd.read_parquet(paths["input"]),
-        metadata_columns=paths.get("metadata_columns", []),
-        results_path=paths["intra_patient_results_path"],
-    )
-    calculate_inter_patient_metrics(
-        df=pd.read_parquet(paths["input"]),
-        metadata_columns=paths.get("metadata_columns", []),
-        results_path=paths["inter_patient_results_path"],
-    )
+# Distance metrics output directory
+dist_results_dir = pathlib.Path(f"{root_dir}/1.EDA/results/distance_metrics").resolve()
+dist_results_dir.mkdir(parents=True, exist_ok=True)
+
+# Intra-patient distance metrics
+print("Computing 2D organoid intra-patient distance metrics...")
+dist_2d_organoid_intra = calculate_intra_patient_distance_metrics(
+    df_2d_organoid,
+    metadata_columns=metadata_cols_2d_organoid,
+    output_path=dist_results_dir / "2d_organoid_intra_patient_cosine_distance.parquet",
+)
+
+print("Computing 3D organoid intra-patient distance metrics...")
+dist_3d_organoid_intra = calculate_intra_patient_distance_metrics(
+    df_3d_organoid,
+    metadata_columns=metadata_cols_3d_organoid,
+    output_path=dist_results_dir / "3d_organoid_intra_patient_cosine_distance.parquet",
+)
+
+print("Computing 2D SC intra-patient distance metrics...")
+dist_2d_sc_intra = calculate_intra_patient_distance_metrics(
+    df_2d_sc,
+    metadata_columns=metadata_cols_2d_sc,
+    output_path=dist_results_dir / "2d_sc_intra_patient_cosine_distance.parquet",
+)
+
+print("Computing 3D SC intra-patient distance metrics...")
+dist_3d_sc_intra = calculate_intra_patient_distance_metrics(
+    df_3d_sc,
+    metadata_columns=metadata_cols_3d_sc,
+    output_path=dist_results_dir / "3d_sc_intra_patient_cosine_distance.parquet",
+)
+
+# Inter-patient distance metrics
+print("Computing 2D organoid inter-patient distance metrics...")
+dist_2d_organoid_inter = calculate_inter_patient_distance_metrics(
+    df_2d_organoid,
+    metadata_columns=metadata_cols_2d_organoid,
+    output_path=dist_results_dir / "2d_organoid_inter_patient_cosine_distance.parquet",
+)
+
+print("Computing 3D organoid inter-patient distance metrics...")
+dist_3d_organoid_inter = calculate_inter_patient_distance_metrics(
+    df_3d_organoid,
+    metadata_columns=metadata_cols_3d_organoid,
+    output_path=dist_results_dir / "3d_organoid_inter_patient_cosine_distance.parquet",
+)
+
+print("Computing 2D SC inter-patient distance metrics...")
+dist_2d_sc_inter = calculate_inter_patient_distance_metrics(
+    df_2d_sc,
+    metadata_columns=metadata_cols_2d_sc,
+    output_path=dist_results_dir / "2d_sc_inter_patient_cosine_distance.parquet",
+)
+
+print("Computing 3D SC inter-patient distance metrics...")
+dist_3d_sc_inter = calculate_inter_patient_distance_metrics(
+    df_3d_sc,
+    metadata_columns=metadata_cols_3d_sc,
+    output_path=dist_results_dir / "3d_sc_inter_patient_cosine_distance.parquet",
+)
