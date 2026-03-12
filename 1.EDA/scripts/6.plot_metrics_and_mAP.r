@@ -432,47 +432,68 @@ ggsave(
 )
 plot
 
-# Merge 2D and 3D organoid intra-patient mAP
-organoid_2d <- mAP_2d_organoid_intra %>%
-    select(Metadata_treatment, Metadata_patient, mean_average_precision) %>%
-    rename(mAP_2D = mean_average_precision)
+#Load Data
 
-organoid_3d <- mAP_3d_organoid_intra %>%
-    select(Metadata_treatment, Metadata_patient, mean_average_precision) %>%
-    rename(mAP_3D = mean_average_precision)
+mAP_2d_organoid_intra <- arrow::read_parquet(file.path(
+    root_dir, "1.EDA/results/mAP/2d_organoid_intra_patient_mAP_by_dose.parquet"
+))
+mAP_3d_organoid_intra <- arrow::read_parquet(file.path(
+    root_dir, "1.EDA/results/mAP/3d_organoid_intra_patient_mAP_by_dose.parquet"
+))
+mAP_2d_sc_intra <- arrow::read_parquet(file.path(
+    root_dir, "1.EDA/results/mAP/2d_sc_intra_patient_mAP_by_dose.parquet"
+))
+mAP_3d_sc_intra <- arrow::read_parquet(file.path(
+    root_dir, "1.EDA/results/mAP/3d_sc_intra_patient_mAP_by_dose.parquet"
+))
+mAP_2d_organoid_inter <- arrow::read_parquet(file.path(
+    root_dir, "1.EDA/results/mAP/2d_organoid_inter_patient_mAP_by_dose.parquet"
+))
+mAP_3d_organoid_inter <- arrow::read_parquet(file.path(
+    root_dir, "1.EDA/results/mAP/3d_organoid_inter_patient_mAP_by_dose.parquet"
+))
+mAP_2d_sc_inter <- arrow::read_parquet(file.path(
+    root_dir, "1.EDA/results/mAP/2d_sc_inter_patient_mAP_by_dose.parquet"
+))
+mAP_3d_sc_inter <- arrow::read_parquet(file.path(
+    root_dir, "1.EDA/results/mAP/3d_sc_inter_patient_mAP_by_dose.parquet"
+))
 
-organoid_merged <- inner_join(
-    organoid_2d, organoid_3d,
+# mAP: Merge 2D and 3D for plotting
+# Intra-patient
+mAP_organoid_intra_merged <- inner_join(
+    mAP_2d_organoid_intra %>% select(Metadata_treatment, Metadata_patient, mean_average_precision) %>% rename(mAP_2D = mean_average_precision),
+    mAP_3d_organoid_intra %>% select(Metadata_treatment, Metadata_patient, mean_average_precision) %>% rename(mAP_3D = mean_average_precision),
     by = c("Metadata_treatment", "Metadata_patient")
 )
 
-# Merge 2D and 3D single cell intra-patient mAP
-sc_2d <- mAP_2d_sc_intra %>%
-    select(Metadata_treatment, Metadata_patient, mean_average_precision) %>%
-    rename(mAP_2D = mean_average_precision)
-
-sc_3d <- mAP_3d_sc_intra %>%
-    select(Metadata_treatment, Metadata_patient, mean_average_precision) %>%
-    rename(mAP_3D = mean_average_precision)
-
-sc_merged <- inner_join(
-    sc_2d, sc_3d,
+mAP_sc_intra_merged <- inner_join(
+    mAP_2d_sc_intra %>% select(Metadata_treatment, Metadata_patient, mean_average_precision) %>% rename(mAP_2D = mean_average_precision),
+    mAP_3d_sc_intra %>% select(Metadata_treatment, Metadata_patient, mean_average_precision) %>% rename(mAP_3D = mean_average_precision),
     by = c("Metadata_treatment", "Metadata_patient")
 )
 
-sc_merged %>%
-    group_by(Metadata_patient) %>%
-    summarise(n_treatments = n()) %>%
-    print()
+# Inter-patient
+mAP_organoid_inter_merged <- inner_join(
+    mAP_2d_organoid_inter %>% select(Metadata_treatment_dose, mean_average_precision) %>% rename(mAP_2D = mean_average_precision),
+    mAP_3d_organoid_inter %>% select(Metadata_treatment_dose, mean_average_precision) %>% rename(mAP_3D = mean_average_precision),
+    by = "Metadata_treatment_dose"
+)
 
-# Organoid: 2D vs 3D mAP scatter plot faceted by patient
+mAP_sc_inter_merged <- inner_join(
+    mAP_2d_sc_inter %>% select(Metadata_treatment_dose, mean_average_precision) %>% rename(mAP_2D = mean_average_precision),
+    mAP_3d_sc_inter %>% select(Metadata_treatment_dose, mean_average_precision) %>% rename(mAP_3D = mean_average_precision),
+    by = "Metadata_treatment_dose"
+)
+
+# Organoid: 2D vs 3D Intra-patient mAP scatter plot faceted by patient
 width <- 12
 height <- 8
 options(repr.plot.width = width, repr.plot.height = height)
 
 organoid_2d_vs_3d_plot <- (
     ggplot(
-        data = organoid_merged,
+        data = mAP_organoid_intra_merged,
         aes(
             x = mAP_2D,
             y = mAP_3D,
@@ -511,24 +532,18 @@ organoid_2d_vs_3d_plot <- (
         max.overlaps = 10
     )
 )
-
-ggsave(
-    filename = file.path(figures_path, "organoid_fs_2d_vs_3d_intra_mAP.png"),
-    plot = organoid_2d_vs_3d_plot,
-    width = width,
-    height = height,
-    dpi = 600
-)
+ggsave(filename = file.path(figures_path, "2d_vs_3d_organoid_intra_mAP.png"),
+       plot = organoid_2d_vs_3d_plot, width = width, height = height, dpi = 600)
 organoid_2d_vs_3d_plot
 
-# Single cell: 2D vs 3D mAP scatter plot faceted by patient
+# Single cell: 2D vs 3D Intra-patient mAP scatter plot faceted by patient
 width <- 12
 height <- 8
 options(repr.plot.width = width, repr.plot.height = height)
 
 sc_2d_vs_3d_plot <- (
     ggplot(
-        data = sc_merged,
+        data = mAP_sc_intra_merged,
         aes(
             x = mAP_2D,
             y = mAP_3D,
@@ -567,36 +582,18 @@ sc_2d_vs_3d_plot <- (
         max.overlaps = 10
     )
 )
-
-ggsave(
-    filename = file.path(figures_path, "sc_fs_2d_vs_3d_intra_mAP.png"),
-    plot = sc_2d_vs_3d_plot,
-    width = width,
-    height = height,
-    dpi = 600
-)
+ggsave(filename = file.path(figures_path, "2d_vs_3d_sc_intra_mAP.png"),
+       plot = sc_2d_vs_3d_plot, width = width, height = height, dpi = 600)
 sc_2d_vs_3d_plot
 
-# 2D vs 3D Inter-patient mAP — Organoid
-org_inter_2d <- mAP_2d_organoid_inter %>%
-    select(Metadata_treatment_dose, mean_average_precision) %>%
-    rename(mAP_2D = mean_average_precision)
-
-org_inter_3d <- mAP_3d_organoid_inter %>%
-    select(Metadata_treatment_dose, mean_average_precision) %>%
-    rename(mAP_3D = mean_average_precision)
-
-org_inter_merged <- inner_join(
-    org_inter_2d, org_inter_3d,
-    by = "Metadata_treatment_dose"
-)
-
+# Organoid: 2D vs 3D Inter-patient mAP scatter plot faceted by patient
 width <- 10
 height <- 8
 options(repr.plot.width = width, repr.plot.height = height)
+
 plot_org_inter_mAP <- (
     ggplot(
-        data = org_inter_merged,
+        data = mAP_organoid_inter_merged,
         aes(x = mAP_2D, y = mAP_3D, color = Metadata_treatment_dose)
     )
     + geom_point(size = 4, alpha = 0.7)
@@ -630,26 +627,14 @@ ggsave(filename = file.path(figures_path, "2d_vs_3d_organoid_inter_mAP.png"),
        plot = plot_org_inter_mAP, width = width, height = height, dpi = 600)
 plot_org_inter_mAP
 
-# 2D vs 3D Inter-patient mAP — SC
-sc_inter_2d <- mAP_2d_sc_inter %>%
-    select(Metadata_treatment_dose, mean_average_precision) %>%
-    rename(mAP_2D = mean_average_precision)
-
-sc_inter_3d <- mAP_3d_sc_inter %>%
-    select(Metadata_treatment_dose, mean_average_precision) %>%
-    rename(mAP_3D = mean_average_precision)
-
-sc_inter_merged <- inner_join(
-    sc_inter_2d, sc_inter_3d,
-    by = "Metadata_treatment_dose"
-)
-
+# Single cell: 2D vs 3D Inter-patient mAP scatter plot faceted by patient
 width <- 10
 height <- 8
 options(repr.plot.width = width, repr.plot.height = height)
+
 plot_sc_inter_mAP <- (
     ggplot(
-        data = sc_inter_merged,
+        data = mAP_sc_inter_merged,
         aes(x = mAP_2D, y = mAP_3D, color = Metadata_treatment_dose)
     )
     + geom_point(size = 4, alpha = 0.7)
@@ -683,51 +668,57 @@ ggsave(filename = file.path(figures_path, "2d_vs_3d_sc_inter_mAP.png"),
        plot = plot_sc_inter_mAP, width = width, height = height, dpi = 600)
 plot_sc_inter_mAP
 
-# Define input paths
-dist_2d_organoid_intra_path <- file.path(root_dir, "1.EDA/results/distance_metrics/2d_organoid_intra_patient_cosine_distance.parquet")
-dist_3d_organoid_intra_path <- file.path(root_dir, "1.EDA/results/distance_metrics/3d_organoid_intra_patient_cosine_distance.parquet")
-dist_2d_organoid_inter_path <- file.path(root_dir, "1.EDA/results/distance_metrics/2d_organoid_inter_patient_cosine_distance.parquet")
-dist_3d_organoid_inter_path <- file.path(root_dir, "1.EDA/results/distance_metrics/3d_organoid_inter_patient_cosine_distance.parquet")
-dist_2d_sc_intra_path <- file.path(root_dir, "1.EDA/results/distance_metrics/2d_sc_intra_patient_cosine_distance.parquet")
-dist_3d_sc_intra_path <- file.path(root_dir, "1.EDA/results/distance_metrics/3d_sc_intra_patient_cosine_distance.parquet")
-dist_2d_sc_inter_path <- file.path(root_dir, "1.EDA/results/distance_metrics/2d_sc_inter_patient_cosine_distance.parquet")
-dist_3d_sc_inter_path <- file.path(root_dir, "1.EDA/results/distance_metrics/3d_sc_inter_patient_cosine_distance.parquet")
+#Load Data
+dist_2d_organoid_intra <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/2d_organoid_intra_patient_cosine_distance.parquet"))
+dist_3d_organoid_intra <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/3d_organoid_intra_patient_cosine_distance.parquet"))
+dist_2d_organoid_inter <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/2d_organoid_inter_patient_cosine_distance.parquet"))
+dist_3d_organoid_inter <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/3d_organoid_inter_patient_cosine_distance.parquet"))
+dist_2d_sc_intra <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/2d_sc_intra_patient_cosine_distance.parquet"))
+dist_3d_sc_intra <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/3d_sc_intra_patient_cosine_distance.parquet"))
+dist_2d_sc_inter <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/2d_sc_inter_patient_cosine_distance.parquet"))
+dist_3d_sc_inter <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/3d_sc_inter_patient_cosine_distance.parquet"))
 
-# Define output path
+# Distance Metrics output path
 dist_figures_path <- file.path(root_dir, "1.EDA/figures/distance_metrics")
 if (!dir.exists(dist_figures_path)) {
     dir.create(dist_figures_path, recursive = TRUE)
 }
 
-# Load data
-dist_2d_organoid_intra <- arrow::read_parquet(dist_2d_organoid_intra_path)
-dist_3d_organoid_intra <- arrow::read_parquet(dist_3d_organoid_intra_path)
-dist_2d_organoid_inter <- arrow::read_parquet(dist_2d_organoid_inter_path)
-dist_3d_organoid_inter <- arrow::read_parquet(dist_3d_organoid_inter_path)
-dist_2d_sc_intra <- arrow::read_parquet(dist_2d_sc_intra_path)
-dist_3d_sc_intra <- arrow::read_parquet(dist_3d_sc_intra_path)
-dist_2d_sc_inter <- arrow::read_parquet(dist_2d_sc_inter_path)
-dist_3d_sc_inter <- arrow::read_parquet(dist_3d_sc_inter_path)
-
-org_dist_2d <- dist_2d_organoid_intra %>%
-    select(Metadata_treatment_dose, Metadata_patient, cosine_distance_mean) %>%
-    rename(cosine_2D = cosine_distance_mean)
-
-org_dist_3d <- dist_3d_organoid_intra %>%
-    select(Metadata_treatment_dose, Metadata_patient, cosine_distance_mean) %>%
-    rename(cosine_3D = cosine_distance_mean)
-
-org_dist_merged <- inner_join(
-    org_dist_2d, org_dist_3d,
+# Distance Metrics: Merge 2D and 3D for plotting
+# Intra-patient
+dist_organoid_intra_merged <- inner_join(
+    dist_2d_organoid_intra %>% select(Metadata_treatment_dose, Metadata_patient, cosine_distance_mean) %>% rename(cosine_2D = cosine_distance_mean),
+    dist_3d_organoid_intra %>% select(Metadata_treatment_dose, Metadata_patient, cosine_distance_mean) %>% rename(cosine_3D = cosine_distance_mean),
     by = c("Metadata_treatment_dose", "Metadata_patient")
 )
 
+dist_sc_intra_merged <- inner_join(
+    dist_2d_sc_intra %>% select(Metadata_treatment_dose, Metadata_patient, cosine_distance_mean) %>% rename(cosine_2D = cosine_distance_mean),
+    dist_3d_sc_intra %>% select(Metadata_treatment_dose, Metadata_patient, cosine_distance_mean) %>% rename(cosine_3D = cosine_distance_mean),
+    by = c("Metadata_treatment_dose", "Metadata_patient")
+)
+
+# Inter-patient
+dist_organoid_inter_merged <- inner_join(
+    dist_2d_organoid_inter %>% select(Metadata_treatment_dose, cosine_distance_mean) %>% rename(cosine_2D = cosine_distance_mean),
+    dist_3d_organoid_inter %>% select(Metadata_treatment_dose, cosine_distance_mean) %>% rename(cosine_3D = cosine_distance_mean),
+    by = "Metadata_treatment_dose"
+)
+
+dist_sc_inter_merged <- inner_join(
+    dist_2d_sc_inter %>% select(Metadata_treatment_dose, cosine_distance_mean) %>% rename(cosine_2D = cosine_distance_mean),
+    dist_3d_sc_inter %>% select(Metadata_treatment_dose, cosine_distance_mean) %>% rename(cosine_3D = cosine_distance_mean),
+    by = "Metadata_treatment_dose"
+)
+
+# Distance Metrics: 2D vs 3D Intra-patient — Organoid (faceted by patient)
 width <- 12
 height <- 8
 options(repr.plot.width = width, repr.plot.height = height)
+
 plot_org_intra <- (
     ggplot(
-        data = org_dist_merged,
+        data = dist_organoid_intra_merged,
         aes(x = cosine_2D, y = cosine_3D, color = Metadata_treatment_dose)
     )
     + geom_point(size = 3, alpha = 0.7)
@@ -760,25 +751,14 @@ ggsave(filename = file.path(dist_figures_path, "2d_vs_3d_organoid_intra_cosine_d
        plot = plot_org_intra, width = width, height = height, dpi = 600)
 plot_org_intra
 
-sc_dist_2d <- dist_2d_sc_intra %>%
-    select(Metadata_treatment_dose, Metadata_patient, cosine_distance_mean) %>%
-    rename(cosine_2D = cosine_distance_mean)
-
-sc_dist_3d <- dist_3d_sc_intra %>%
-    select(Metadata_treatment_dose, Metadata_patient, cosine_distance_mean) %>%
-    rename(cosine_3D = cosine_distance_mean)
-
-sc_dist_merged <- inner_join(
-    sc_dist_2d, sc_dist_3d,
-    by = c("Metadata_treatment_dose", "Metadata_patient")
-)
-
+# Distance Metrics: 2D vs 3D Intra-patient — Single Cell (faceted by patient)
 width <- 12
 height <- 8
 options(repr.plot.width = width, repr.plot.height = height)
+
 plot_sc_intra <- (
     ggplot(
-        data = sc_dist_merged,
+        data = dist_sc_intra_merged,
         aes(x = cosine_2D, y = cosine_3D, color = Metadata_treatment_dose)
     )
     + geom_point(size = 3, alpha = 0.7)
@@ -811,25 +791,14 @@ ggsave(filename = file.path(dist_figures_path, "2d_vs_3d_sc_intra_cosine_distanc
        plot = plot_sc_intra, width = width, height = height, dpi = 600)
 plot_sc_intra
 
-org_inter_2d <- dist_2d_organoid_inter %>%
-    select(Metadata_treatment_dose, cosine_distance_mean) %>%
-    rename(cosine_2D = cosine_distance_mean)
-
-org_inter_3d <- dist_3d_organoid_inter %>%
-    select(Metadata_treatment_dose, cosine_distance_mean) %>%
-    rename(cosine_3D = cosine_distance_mean)
-
-org_inter_merged <- inner_join(
-    org_inter_2d, org_inter_3d,
-    by = "Metadata_treatment_dose"
-)
-
+# Distance Metrics: 2D vs 3D Inter-patient — Organoid
 width <- 10
 height <- 8
 options(repr.plot.width = width, repr.plot.height = height)
+
 plot_org_inter <- (
     ggplot(
-        data = org_inter_merged,
+        data = dist_organoid_inter_merged,
         aes(x = cosine_2D, y = cosine_3D, color = Metadata_treatment_dose)
     )
     + geom_point(size = 4, alpha = 0.7)
@@ -861,25 +830,14 @@ ggsave(filename = file.path(dist_figures_path, "2d_vs_3d_organoid_inter_cosine_d
        plot = plot_org_inter, width = width, height = height, dpi = 600)
 plot_org_inter
 
-sc_inter_2d <- dist_2d_sc_inter %>%
-    select(Metadata_treatment_dose, cosine_distance_mean) %>%
-    rename(cosine_2D = cosine_distance_mean)
-
-sc_inter_3d <- dist_3d_sc_inter %>%
-    select(Metadata_treatment_dose, cosine_distance_mean) %>%
-    rename(cosine_3D = cosine_distance_mean)
-
-sc_inter_merged <- inner_join(
-    sc_inter_2d, sc_inter_3d,
-    by = "Metadata_treatment_dose"
-)
-
+# Distance Metrics: 2D vs 3D Inter-patient — Single Cell
 width <- 10
 height <- 8
 options(repr.plot.width = width, repr.plot.height = height)
+
 plot_sc_inter <- (
     ggplot(
-        data = sc_inter_merged,
+        data = dist_sc_inter_merged,
         aes(x = cosine_2D, y = cosine_3D, color = Metadata_treatment_dose)
     )
     + geom_point(size = 4, alpha = 0.7)
