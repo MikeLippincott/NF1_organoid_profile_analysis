@@ -48,7 +48,7 @@ if (!dir.exists(figures_path)) {
   dir.create(figures_path, recursive = TRUE)
 }
 
-# Define input paths
+#Load Data
 mAP_2d_organoid_intra <- arrow::read_parquet(file.path(
     root_dir, "1.EDA/results/mAP/2d_organoid_intra_patient_mAP_by_dose.parquet"
 ))
@@ -61,8 +61,6 @@ mAP_2d_sc_intra <- arrow::read_parquet(file.path(
 mAP_3d_sc_intra <- arrow::read_parquet(file.path(
     root_dir, "1.EDA/results/mAP/3d_sc_intra_patient_mAP_by_dose.parquet"
 ))
-
-# Load inter-patient mAP data
 mAP_2d_organoid_inter <- arrow::read_parquet(file.path(
     root_dir, "1.EDA/results/mAP/2d_organoid_inter_patient_mAP_by_dose.parquet"
 ))
@@ -432,34 +430,7 @@ ggsave(
 )
 plot
 
-#Load Data
-
-mAP_2d_organoid_intra <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/2d_organoid_intra_patient_mAP_by_dose.parquet"
-))
-mAP_3d_organoid_intra <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/3d_organoid_intra_patient_mAP_by_dose.parquet"
-))
-mAP_2d_sc_intra <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/2d_sc_intra_patient_mAP_by_dose.parquet"
-))
-mAP_3d_sc_intra <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/3d_sc_intra_patient_mAP_by_dose.parquet"
-))
-mAP_2d_organoid_inter <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/2d_organoid_inter_patient_mAP_by_dose.parquet"
-))
-mAP_3d_organoid_inter <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/3d_organoid_inter_patient_mAP_by_dose.parquet"
-))
-mAP_2d_sc_inter <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/2d_sc_inter_patient_mAP_by_dose.parquet"
-))
-mAP_3d_sc_inter <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/3d_sc_inter_patient_mAP_by_dose.parquet"
-))
-
-# mAP: Merge 2D and 3D for plotting
+# Merge 2D and 3D for plotting
 # Intra-patient
 mAP_organoid_intra_merged <- inner_join(
     mAP_2d_organoid_intra %>% select(Metadata_treatment, Metadata_patient, mean_average_precision) %>% rename(mAP_2D = mean_average_precision),
@@ -486,6 +457,18 @@ mAP_sc_inter_merged <- inner_join(
     by = "Metadata_treatment_dose"
 )
 
+# Shared plot theme — defined once so all plots are consistent
+plot_theme <- theme(
+    plot.title   = element_text(hjust = 0.5, size = 14),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    axis.text.x  = element_text(size = 14),
+    axis.text.y  = element_text(size = 14),
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    legend.text  = element_text(size = 12)
+)
+
 # Organoid: 2D vs 3D Intra-patient mAP scatter plot faceted by patient
 width <- 12
 height <- 8
@@ -508,16 +491,7 @@ organoid_2d_vs_3d_plot <- (
         title = "2D vs 3D Intra-patient mAP — Organoid FS"
     )
     + theme_bw()
-    + theme(
-        plot.title = element_text(hjust = 0.5, size = 14),
-        axis.title.x = element_text(size = 16),
-        axis.title.y = element_text(size = 16),
-        axis.text.x = element_text(size = 14),
-        axis.text.y = element_text(size = 14),
-        legend.position = "bottom",
-        legend.title = element_blank(),
-        legend.text = element_text(size = 12)
-    )
+    + plot_theme
     + xlim(0, 1)
     + ylim(0, 1)
     + facet_wrap(~Metadata_patient, ncol = 4)
@@ -558,16 +532,7 @@ sc_2d_vs_3d_plot <- (
         title = "2D vs 3D Intra-patient mAP — Single Cell FS"
     )
     + theme_bw()
-    + theme(
-        plot.title = element_text(hjust = 0.5, size = 14),
-        axis.title.x = element_text(size = 16),
-        axis.title.y = element_text(size = 16),
-        axis.text.x = element_text(size = 14),
-        axis.text.y = element_text(size = 14),
-        legend.position = "bottom",
-        legend.title = element_blank(),
-        legend.text = element_text(size = 12)
-    )
+    + plot_theme
     + xlim(0, 1)
     + ylim(0, 1)
     + facet_wrap(~Metadata_patient, ncol = 4)
@@ -586,7 +551,7 @@ ggsave(filename = file.path(figures_path, "2d_vs_3d_sc_intra_mAP.png"),
        plot = sc_2d_vs_3d_plot, width = width, height = height, dpi = 600)
 sc_2d_vs_3d_plot
 
-# Organoid: 2D vs 3D Inter-patient mAP scatter plot faceted by patient
+# Organoid: 2D vs 3D Inter-patient mAP scatter plot
 width <- 10
 height <- 8
 options(repr.plot.width = width, repr.plot.height = height)
@@ -604,16 +569,7 @@ plot_org_inter_mAP <- (
         title = "2D vs 3D Inter-patient mAP — Organoid Agg"
     )
     + theme_bw()
-    + theme(
-        plot.title = element_text(hjust = 0.5, size = 14),
-        axis.title.x = element_text(size = 16),
-        axis.title.y = element_text(size = 16),
-        axis.text.x = element_text(size = 14),
-        axis.text.y = element_text(size = 14),
-        legend.position = "bottom",
-        legend.title = element_blank(),
-        legend.text = element_text(size = 12)
-    )
+    + plot_theme
     + xlim(0, 1)
     + ylim(0, 1)
     + geom_text_repel(
@@ -627,7 +583,7 @@ ggsave(filename = file.path(figures_path, "2d_vs_3d_organoid_inter_mAP.png"),
        plot = plot_org_inter_mAP, width = width, height = height, dpi = 600)
 plot_org_inter_mAP
 
-# Single cell: 2D vs 3D Inter-patient mAP scatter plot faceted by patient
+# Single cell: 2D vs 3D Inter-patient mAP scatter plot
 width <- 10
 height <- 8
 options(repr.plot.width = width, repr.plot.height = height)
@@ -645,16 +601,7 @@ plot_sc_inter_mAP <- (
         title = "2D vs 3D Inter-patient mAP — Single Cell Agg"
     )
     + theme_bw()
-    + theme(
-        plot.title = element_text(hjust = 0.5, size = 14),
-        axis.title.x = element_text(size = 16),
-        axis.title.y = element_text(size = 16),
-        axis.text.x = element_text(size = 14),
-        axis.text.y = element_text(size = 14),
-        legend.position = "bottom",
-        legend.title = element_blank(),
-        legend.text = element_text(size = 12)
-    )
+    + plot_theme
     + xlim(0, 1)
     + ylim(0, 1)
     + geom_text_repel(
@@ -729,16 +676,7 @@ plot_org_intra <- (
         title = "2D vs 3D Intra-patient Cosine Distance — Organoid Agg"
     )
     + theme_bw()
-    + theme(
-        plot.title = element_text(hjust = 0.5, size = 14),
-        axis.title.x = element_text(size = 16),
-        axis.title.y = element_text(size = 16),
-        axis.text.x = element_text(size = 14),
-        axis.text.y = element_text(size = 14),
-        legend.position = "bottom",
-        legend.title = element_blank(),
-        legend.text = element_text(size = 10)
-    )
+    + plot_theme
     + facet_wrap(~Metadata_patient, ncol = 4)
     + geom_text_repel(
         aes(label = Metadata_treatment_dose),
@@ -769,16 +707,7 @@ plot_sc_intra <- (
         title = "2D vs 3D Intra-patient Cosine Distance — Single Cell Agg"
     )
     + theme_bw()
-    + theme(
-        plot.title = element_text(hjust = 0.5, size = 14),
-        axis.title.x = element_text(size = 16),
-        axis.title.y = element_text(size = 16),
-        axis.text.x = element_text(size = 14),
-        axis.text.y = element_text(size = 14),
-        legend.position = "bottom",
-        legend.title = element_blank(),
-        legend.text = element_text(size = 10)
-    )
+    + plot_theme
     + facet_wrap(~Metadata_patient, ncol = 4)
     + geom_text_repel(
         aes(label = Metadata_treatment_dose),
@@ -809,16 +738,7 @@ plot_org_inter <- (
         title = "2D vs 3D Inter-patient Cosine Distance — Organoid Agg"
     )
     + theme_bw()
-    + theme(
-        plot.title = element_text(hjust = 0.5, size = 14),
-        axis.title.x = element_text(size = 16),
-        axis.title.y = element_text(size = 16),
-        axis.text.x = element_text(size = 14),
-        axis.text.y = element_text(size = 14),
-        legend.position = "bottom",
-        legend.title = element_blank(),
-        legend.text = element_text(size = 12)
-    )
+    + plot_theme
     + geom_text_repel(
         aes(label = Metadata_treatment_dose),
         size = 4, show.legend = FALSE,
@@ -848,16 +768,7 @@ plot_sc_inter <- (
         title = "2D vs 3D Inter-patient Cosine Distance — Single Cell Agg"
     )
     + theme_bw()
-    + theme(
-        plot.title = element_text(hjust = 0.5, size = 14),
-        axis.title.x = element_text(size = 16),
-        axis.title.y = element_text(size = 16),
-        axis.text.x = element_text(size = 14),
-        axis.text.y = element_text(size = 14),
-        legend.position = "bottom",
-        legend.title = element_blank(),
-        legend.text = element_text(size = 12)
-    )
+    + plot_theme
     + geom_text_repel(
         aes(label = Metadata_treatment_dose),
         size = 4, show.legend = FALSE,

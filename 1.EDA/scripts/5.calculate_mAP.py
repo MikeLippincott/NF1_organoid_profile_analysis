@@ -46,7 +46,9 @@ df_3d_sc = pd.read_parquet(path_3d_sc)
 # Create treatment_dose column
 for df in [df_2d_organoid, df_3d_organoid, df_2d_sc, df_3d_sc]:
     df["Metadata_treatment_dose"] = (
-        df["Metadata_treatment"] + "_" + df["Metadata_dose"].astype(str)
+        df["Metadata_treatment"]
+        + "_"
+        + df["Metadata_dose"].fillna(0).astype(float).astype(int).astype(str)
     )
 
 print(
@@ -259,7 +261,6 @@ def calculate_inter_patient_mAP(
 
 
 # Intra-patient mAP by treatment and dose
-print("Computing 2D organoid intra-patient mAP by dose...")
 mAP_2d_organoid_intra = calculate_intra_patient_mAP(
     df_2d_organoid,
     metadata_columns=metadata_cols_2d_organoid,
@@ -268,7 +269,6 @@ mAP_2d_organoid_intra = calculate_intra_patient_mAP(
     output_path=results_dir / "2d_organoid_intra_patient_mAP_by_dose.parquet",
 )
 
-print("Computing 3D organoid intra-patient mAP by dose...")
 mAP_3d_organoid_intra = calculate_intra_patient_mAP(
     df_3d_organoid,
     metadata_columns=metadata_cols_3d_organoid,
@@ -277,7 +277,6 @@ mAP_3d_organoid_intra = calculate_intra_patient_mAP(
     output_path=results_dir / "3d_organoid_intra_patient_mAP_by_dose.parquet",
 )
 
-print("Computing 2D SC intra-patient mAP by dose...")
 mAP_2d_sc_intra = calculate_intra_patient_mAP(
     df_2d_sc,
     metadata_columns=metadata_cols_2d_sc,
@@ -286,7 +285,6 @@ mAP_2d_sc_intra = calculate_intra_patient_mAP(
     output_path=results_dir / "2d_sc_intra_patient_mAP_by_dose.parquet",
 )
 
-print("Computing 3D SC intra-patient mAP by dose...")
 mAP_3d_sc_intra = calculate_intra_patient_mAP(
     df_3d_sc,
     metadata_columns=metadata_cols_3d_sc,
@@ -300,7 +298,6 @@ mAP_3d_sc_intra = calculate_intra_patient_mAP(
 
 
 # Inter-patient mAP by treatment and dose
-print("Computing 2D organoid inter-patient mAP by dose...")
 mAP_2d_organoid_inter = calculate_inter_patient_mAP(
     df_2d_organoid,
     metadata_columns=metadata_cols_2d_organoid,
@@ -309,7 +306,6 @@ mAP_2d_organoid_inter = calculate_inter_patient_mAP(
     output_path=results_dir / "2d_organoid_inter_patient_mAP_by_dose.parquet",
 )
 
-print("Computing 3D organoid inter-patient mAP by dose...")
 mAP_3d_organoid_inter = calculate_inter_patient_mAP(
     df_3d_organoid,
     metadata_columns=metadata_cols_3d_organoid,
@@ -318,7 +314,6 @@ mAP_3d_organoid_inter = calculate_inter_patient_mAP(
     output_path=results_dir / "3d_organoid_inter_patient_mAP_by_dose.parquet",
 )
 
-print("Computing 2D SC inter-patient mAP by dose...")
 mAP_2d_sc_inter = calculate_inter_patient_mAP(
     df_2d_sc,
     metadata_columns=metadata_cols_2d_sc,
@@ -327,7 +322,6 @@ mAP_2d_sc_inter = calculate_inter_patient_mAP(
     output_path=results_dir / "2d_sc_inter_patient_mAP_by_dose.parquet",
 )
 
-print("Computing 3D SC inter-patient mAP by dose...")
 mAP_3d_sc_inter = calculate_inter_patient_mAP(
     df_3d_sc,
     metadata_columns=metadata_cols_3d_sc,
@@ -335,26 +329,3 @@ mAP_3d_sc_inter = calculate_inter_patient_mAP(
     reference_group="DMSO_1",
     output_path=results_dir / "3d_sc_inter_patient_mAP_by_dose.parquet",
 )
-
-
-# In[9]:
-
-
-print(
-    "3D organoid DMSO check:",
-    (df_3d_organoid["Metadata_treatment_dose"] == "DMSO_1").sum(),
-)
-print("3D SC DMSO check:", (df_3d_sc["Metadata_treatment_dose"] == "DMSO_1").sum())
-print()
-print(
-    "3D organoid unique treatments:",
-    df_3d_organoid["Metadata_treatment_dose"].unique()[:5],
-)
-
-
-# In[11]:
-
-
-import inspect
-
-print(inspect.signature(calculate_intra_patient_mAP))
