@@ -63,7 +63,7 @@ sc_agg_3d       <- arrow::read_parquet(file.path(entropy_dir, "3D_sc_agg_entropy
 
 # Combine 2D + 3D and set ordered factor
 fix_modality <- function(df) {
-    df$modality <- factor(df$modality, levels = c("2D", "3D"))
+    df$imaging_modality <- factor(df$imaging_modality, levels = c("2D", "3D"))
     df
 }
 
@@ -90,7 +90,7 @@ entropy_theme <- theme(
 modality_colors <- c("2D" = "#4e79a7", "3D" = "#f28e2b")
 
 make_entropy_plot <- function(df, title) {
-    ggplot(df, aes(x = modality, y = entropy, fill = modality)) +
+    ggplot(df, aes(x = imaging_modality, y = entropy, fill = imaging_modality)) +
         geom_violin(alpha = 0.6, trim = FALSE) +
         geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.5, outlier.alpha = 0.4) +
         scale_fill_manual(values = modality_colors) +
@@ -104,6 +104,11 @@ make_entropy_plot <- function(df, title) {
         entropy_theme
 }
 
+width <- 6
+height <- 6
+dpi <- 600
+options(repr.plot.width = width, repr.plot.height = height)
+
 organoid_normal_plot <- make_entropy_plot(
     organoid_normal_combined,
     "Shannon Entropy: Organoid Normal Profiles (2D vs 3D)"
@@ -113,9 +118,9 @@ print(organoid_normal_plot)
 ggsave(
     filename = file.path(figures_dir, "organoid_normal_entropy_2D_vs_3D.png"),
     plot     = organoid_normal_plot,
-    width    = 6,
-    height   = 6,
-    dpi      = 600,
+    width    = width,
+    height   = height,
+    dpi      = dpi,
     units    = "in"
 )
 
@@ -128,39 +133,39 @@ print(sc_normal_plot)
 ggsave(
     filename = file.path(figures_dir, "sc_normal_entropy_2D_vs_3D.png"),
     plot     = sc_normal_plot,
-    width    = 6,
-    height   = 6,
-    dpi      = 600,
+    width    = width,
+    height   = height,
+    dpi      = dpi,
     units    = "in"
 )
 
 organoid_fs_plot <- make_entropy_plot(
     organoid_fs_combined,
-    "Shannon Entropy: Organoid Feature-Selected Profiles (2D vs 3D)"
+    "Shannon Entropy: Organoid Feature-Selected\nProfiles (2D vs 3D)"
 )
 print(organoid_fs_plot)
 
 ggsave(
     filename = file.path(figures_dir, "organoid_fs_entropy_2D_vs_3D.png"),
     plot     = organoid_fs_plot,
-    width    = 6,
-    height   = 6,
-    dpi      = 600,
+    width    = width,
+    height   = height,
+    dpi      = dpi,
     units    = "in"
 )
 
 sc_fs_plot <- make_entropy_plot(
     sc_fs_combined,
-    "Shannon Entropy: Single-Cell Feature-Selected Profiles (2D vs 3D)"
+    "Shannon Entropy: Single-Cell Feature-Selected\nProfiles (2D vs 3D)"
 )
 print(sc_fs_plot)
 
 ggsave(
     filename = file.path(figures_dir, "sc_fs_entropy_2D_vs_3D.png"),
     plot     = sc_fs_plot,
-    width    = 6,
-    height   = 6,
-    dpi      = 600,
+    width    = width,
+    height   = height,
+    dpi      = dpi,
     units    = "in"
 )
 
@@ -173,9 +178,9 @@ print(organoid_agg_plot)
 ggsave(
     filename = file.path(figures_dir, "organoid_agg_entropy_2D_vs_3D.png"),
     plot     = organoid_agg_plot,
-    width    = 6,
-    height   = 6,
-    dpi      = 600,
+    width    = width,
+    height   = height,
+    dpi      = dpi,
     units    = "in"
 )
 

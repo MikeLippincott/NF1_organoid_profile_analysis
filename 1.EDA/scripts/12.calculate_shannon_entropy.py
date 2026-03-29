@@ -136,24 +136,26 @@ def compute_feature_entropy(
         DataFrame with columns ``feature_name`` (str) and ``entropy`` (float).
         Rows with no valid values are excluded.
     """
+    # Separate feature columns from metadata columns
     feature_columns: List[str] = [
         col for col in df.columns if not col.startswith("Metadata_")
     ]
 
-    records = []
+    results: Dict[str, List] = {"feature_name": [], "entropy": []}
     for feature in feature_columns:
+        # Drop NaNs and skip empty features
         values = df[feature].dropna().values
         if len(values) == 0:
             continue
-        counts, _ = np.histogram(values, bins=n_bins)
-        total = counts.sum()
-        if total == 0:
-            continue
-        prob = counts / total
-        feat_entropy: float = entropy(prob, base=2)
-        records.append({"feature_name": feature, "entropy": feat_entropy})
 
-    return pd.DataFrame(records, columns=["feature_name", "entropy"])
+        # Discretize into histogram bins; entropy() normalizes counts internally
+        counts, _ = np.histogram(values, bins=n_bins)
+        feat_entropy: float = entropy(counts, base=2)
+
+        results["feature_name"].append(feature)
+        results["entropy"].append(feat_entropy)
+
+    return pd.DataFrame(results)
 
 
 # In[4]:
@@ -164,7 +166,7 @@ for key, config in data_dict.items():
     df = pd.read_parquet(config["input"])
 
     entropy_df = compute_feature_entropy(df, n_bins=50)
-    entropy_df["modality"] = config["modality"]
+    entropy_df["imaging_modality"] = config["modality"]
     entropy_df["profile_type"] = config["profile_type"]
 
     config["output"].parent.mkdir(parents=True, exist_ok=True)
