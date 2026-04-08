@@ -198,3 +198,141 @@ ggsave(
     dpi      = 600,
     units    = "in"
 )
+
+# ---------------------------------------------------------------------------
+# Per-Patient Shannon Entropy
+# Compute entropy distributions broken down by patient to check whether any
+# single patient is disproportionately driving the overall entropy pattern.
+# ---------------------------------------------------------------------------
+
+# Per-patient entropy files
+organoid_normal_pp_2d <- arrow::read_parquet(file.path(entropy_dir, "2D_organoid_per_patient_entropy.parquet"))
+organoid_normal_pp_3d <- arrow::read_parquet(file.path(entropy_dir, "3D_organoid_per_patient_entropy.parquet"))
+sc_normal_pp_2d       <- arrow::read_parquet(file.path(entropy_dir, "2D_sc_per_patient_entropy.parquet"))
+sc_normal_pp_3d       <- arrow::read_parquet(file.path(entropy_dir, "3D_sc_per_patient_entropy.parquet"))
+
+organoid_fs_pp_2d <- arrow::read_parquet(file.path(entropy_dir, "2D_organoid_fs_per_patient_entropy.parquet"))
+organoid_fs_pp_3d <- arrow::read_parquet(file.path(entropy_dir, "3D_organoid_fs_per_patient_entropy.parquet"))
+sc_fs_pp_2d       <- arrow::read_parquet(file.path(entropy_dir, "2D_sc_fs_per_patient_entropy.parquet"))
+sc_fs_pp_3d       <- arrow::read_parquet(file.path(entropy_dir, "3D_sc_fs_per_patient_entropy.parquet"))
+
+organoid_agg_pp_2d <- arrow::read_parquet(file.path(entropy_dir, "2D_organoid_agg_per_patient_entropy.parquet"))
+organoid_agg_pp_3d <- arrow::read_parquet(file.path(entropy_dir, "3D_organoid_agg_per_patient_entropy.parquet"))
+sc_agg_pp_2d       <- arrow::read_parquet(file.path(entropy_dir, "2D_sc_agg_per_patient_entropy.parquet"))
+sc_agg_pp_3d       <- arrow::read_parquet(file.path(entropy_dir, "3D_sc_agg_per_patient_entropy.parquet"))
+
+combine_pp <- function(df_2d, df_3d) {
+    combined <- rbind(df_2d, df_3d)
+    combined$imaging_modality <- factor(combined$imaging_modality, levels = c("2D", "3D"))
+    combined
+}
+
+organoid_normal_pp <- combine_pp(organoid_normal_pp_2d, organoid_normal_pp_3d)
+sc_normal_pp       <- combine_pp(sc_normal_pp_2d,       sc_normal_pp_3d)
+organoid_fs_pp     <- combine_pp(organoid_fs_pp_2d,     organoid_fs_pp_3d)
+sc_fs_pp           <- combine_pp(sc_fs_pp_2d,           sc_fs_pp_3d)
+organoid_agg_pp    <- combine_pp(organoid_agg_pp_2d,    organoid_agg_pp_3d)
+sc_agg_pp          <- combine_pp(sc_agg_pp_2d,          sc_agg_pp_3d)
+
+make_per_patient_entropy_plot <- function(df, title) {
+    ggplot(df, aes(x = patient, y = entropy, fill = patient)) +
+        geom_boxplot(alpha = 0.7, outlier.size = 0.4, outlier.alpha = 0.3) +
+        facet_wrap(~imaging_modality, scales = "free_x") +
+        labs(
+            title = title,
+            x     = "Patient",
+            y     = "Shannon Entropy (bits)",
+            fill  = "Patient"
+        ) +
+        theme_bw() +
+        entropy_theme +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+pp_width  <- 10
+pp_height <- 6
+options(repr.plot.width = pp_width, repr.plot.height = pp_height)
+
+organoid_normal_pp_plot <- make_per_patient_entropy_plot(
+    organoid_normal_pp,
+    "Per-Patient Shannon Entropy: Organoid Normal Profiles"
+)
+print(organoid_normal_pp_plot)
+ggsave(
+    filename = file.path(figures_dir, "organoid_normal_per_patient_entropy.png"),
+    plot     = organoid_normal_pp_plot,
+    width    = pp_width,
+    height   = pp_height,
+    dpi      = dpi,
+    units    = "in"
+)
+
+sc_normal_pp_plot <- make_per_patient_entropy_plot(
+    sc_normal_pp,
+    "Per-Patient Shannon Entropy: Single-Cell Normal Profiles"
+)
+print(sc_normal_pp_plot)
+ggsave(
+    filename = file.path(figures_dir, "sc_normal_per_patient_entropy.png"),
+    plot     = sc_normal_pp_plot,
+    width    = pp_width,
+    height   = pp_height,
+    dpi      = dpi,
+    units    = "in"
+)
+
+organoid_fs_pp_plot <- make_per_patient_entropy_plot(
+    organoid_fs_pp,
+    "Per-Patient Shannon Entropy: Organoid Feature-Selected Profiles"
+)
+print(organoid_fs_pp_plot)
+ggsave(
+    filename = file.path(figures_dir, "organoid_fs_per_patient_entropy.png"),
+    plot     = organoid_fs_pp_plot,
+    width    = pp_width,
+    height   = pp_height,
+    dpi      = dpi,
+    units    = "in"
+)
+
+sc_fs_pp_plot <- make_per_patient_entropy_plot(
+    sc_fs_pp,
+    "Per-Patient Shannon Entropy: Single-Cell Feature-Selected Profiles"
+)
+print(sc_fs_pp_plot)
+ggsave(
+    filename = file.path(figures_dir, "sc_fs_per_patient_entropy.png"),
+    plot     = sc_fs_pp_plot,
+    width    = pp_width,
+    height   = pp_height,
+    dpi      = dpi,
+    units    = "in"
+)
+
+organoid_agg_pp_plot <- make_per_patient_entropy_plot(
+    organoid_agg_pp,
+    "Per-Patient Shannon Entropy: Organoid Aggregated Profiles"
+)
+print(organoid_agg_pp_plot)
+ggsave(
+    filename = file.path(figures_dir, "organoid_agg_per_patient_entropy.png"),
+    plot     = organoid_agg_pp_plot,
+    width    = pp_width,
+    height   = pp_height,
+    dpi      = dpi,
+    units    = "in"
+)
+
+sc_agg_pp_plot <- make_per_patient_entropy_plot(
+    sc_agg_pp,
+    "Per-Patient Shannon Entropy: Single-Cell Aggregated Profiles"
+)
+print(sc_agg_pp_plot)
+ggsave(
+    filename = file.path(figures_dir, "sc_agg_per_patient_entropy.png"),
+    plot     = sc_agg_pp_plot,
+    width    = pp_width,
+    height   = pp_height,
+    dpi      = dpi,
+    units    = "in"
+)
