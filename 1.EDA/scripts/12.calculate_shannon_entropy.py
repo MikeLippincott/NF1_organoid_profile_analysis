@@ -172,3 +172,75 @@ for key, config in data_dict.items():
     config["output"].parent.mkdir(parents=True, exist_ok=True)
     entropy_df.to_parquet(config["output"], index=False)
     print(config["output"])
+
+
+# In[5]:
+
+
+def compute_feature_entropy_per_patient(
+    df: pd.DataFrame,
+    patient_col: str = "Metadata_patient",
+    n_bins: int = 50,
+) -> pd.DataFrame:
+    """Compute Shannon entropy per patient for each feature column.
+
+    For each unique value in ``patient_col``, the feature values belonging
+    to that patient are discretized into ``n_bins`` histogram bins and
+    Shannon entropy (base 2) is computed from the resulting distribution.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with metadata and feature columns.
+    patient_col : str, optional
+        Name of the patient identifier column. Default is ``"Metadata_patient"``.
+    n_bins : int, optional
+        Number of histogram bins. Default is 50.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns ``patient``, ``feature_name``, and ``entropy``.
+    """
+    feature_columns: List[str] = [
+        col for col in df.columns if not col.startswith("Metadata_")
+    ]
+
+    records: List[dict] = []
+    for patient, group in df.groupby(patient_col):
+        for feature in feature_columns:
+            values = group[feature].dropna().values
+            if len(values) == 0:
+                continue
+            counts, _ = np.histogram(values, bins=n_bins)
+            feat_entropy: float = entropy(counts, base=2)
+            records.append(
+                {"patient": patient, "feature_name": feature, "entropy": feat_entropy}
+            )
+
+    return pd.DataFrame(records)
+
+
+# In[6]:
+
+
+# Compute and save per-patient entropy for each profile type
+for key, config in data_dict.items():
+    df = pd.read_parquet(config["input"])
+
+    # Some 2D normal profiles lack Metadata_patient; derive it from Metadata_patient_tumor
+    if "Metadata_patient" not in df.columns and "Metadata_patient_tumor" in df.columns:
+        df["Metadata_patient"] = (
+            df["Metadata_patient_tumor"].str.rsplit("_", n=1).str[0]
+        )
+
+    per_patient_output = config["output"].parent / config["output"].name.replace(
+        "_entropy.parquet", "_per_patient_entropy.parquet"
+    )
+
+    per_patient_df = compute_feature_entropy_per_patient(df, n_bins=50)
+    per_patient_df["imaging_modality"] = config["modality"]
+    per_patient_df["profile_type"] = config["profile_type"]
+
+    per_patient_df.to_parquet(per_patient_output, index=False)
+    print(per_patient_output)
