@@ -144,7 +144,7 @@ for (prof in profiles) {
 }
 
 dmso_summary <- do.call(rbind, dmso_results)
-dmso_summary
+head(dmso_summary)
 
 dmso_summary$profile_type <- factor(
     dmso_summary$profile_type,
@@ -153,7 +153,7 @@ dmso_summary$profile_type <- factor(
 
 dmso_plot <- ggplot(dmso_summary, aes(x = profile_type, y = observed_rejection_rate)) +
     geom_col(fill = "#882E8B") +
-    geom_point(aes(y = expected_rejection_rate), shape = 95, size = 8, color = "gray40") +
+    geom_point(aes(y = expected_rejection_rate), shape = 95, size = 8, color = "gray40") + # shape 95 = horizontal dash
     labs(
         x        = "Profile type",
         y        = "Observed rejection rate",
