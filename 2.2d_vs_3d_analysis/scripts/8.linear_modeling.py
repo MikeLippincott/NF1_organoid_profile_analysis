@@ -211,7 +211,9 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     ] = None
 
     # run FDR on the p-values
-linear_modeling_results_df["pvalue_fdr"] = multipletests(linear_modeling_results_df["pvalue"].values, method="fdr_bh")[1]
+    linear_modeling_results_df["pvalue_fdr"] = multipletests(
+        linear_modeling_results_df["pvalue"].values, method="fdr_bh"
+    )[1]
     # Save the updated DataFrame with FDR p-values
     linear_modeling_results_df.to_parquet(
         profile_dict[profile]["output_profile_path"], index=False
