@@ -31,7 +31,7 @@ find_git_root <- function() {
 root_dir <- find_git_root()
 cat("Git root directory:", root_dir, "\n")
 
-figures_path <- file.path(root_dir, "1.EDA/figures/kbet")
+figures_path <- file.path(root_dir, "2.2d_vs_3d_analysis/figures/kbet")
 dir.create(figures_path, recursive = TRUE, showWarnings = FALSE)
 
 profiles <- list(

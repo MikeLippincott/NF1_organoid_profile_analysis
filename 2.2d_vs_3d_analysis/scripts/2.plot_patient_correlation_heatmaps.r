@@ -41,8 +41,8 @@ find_git_root <- function() {
 # Find the Git root directory
 root_dir <- find_git_root()
 
-results_dir <- file.path(root_dir, "1.EDA", "results", "correlation")
-figures_dir <- file.path(root_dir, "1.EDA", "figures", "correlation")
+results_dir <- file.path(root_dir, "2.2d_vs_3d_analysis", "results", "correlation")
+figures_dir <- file.path(root_dir, "2.2d_vs_3d_analysis", "figures", "correlation")
 
 dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
 

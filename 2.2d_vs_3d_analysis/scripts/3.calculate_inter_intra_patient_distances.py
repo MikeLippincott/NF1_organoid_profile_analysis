@@ -55,9 +55,11 @@ path_3d_sc = pathlib.Path(
 ).resolve(strict=True)
 
 # Define output paths
-results_dir = pathlib.Path(f"{root_dir}/1.EDA/results/mAP").resolve()
+results_dir = pathlib.Path(f"{root_dir}/2.2d_vs_3d_analysis/results/mAP").resolve()
 results_dir.mkdir(parents=True, exist_ok=True)
-dist_results_dir = pathlib.Path(f"{root_dir}/1.EDA/results/distance_metrics").resolve()
+dist_results_dir = pathlib.Path(
+    f"{root_dir}/2.2d_vs_3d_analysis/results/distance_metrics"
+).resolve()
 dist_results_dir.mkdir(parents=True, exist_ok=True)
 
 # Load data
@@ -237,7 +239,9 @@ def calculate_inter_patient_distance_metrics(
 
 
 # Distance metrics output directory
-dist_results_dir = pathlib.Path(f"{root_dir}/1.EDA/results/distance_metrics").resolve()
+dist_results_dir = pathlib.Path(
+    f"{root_dir}/2.2d_vs_3d_analysis/results/distance_metrics"
+).resolve()
 dist_results_dir.mkdir(parents=True, exist_ok=True)
 
 # Intra-patient distance metrics

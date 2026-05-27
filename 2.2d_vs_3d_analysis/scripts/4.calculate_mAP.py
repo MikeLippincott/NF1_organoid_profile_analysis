@@ -34,7 +34,7 @@ path_3d_sc = pathlib.Path(
 ).resolve(strict=True)
 
 # Define output paths
-results_dir = pathlib.Path(f"{root_dir}/1.EDA/results/mAP").resolve()
+results_dir = pathlib.Path(f"{root_dir}/2.2d_vs_3d_analysis/results/mAP").resolve()
 results_dir.mkdir(parents=True, exist_ok=True)
 
 # Load data

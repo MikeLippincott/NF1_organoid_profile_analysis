@@ -41,7 +41,7 @@ find_git_root <- function() {
 root_dir <- find_git_root()
 cat("Git root directory:", root_dir, "\n")
 
-entropy_dir <- file.path(root_dir, "1.EDA", "results", "entropy")
+entropy_dir <- file.path(root_dir, "2.2d_vs_3d_analysis", "results", "entropy")
 
 # Normal profiles
 organoid_normal_2d <- arrow::read_parquet(file.path(entropy_dir, "2D_organoid_entropy.parquet"))
@@ -74,7 +74,7 @@ sc_fs_combined           <- fix_modality(rbind(sc_fs_2d,           sc_fs_3d))
 organoid_agg_combined    <- fix_modality(rbind(organoid_agg_2d,    organoid_agg_3d))
 sc_agg_combined          <- fix_modality(rbind(sc_agg_2d,          sc_agg_3d))
 
-figures_dir <- file.path(root_dir, "1.EDA", "figures", "entropy")
+figures_dir <- file.path(root_dir, "2.2d_vs_3d_analysis", "figures", "entropy")
 dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
 
 entropy_theme <- theme(

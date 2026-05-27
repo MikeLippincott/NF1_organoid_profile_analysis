@@ -50,28 +50,28 @@ if (!dir.exists(figures_path)) {
 
 #Load Data
 mAP_2d_organoid_intra <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/2d_organoid_intra_patient_mAP_by_dose.parquet"
+    root_dir, "2.2d_vs_3d_analysis/results/mAP/2d_organoid_intra_patient_mAP_by_dose.parquet"
 ))
 mAP_3d_organoid_intra <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/3d_organoid_intra_patient_mAP_by_dose.parquet"
+    root_dir, "2.2d_vs_3d_analysis/results/mAP/3d_organoid_intra_patient_mAP_by_dose.parquet"
 ))
 mAP_2d_sc_intra <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/2d_sc_intra_patient_mAP_by_dose.parquet"
+    root_dir, "2.2d_vs_3d_analysis/results/mAP/2d_sc_intra_patient_mAP_by_dose.parquet"
 ))
 mAP_3d_sc_intra <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/3d_sc_intra_patient_mAP_by_dose.parquet"
+    root_dir, "2.2d_vs_3d_analysis/results/mAP/3d_sc_intra_patient_mAP_by_dose.parquet"
 ))
 mAP_2d_organoid_inter <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/2d_organoid_inter_patient_mAP_by_dose.parquet"
+    root_dir, "2.2d_vs_3d_analysis/results/mAP/2d_organoid_inter_patient_mAP_by_dose.parquet"
 ))
 mAP_3d_organoid_inter <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/3d_organoid_inter_patient_mAP_by_dose.parquet"
+    root_dir, "2.2d_vs_3d_analysis/results/mAP/3d_organoid_inter_patient_mAP_by_dose.parquet"
 ))
 mAP_2d_sc_inter <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/2d_sc_inter_patient_mAP_by_dose.parquet"
+    root_dir, "2.2d_vs_3d_analysis/results/mAP/2d_sc_inter_patient_mAP_by_dose.parquet"
 ))
 mAP_3d_sc_inter <- arrow::read_parquet(file.path(
-    root_dir, "1.EDA/results/mAP/3d_sc_inter_patient_mAP_by_dose.parquet"
+    root_dir, "2.2d_vs_3d_analysis/results/mAP/3d_sc_inter_patient_mAP_by_dose.parquet"
 ))
 
 width <- 12
@@ -616,17 +616,17 @@ ggsave(filename = file.path(figures_path, "2d_vs_3d_sc_inter_mAP.png"),
 plot_sc_inter_mAP
 
 #Load Data
-dist_2d_organoid_intra <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/2d_organoid_intra_patient_cosine_distance.parquet"))
-dist_3d_organoid_intra <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/3d_organoid_intra_patient_cosine_distance.parquet"))
-dist_2d_organoid_inter <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/2d_organoid_inter_patient_cosine_distance.parquet"))
-dist_3d_organoid_inter <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/3d_organoid_inter_patient_cosine_distance.parquet"))
-dist_2d_sc_intra <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/2d_sc_intra_patient_cosine_distance.parquet"))
-dist_3d_sc_intra <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/3d_sc_intra_patient_cosine_distance.parquet"))
-dist_2d_sc_inter <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/2d_sc_inter_patient_cosine_distance.parquet"))
-dist_3d_sc_inter <- arrow::read_parquet(file.path(root_dir, "1.EDA/results/distance_metrics/3d_sc_inter_patient_cosine_distance.parquet"))
+dist_2d_organoid_intra <- arrow::read_parquet(file.path(root_dir, "2.2d_vs_3d_analysis/results/distance_metrics/2d_organoid_intra_patient_cosine_distance.parquet"))
+dist_3d_organoid_intra <- arrow::read_parquet(file.path(root_dir, "2.2d_vs_3d_analysis/results/distance_metrics/3d_organoid_intra_patient_cosine_distance.parquet"))
+dist_2d_organoid_inter <- arrow::read_parquet(file.path(root_dir, "2.2d_vs_3d_analysis/results/distance_metrics/2d_organoid_inter_patient_cosine_distance.parquet"))
+dist_3d_organoid_inter <- arrow::read_parquet(file.path(root_dir, "2.2d_vs_3d_analysis/results/distance_metrics/3d_organoid_inter_patient_cosine_distance.parquet"))
+dist_2d_sc_intra <- arrow::read_parquet(file.path(root_dir, "2.2d_vs_3d_analysis/results/distance_metrics/2d_sc_intra_patient_cosine_distance.parquet"))
+dist_3d_sc_intra <- arrow::read_parquet(file.path(root_dir, "2.2d_vs_3d_analysis/results/distance_metrics/3d_sc_intra_patient_cosine_distance.parquet"))
+dist_2d_sc_inter <- arrow::read_parquet(file.path(root_dir, "2.2d_vs_3d_analysis/results/distance_metrics/2d_sc_inter_patient_cosine_distance.parquet"))
+dist_3d_sc_inter <- arrow::read_parquet(file.path(root_dir, "2.2d_vs_3d_analysis/results/distance_metrics/3d_sc_inter_patient_cosine_distance.parquet"))
 
 # Distance Metrics output path
-dist_figures_path <- file.path(root_dir, "1.EDA/figures/distance_metrics")
+dist_figures_path <- file.path(root_dir, "2.2d_vs_3d_analysis/figures/distance_metrics")
 if (!dir.exists(dist_figures_path)) {
     dir.create(dist_figures_path, recursive = TRUE)
 }
