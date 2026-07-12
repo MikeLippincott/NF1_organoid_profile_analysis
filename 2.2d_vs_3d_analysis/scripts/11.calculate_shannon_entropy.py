@@ -26,7 +26,7 @@ print(f"Root directory: {root_dir}")
 # Define input/output paths
 _2d_dir = root_dir / "data" / "2D_profiles" / "all_patient_profiles" / "max_projection"
 _3d_dir = root_dir / "data" / "3D_profiles" / "all_patient_profiles"
-_entropy_dir = root_dir / "1.EDA" / "results" / "entropy"
+_entropy_dir = root_dir / "2.2d_vs_3d_analysis" / "results" / "entropy"
 
 data_dict = {
     # 2D organoid
