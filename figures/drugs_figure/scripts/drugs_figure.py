@@ -51,6 +51,7 @@ patients_list.sort()
 platemap_file_paths_list = [
     platemap_dir / f"{patient}/platemap/platemap.csv" for patient in patients_list
 ]
+platemap_file_paths_list = [path for path in platemap_file_paths_list if path.exists()]
 platemaps = pd.concat([pd.read_csv(path) for path in platemap_file_paths_list])
 platemaps.drop_duplicates(inplace=True)
 drugs = platemaps["treatment"].unique()
@@ -156,10 +157,15 @@ custom_MOA_palette = {
 }
 
 
-# In[5]:
+# In[12]:
 
 
-drugs_df["Target"].unique()
+drugs_df["drug"].unique()
+
+
+# In[ ]:
+
+
 # order the dataframe by Target
 drugs_df.sort_values(
     by=["numerical_approval", "Target", "drug"],
@@ -168,28 +174,28 @@ drugs_df.sort_values(
 )
 
 
-# In[6]:
+# In[18]:
 
 
 # plot the drug and the approval status as graph
-plt.figure(figsize=(10, 6))
+plt.figure(figsize=(12, 6))
 sns.set_style("whitegrid")
 sns.scatterplot(
     data=drugs_df,
-    x="drug",
-    y="numerical_approval",
+    x="numerical_approval",
+    y="drug",
     hue="Target",
     palette=custom_MOA_palette,
-    s=200,
+    s=300,
 )
+# plt.yticks(
+#     rotation=90,
+#     # ha="right"
+# )
 plt.xticks(
-    rotation=90,
-    # ha="right"
-)
-plt.yticks(
     ticks=[0, 1, 2, 3, 4, 5],
     labels=[
-        "Withdrawn/Investigational",
+        "Withdrawn\nInvestigational",
         "Phase 1/2",
         "Phase 2",
         "Phase 3",
@@ -197,11 +203,14 @@ plt.yticks(
         "NF1 Approved",
     ],
 )
-plt.ylim(-0.5, 5.5)
-plt.xlabel("Drug")
-plt.ylabel("FDA Approval Status")
+plt.xlim(-0.5, 5.5)
+plt.xlabel("FDA Approval Status")
+plt.ylabel("Drug")
 plt.title("FDA Approval Status of Drugs Used in Organoid Treatments")
 plt.legend(title="FDA Status", bbox_to_anchor=(1.05, 1), loc="upper left")
 plt.tight_layout()
 plt.savefig(figures_dir / "drug_fda_approval_status.png", dpi=600)
 plt.show()
+
+
+# In[ ]:
