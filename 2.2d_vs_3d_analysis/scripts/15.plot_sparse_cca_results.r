@@ -42,25 +42,16 @@ cor_summary <- arrow::read_parquet(file.path(results_dir, "canonical_correlation
 cc_cols <- grep("^CC[0-9]+_2D$", colnames(canonical_scores), value = TRUE)
 n_components <- length(cc_cols)
 
-cor_bar_plot <- ggplot(cor_summary, aes(x = component, y = canonical_correlation)) +
-    geom_col(fill = "#882E8B") +
-    labs(
-        title = "Sparse CCA: Canonical Correlations (2D vs 3D)",
-        x = "Component",
-        y = "Canonical correlation (r)"
-    ) +
-    theme_bw() +
-    theme(text = element_text(size = 14)) +
-    scale_y_continuous(limits = c(0, 1))
-
-print(cor_bar_plot)
-ggsave(
-    file.path(figures_dir, "sparse_cca_canonical_correlations.png"),
-    cor_bar_plot, width = 6, height = 6, dpi = 300, units = "in"
-)
-
 label_map <- setNames(
-    paste0(cor_summary$component, "\n(r = ", round(cor_summary$canonical_correlation, 2), ")"),
+    ifelse(
+        is.na(cor_summary$perm_pvalue),
+        paste0(cor_summary$component, "\n(r = ", round(cor_summary$canonical_correlation, 2), ")"),
+        paste0(
+            cor_summary$component,
+            "\n(r = ", round(cor_summary$canonical_correlation, 2),
+            ", p = ", round(cor_summary$perm_pvalue, 2), ")"
+        )
+    ),
     cor_summary$component
 )
 
