@@ -66,6 +66,8 @@ stopifnot(identical(
 metadata <- df_2d_matched %>% select(all_of(merge_cols))
 cat("Matched samples (pooled across all patients):", nrow(metadata), "\n")
 
+# Cleans a profile dataframe into a numeric feature matrix ready for CCA:
+# drops metadata/constant/all-NA columns, then mean-imputes remaining NAs.
 prep_features <- function(df) {
     meta_cols <- grep("^Metadata_", colnames(df), value = TRUE)
     feat_df <- df %>% select(-all_of(meta_cols))
@@ -89,13 +91,11 @@ prep_features <- function(df) {
     feat_df
 }
 
-mat_2d <- as.matrix(prep_features(df_2d_matched))
-mat_3d <- as.matrix(prep_features(df_3d_matched))
-
-cat("2D features:", ncol(mat_2d), " | 3D features:", ncol(mat_3d), "\n")
-
 set.seed(0)
-n_components <- 3
+# 1 component: 3 was only ever exploratory (no rationale behind that number),
+# and CCA.permute only validates the first canonical pair with a p-value, so
+# there was never a real reason to keep the unvalidated CC2/CC3 around.
+n_components <- 1
 
 perm_out <- CCA.permute(
     x = mat_2d,
@@ -103,7 +103,7 @@ perm_out <- CCA.permute(
     typex = "standard",
     typez = "standard",
     standardize = TRUE,
-    nperms = 25
+    nperms = 25 # CCA.permute's own package default
 )
 
 cat("Best penalty (2D view):", perm_out$bestpenaltyx, "\n")
@@ -156,6 +156,7 @@ cor_summary <- data.frame(
 arrow::write_parquet(cor_summary, file.path(results_dir, "canonical_correlations.parquet"))
 print(cor_summary)
 
+# Save feature loadings (weights) per component, in long format.
 loadings_2d <- as.data.frame(cca_out$u)
 colnames(loadings_2d) <- paste0("CC", seq_len(n_components))
 loadings_2d$feature <- colnames(mat_2d)
