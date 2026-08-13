@@ -57,6 +57,7 @@ parser$add_argument("--patient", type = "character", required = TRUE, help = "In
 args <- parser$parse_args()
 patient_id <- args$patient
 
+
 # Get the current working directory and find Git root
 find_git_root <- function() {
     # Get current working directory
@@ -85,38 +86,57 @@ find_git_root <- function() {
 root_dir <- find_git_root()
 cat("Git root directory:", root_dir, "\n")
 
-sc_consensus_df <- arrow::read_parquet(file.path(root_dir,"data",patient_id,"image_based_profiles/5.aggregated_profiles/sc_consensus.parquet"))
-# drop the therapeutic category column
-sc_consensus_df <- sc_consensus_df %>%
-  select(-`Therapeutic_Categories`)
+sc_consensus_df <- arrow::read_parquet(file.path(root_dir,"data/profiles_3D/", patient_id,"/8.consensus_profiles/sc_consensus.parquet"))
 
+organoid_consensus_df <- arrow::read_parquet(file.path(root_dir,"data/profiles_3D/", patient_id,"/8.consensus_profiles/organoid_consensus.parquet"))
 
-organoid_consensus_df <- arrow::read_parquet(file.path(root_dir,"data",patient_id,"image_based_profiles/5.aggregated_profiles/organoid_consensus.parquet"))
-# drop the therapeutic category column
-organoid_consensus_df <- organoid_consensus_df %>%
-  select(-`Therapeutic_Categories`)
-
-
+viability_scores_df <- arrow::read_parquet(file.path(root_dir,"data/viabilities/combined_platemaps.parquet"))
 sc_consensus_heatmap_file_path <- file.path(
     root_dir,
-    paste0("5.EDA/figures/consensus_heatmaps/",patient_id, "_sc_consensus_heatmap.png")
+    paste0("1.EDA/figures/consensus_heatmaps/",patient_id, "_sc_consensus_heatmap.png")
 )
 organoid_consensus_heatmap_file_path <- file.path(
     root_dir,
-    paste0("5.EDA/figures/consensus_heatmaps/", patient_id, "_organoid_consensus_heatmap.png")
+    paste0("1.EDA/figures/consensus_heatmaps/", patient_id, "_organoid_consensus_heatmap.png")
 )
 
-if (!dir.exists(file.path(root_dir,paste0("5.EDA/figures/consensus_heatmaps/")))) {
-    dir.create(file.path(root_dir,paste0("5.EDA/figures/consensus_heatmaps/")), recursive = TRUE)
+if (!dir.exists(file.path(root_dir,paste0("1.EDA/figures/consensus_heatmaps/")))) {
+    dir.create(file.path(root_dir,paste0("1.EDA/figures/consensus_heatmaps/")), recursive = TRUE)
 }
 
 # drop columns that contain neighbors
 sc_consensus_df <- sc_consensus_df %>%
   select(-contains("Neighbors"))
 
+# merge the viability scores with the consensus profiles
+sc_consensus_df <- merge(
+    x = sc_consensus_df,
+    y = viability_scores_df %>% filter(patient_id == patient_id),
+    by.x = c("Metadata_Biology_PatientTumor", "Metadata_Experiment_Treatment", "Metadata_Experiment_Dose"),
+    by.y = c("patient_id", "Treatment", "Dose"),
+    all.x = TRUE
+)
+# drop duplicate rows after the merge
+sc_consensus_df <- sc_consensus_df %>%
+  distinct()
+sc_consensus_df$Metadata_Experiment_Treatment_Full <- paste(sc_consensus_df$Metadata_Experiment_Treatment, sc_consensus_df$Metadata_Experiment_Dose, sep = "_")
 
+if (all(is.na(sc_consensus_df$Viability_percentage))) {
+    # this patient has no viability data - show a flat grey "None" bar instead of a continuous scale
+    viability_values <- rep("None", nrow(sc_consensus_df))
+    viability_col <- c("None" = "grey")
+} else {
+    viability_col_fun <- colorRamp2(
+        c(min(sc_consensus_df$Viability_percentage, na.rm = TRUE),
+          max(sc_consensus_df$Viability_percentage, na.rm = TRUE)),
+        c("white", "darkgreen")
+    )
+    viability_values <- sc_consensus_df$Viability_percentage
+    viability_col <- viability_col_fun
+}
 column_anno <- HeatmapAnnotation(
-    Target = sc_consensus_df$Target,
+    Target = sc_consensus_df$Metadata_Experiment_Treatment_Full,
+    Viability = viability_values,
     show_legend = TRUE,
     annotation_name_gp = gpar(fontsize = 16),
     annotation_legend_param = list(
@@ -125,33 +145,26 @@ column_anno <- HeatmapAnnotation(
         labels_gp = gpar(fontsize = 16,
         title = gpar(fontsize = 16))),
     col = list(
-            Target = custom_MOA_palette
-        )
+        Viability = viability_col
+    )
+    # col = list(
+    #         Target = custom_MOA_palette
+    #     )
 )
 
 # get the list of features
 features <- colnames(sc_consensus_df)
-features <- features[!features %in% c("treatment", "Target", "Class", "single_cell_count")]
+features <- features[!features %in% c("Metadata_Biology_PatientTumor", "Metadata_Experiment_Treatment", "Metadata_Experiment_Dose", "Metadata_Experiment_Treatment_Full", "Unit", "Drug", "Concentration_uM", "Viability_percentage")]
 features <- as.data.frame(features)
 rownames(features) <- features$features
 # split the features by _ into multiple columns
 features <- features %>%
-    separate(features, into = c("Feature Type", "Compartment", "Channel", "Measurement"), sep = "_", extra = "merge", fill = "right")
-# if Feature type is AreaSizeShape then shift the Channel to the Measurement column and set Channel to NA
-features <- features %>%
-    mutate(
-        Measurement = ifelse(`Feature Type` == "Area.Size.Shape", Channel, Measurement)
-    )
-features <- features %>%
-    mutate(
-        Channel = ifelse(`Feature Type` == "Area.Size.Shape", "None", Channel)
-    )
-
+    separate(features, into = c("Compartment", "Channel", "Feature Type", "Measurement"), sep = "_", extra = "merge", fill = "right")
 # select the first channel for colocalization features channels are split by .
 features <- features %>%
     mutate(
         Channel = ifelse(`Feature Type` == "Colocalization",
-                         sub("\\..*", "", Channel),
+                         sub("-.*", "", Channel),
                          Channel)
     )
 
@@ -193,7 +206,7 @@ row_measurement = rowAnnotation(
     annotation_name_gp = gpar(fontsize = 16),
     col = list(
             FeatureType = c(
-            "Area.Size.Shape" = brewer.pal(8, "Paired")[1],
+            "AreaSizeShape" = brewer.pal(8, "Paired")[1],
             "Colocalization" = brewer.pal(8, "Paired")[2],
             "Granularity" = brewer.pal(8, "Paired")[3],
             "Intensity" = brewer.pal(8, "Paired")[4],
@@ -232,17 +245,19 @@ row_channel = rowAnnotation(
             "Mito" = "#B000B0",
             "ER" = "#00D55B",
             "BF" = "#FFFF00",
-            "None" = "#B09FB0")
+            "NoChannel" = "#B09FB0")
     )
 )
 row_annotations = c(row_compartment, row_measurement, row_channel)
 
 mat <- sc_consensus_df %>%
-  select(-treatment, -Class, -Target) %>%
-
+  select(-Metadata_Biology_PatientTumor, -Metadata_Experiment_Treatment, -Metadata_Experiment_Dose, -Metadata_Experiment_Treatment_Full, -Unit, -Drug, -Concentration_uM, -Viability_percentage) %>%
   as.matrix()
 mat <- t(mat)
-colnames(mat) <- sc_consensus_df$treatment
+colnames(mat) <- sc_consensus_df$Metadata_Experiment_Treatment_Full
+# clip extreme outlier values so they don't wash out the color scale
+mat[mat > 1e1] <- 1e1
+mat[mat < -1e1] <- -1e1
 
 width <- 10
 height <- 10
@@ -281,14 +296,42 @@ png(sc_consensus_heatmap_file_path, width = width, height = height, units = "in"
 # save as a PNG
 draw(heatmap_plot, merge_legend = TRUE, heatmap_legend_side = "right")
 dev.off()
+heatmap_plot
 
 # drop columns that contain neighbors
 organoid_consensus_df <- organoid_consensus_df %>%
   select(-contains("Neighbors"))
 
+# merge the viability scores with the consensus profiles
+organoid_consensus_df <- merge(
+    x = organoid_consensus_df,
+    y = viability_scores_df %>% filter(patient_id == patient_id),
+    by.x = c("Metadata_Biology_PatientTumor", "Metadata_Experiment_Treatment", "Metadata_Experiment_Dose"),
+    by.y = c("patient_id", "Treatment", "Dose"),
+    all.x = TRUE
+)
+# drop duplicate rows after the merge
+organoid_consensus_df <- organoid_consensus_df %>%
+  distinct()
+organoid_consensus_df$Metadata_Experiment_Treatment_Full <- paste(organoid_consensus_df$Metadata_Experiment_Treatment, organoid_consensus_df$Metadata_Experiment_Dose, sep = "_")
+head(organoid_consensus_df)
 
+if (all(is.na(organoid_consensus_df$Viability_percentage))) {
+    # this patient has no viability data - show a flat grey "None" bar instead of a continuous scale
+    viability_values <- rep("None", nrow(organoid_consensus_df))
+    viability_col <- c("None" = "grey")
+} else {
+    viability_col_fun <- colorRamp2(
+        c(min(organoid_consensus_df$Viability_percentage, na.rm = TRUE),
+          max(organoid_consensus_df$Viability_percentage, na.rm = TRUE)),
+        c("white", "darkgreen")
+    )
+    viability_values <- organoid_consensus_df$Viability_percentage
+    viability_col <- viability_col_fun
+}
 column_anno <- HeatmapAnnotation(
-    Target = organoid_consensus_df$Target,
+    Target = organoid_consensus_df$Metadata_Experiment_Treatment_Full,
+    Viability = viability_values,
     show_legend = TRUE,
     annotation_name_gp = gpar(fontsize = 16),
     annotation_legend_param = list(
@@ -296,36 +339,28 @@ column_anno <- HeatmapAnnotation(
         title_gp = gpar(fontsize = 16, angle = 0, fontface = "bold", hjust = 1.0),
         labels_gp = gpar(fontsize = 16,
         title = gpar(fontsize = 16))),
-        col = list(
-            Target = custom_MOA_palette
-        )
-
+    col = list(
+        Viability = viability_col
+    )
+        # col = list(
+        #     Target = custom_MOA_palette
+        # )
 
 )
 
 # get the list of features
 features <- colnames(organoid_consensus_df)
-features <- features[!features %in% c("treatment", "Target", "Class", "single_cell_count")]
+features <- features[!features %in% c("Metadata_Biology_PatientTumor", "Metadata_Experiment_Treatment", "Metadata_Experiment_Dose", "Metadata_Experiment_Treatment_Full", "Unit", "Drug", "Concentration_uM", "Viability_percentage")]
 features <- as.data.frame(features)
 rownames(features) <- features$features
 # split the features by _ into multiple columns
 features <- features %>%
-    separate(features, into = c("Feature Type", "Compartment", "Channel", "Measurement"), sep = "_", extra = "merge", fill = "right")
-# if Feature type is AreaSizeShape then shift the Channel to the Measurement column and set Channel to NA
-features <- features %>%
-    mutate(
-        Measurement = ifelse(`Feature Type` == "Area.Size.Shape", Channel, Measurement)
-    )
-features <- features %>%
-    mutate(
-        Channel = ifelse(`Feature Type` == "Area.Size.Shape", "None", Channel)
-    )
-
+    separate(features, into = c("Compartment", "Channel", "Feature Type", "Measurement"), sep = "_", extra = "merge", fill = "right")
 # select the first channel for colocalization features channels are split by .
 features <- features %>%
     mutate(
         Channel = ifelse(`Feature Type` == "Colocalization",
-                         sub("\\..*", "", Channel),
+                         sub("-.*", "", Channel),
                          Channel)
     )
 # sort by feature type
@@ -344,7 +379,7 @@ row_measurement = rowAnnotation(
     annotation_name_gp = gpar(fontsize = 16),
     col = list(
             FeatureType = c(
-            "Area.Size.Shape" = brewer.pal(8, "Paired")[1],
+            "AreaSizeShape" = brewer.pal(8, "Paired")[1],
             "Colocalization" = brewer.pal(8, "Paired")[2],
             "Granularity" = brewer.pal(8, "Paired")[3],
             "Intensity" = brewer.pal(8, "Paired")[4],
@@ -383,17 +418,19 @@ row_channel = rowAnnotation(
             "Mito" = "#B000B0",
             "ER" = "#00D55B",
             "BF" = "#FFFF00",
-            "None" = "#B09FB0")
+            "NoChannel" = "#B09FB0")
     )
 )
 row_annotations = c(row_measurement, row_channel)
 
 mat <- organoid_consensus_df %>%
-  select(-treatment, -Class, -Target,-single_cell_count) %>%
-
+  select(-Metadata_Biology_PatientTumor, -Metadata_Experiment_Treatment, -Metadata_Experiment_Dose, -Metadata_Experiment_Treatment_Full, -Unit, -Drug, -Concentration_uM, -Viability_percentage) %>%
   as.matrix()
 mat <- t(mat)
-colnames(mat) <- organoid_consensus_df$treatment
+colnames(mat) <- organoid_consensus_df$Metadata_Experiment_Treatment_Full
+# clip extreme outlier values so they don't wash out the color scale
+mat[mat > 1e1] <- 1e1
+mat[mat < -1e1] <- -1e1
 
 width <- 10
 height <- 10
@@ -432,3 +469,4 @@ heatmap_plot <- Heatmap(
 png(organoid_consensus_heatmap_file_path, width = width, height = height, units = "in", res = 300)
 draw(heatmap_plot, merge_legend = TRUE, heatmap_legend_side = "right")
 dev.off()
+heatmap_plot
