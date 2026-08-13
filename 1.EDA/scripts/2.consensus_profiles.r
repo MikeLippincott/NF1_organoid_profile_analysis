@@ -57,7 +57,6 @@ parser$add_argument("--patient", type = "character", required = TRUE, help = "In
 args <- parser$parse_args()
 patient_id <- args$patient
 
-
 # Get the current working directory and find Git root
 find_git_root <- function() {
     # Get current working directory
@@ -84,7 +83,7 @@ find_git_root <- function() {
 
 # Find the Git root directory
 root_dir <- find_git_root()
-cat("Git root directory:", root_dir, "\n")
+source(file.path(root_dir, "utils", "r_plot_themes.r"))
 
 sc_consensus_df <- arrow::read_parquet(file.path(root_dir,"data/profiles_3D/", patient_id,"/8.consensus_profiles/sc_consensus.parquet"))
 
@@ -145,11 +144,9 @@ column_anno <- HeatmapAnnotation(
         labels_gp = gpar(fontsize = 16,
         title = gpar(fontsize = 16))),
     col = list(
-        Viability = viability_col
+        Viability = viability_col,
+        Target = custom_treatment_palette
     )
-    # col = list(
-    #         Target = custom_MOA_palette
-    #     )
 )
 
 # get the list of features
@@ -314,7 +311,7 @@ organoid_consensus_df <- merge(
 organoid_consensus_df <- organoid_consensus_df %>%
   distinct()
 organoid_consensus_df$Metadata_Experiment_Treatment_Full <- paste(organoid_consensus_df$Metadata_Experiment_Treatment, organoid_consensus_df$Metadata_Experiment_Dose, sep = "_")
-head(organoid_consensus_df)
+
 
 if (all(is.na(organoid_consensus_df$Viability_percentage))) {
     # this patient has no viability data - show a flat grey "None" bar instead of a continuous scale
@@ -340,12 +337,9 @@ column_anno <- HeatmapAnnotation(
         labels_gp = gpar(fontsize = 16,
         title = gpar(fontsize = 16))),
     col = list(
-        Viability = viability_col
+        Viability = viability_col,
+        Target = custom_treatment_palette
     )
-        # col = list(
-        #     Target = custom_MOA_palette
-        # )
-
 )
 
 # get the list of features
