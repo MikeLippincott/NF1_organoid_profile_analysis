@@ -8,30 +8,44 @@ from scipy.stats import entropy
 root_dir, in_notebook = init_notebook()
 print(f"Root directory: {root_dir}")
 
-_2d_dir = root_dir / "data" / "profiles_2D" / "all_patients" / "max_projection"
+_2d_base_dir = root_dir / "data" / "profiles_2D" / "all_patients"
 _3d_dir = root_dir / "data" / "profiles_3D" / "all_patients"
-_3d_normal_dir = _3d_dir / "0.normalized_profiles"
-_3d_fs_dir = _3d_dir / "1.feature_selected_profiles"
-_3d_agg_dir = _3d_dir / "2.aggregated_profiles"
+_3d_stage_dirs = {
+    "normal": _3d_dir / "0.normalized_profiles",
+    "fs": _3d_dir / "1.feature_selected_profiles",
+    "agg": _3d_dir / "2.aggregated_profiles",
+}
 _entropy_dir = root_dir / "2.2d_vs_3d_analysis" / "results" / "entropy"
 
-# (group_label, granularity, filename) for each 2D type x stage
-_2d_entries = [
-    ("2D", "organoid", "normal", _2d_dir / "organoid_profiles.parquet"),
-    ("2D", "organoid", "fs", _2d_dir / "organoid_fs_profiles.parquet"),
-    ("2D", "organoid", "agg", _2d_dir / "organoid_agg_profiles.parquet"),
-    ("2D", "sc", "normal", _2d_dir / "sc_profiles.parquet"),
-    ("2D", "sc", "fs", _2d_dir / "sc_fs_profiles.parquet"),
-    ("2D", "sc", "agg", _2d_dir / "sc_agg_profiles.parquet"),
+# 2D has three separate projection methods, each in its own directory
+_2d_projections = [
+    ("MIP", "max_projection"),
+    ("Middle Slice", "middle_slice"),
+    ("Middle N Slices", "middle_n_slice"),
 ]
 
-# (slug, group_label, granularity, file_prefix) for each 3D type
+# (resolution, stage, filename) for each 2D type x stage
+_2d_stage_filenames = [
+    ("organoid", "normal", "organoid_profiles.parquet"),
+    ("organoid", "fs", "organoid_fs_profiles.parquet"),
+    ("organoid", "agg", "organoid_agg_profiles.parquet"),
+    ("sc", "normal", "sc_profiles.parquet"),
+    ("sc", "fs", "sc_fs_profiles.parquet"),
+    ("sc", "agg", "sc_agg_profiles.parquet"),
+]
+
+# (slug, group_label, resolution, file_prefix) for each 3D type
 _3d_types = [
-    ("organoid_handcrafted", "Handcrafted", "organoid", "organoid"),
-    ("organoid_sammed", "DL (SAM-Med3D)", "organoid", "sammed_organoid"),
-    ("sc_handcrafted", "Handcrafted", "sc", "sc"),
-    ("sc_sammed", "DL (SAM-Med3D)", "sc", "sammed_sc"),
-    ("sc_sammed_nucleocentric", "Nucleocentric DL", "sc", "sammed_nucleocentric"),
+    ("organoid_handcrafted", "ZedProfiler", "organoid", "organoid"),
+    ("organoid_sammed", "SAM-Med3D", "organoid", "sammed_organoid"),
+    ("sc_handcrafted", "ZedProfiler", "sc", "sc"),
+    ("sc_sammed", "SAM-Med3D", "sc", "sammed_sc"),
+    (
+        "sc_sammed_nucleocentric",
+        "Nucleocentric SAM-Med3D",
+        "sc",
+        "sammed_nucleocentric",
+    ),
     (
         "sc_nucleocentric_morphem",
         "Nucleocentric MorphEM",
@@ -42,25 +56,31 @@ _3d_types = [
 
 data_dict = {}
 
-for group_label, granularity, stage, path in _2d_entries:
-    key = f"2D_{granularity}" + ("" if stage == "normal" else f"_{stage}")
-    suffix = "" if stage == "normal" else f"_{stage}"
-    data_dict[key] = {
-        "input": path,
-        "output": (_entropy_dir / f"2D_{granularity}{suffix}_entropy.parquet"),
-        "modality": "2D",
-        "group_label": group_label,
-        "granularity": granularity,
-        "stage": stage,
-    }
+for proj_label, proj_dir_name in _2d_projections:
+    proj_dir = _2d_base_dir / proj_dir_name
+    for resolution, stage, filename in _2d_stage_filenames:
+        path = next(proj_dir.glob(filename))
+        suffix = "" if stage == "normal" else f"_{stage}"
+        key = f"2D_{proj_dir_name}_{resolution}{suffix}"
+        data_dict[key] = {
+            "input": path,
+            "output": (
+                _entropy_dir
+                / f"2D_{proj_dir_name}_{resolution}{suffix}_entropy.parquet"
+            ),
+            "modality": "2D",
+            "group_label": proj_label,
+            "resolution": resolution,
+            "stage": stage,
+        }
 
-for slug, group_label, granularity, file_prefix in _3d_types:
-    stage_paths = {
-        "normal": _3d_normal_dir / f"{file_prefix}_norm_norm_profile.parquet",
-        "fs": _3d_fs_dir / f"{file_prefix}_norm_fs_profiles.parquet",
-        "agg": _3d_agg_dir / f"{file_prefix}_norm_sc_agg_profiles.parquet",
-    }
-    for stage, path in stage_paths.items():
+for slug, group_label, resolution, file_prefix in _3d_types:
+    for stage, stage_dir in _3d_stage_dirs.items():
+        path = next(
+            f
+            for f in stage_dir.glob("*.parquet")
+            if f.name.startswith(f"{file_prefix}_")
+        )
         suffix = "" if stage == "normal" else f"_{stage}"
         key = f"3D_{slug}{suffix}"
         data_dict[key] = {
@@ -68,11 +88,9 @@ for slug, group_label, granularity, file_prefix in _3d_types:
             "output": (_entropy_dir / f"3D_{slug}{suffix}_entropy.parquet"),
             "modality": "3D",
             "group_label": group_label,
-            "granularity": granularity,
+            "resolution": resolution,
             "stage": stage,
         }
-
-print(f"{len(data_dict)} profile-type x stage combinations defined.")
 
 
 def compute_feature_entropy(
@@ -137,7 +155,7 @@ for key, config in data_dict.items():
     entropy_df = compute_feature_entropy(df, n_bins=50)
     entropy_df["imaging_modality"] = config["modality"]
     entropy_df["group_label"] = config["group_label"]
-    entropy_df["granularity"] = config["granularity"]
+    entropy_df["resolution"] = config["resolution"]
     entropy_df["stage"] = config["stage"]
 
     entropy_df.to_parquet(config["output"], index=False)
@@ -149,9 +167,9 @@ def derive_patient_column(df: pd.DataFrame) -> pd.DataFrame:
 
     2D and 3D profiles use different combined patient/tumor column names
     (``Metadata_patient_tumor`` vs ``Metadata_Biology_PatientTumor``). This
-    derives ``Metadata_patient`` from whichever is present by dropping the
-    tumor/replicate suffix (e.g. ``"NF0037_T1_CQ1"`` -> ``"NF0037"``),
-    matching the same logic used in the sparse CCA refactor.
+    derives ``Metadata_patient`` from whichever is present, keeping the full
+    patient_tumor value (e.g. some patients like NF0014 have multiple tumor
+    samples, so patient alone isn't a unique grouping key).
     """
     if "Metadata_patient" in df.columns:
         return df
@@ -167,7 +185,7 @@ def derive_patient_column(df: pd.DataFrame) -> pd.DataFrame:
             "No patient/tumor metadata column found to derive Metadata_patient from."
         )
 
-    df["Metadata_patient"] = df[source_col].str.replace(r"_T\d+.*$", "", regex=True)
+    df["Metadata_patient"] = df[source_col]
     return df
 
 
@@ -219,6 +237,7 @@ def compute_feature_entropy_per_patient(
     return pd.DataFrame(records)
 
 
+# Compute and save results
 for key, config in data_dict.items():
     df = pd.read_parquet(config["input"])
     df = derive_patient_column(df)
@@ -230,7 +249,7 @@ for key, config in data_dict.items():
     per_patient_df = compute_feature_entropy_per_patient(df, n_bins=50)
     per_patient_df["imaging_modality"] = config["modality"]
     per_patient_df["group_label"] = config["group_label"]
-    per_patient_df["granularity"] = config["granularity"]
+    per_patient_df["resolution"] = config["resolution"]
     per_patient_df["stage"] = config["stage"]
 
     per_patient_df.to_parquet(per_patient_output, index=False)

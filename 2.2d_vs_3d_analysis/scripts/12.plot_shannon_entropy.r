@@ -36,12 +36,11 @@ entropy_dir <- file.path(root_dir, "2.2d_vs_3d_analysis", "results", "entropy")
 figures_dir <- file.path(root_dir, "2.2d_vs_3d_analysis", "figures", "entropy")
 dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
 
+# Load data
+
 all_files <- list.files(entropy_dir, pattern = "_entropy\\.parquet$", full.names = TRUE)
 pooled_files <- all_files[!grepl("_per_patient_entropy\\.parquet$", all_files)]
 per_patient_files <- all_files[grepl("_per_patient_entropy\\.parquet$", all_files)]
-
-cat("Pooled entropy files found:", length(pooled_files), "\n")
-cat("Per-patient entropy files found:", length(per_patient_files), "\n")
 
 entropy_pooled <- bind_rows(lapply(pooled_files, arrow::read_parquet))
 entropy_per_patient <- bind_rows(lapply(per_patient_files, arrow::read_parquet))
@@ -49,6 +48,7 @@ entropy_per_patient <- bind_rows(lapply(per_patient_files, arrow::read_parquet))
 entropy_pooled$group_label <- factor(entropy_pooled$group_label)
 entropy_per_patient$group_label <- factor(entropy_per_patient$group_label)
 
+# Plot styling
 entropy_theme <- theme(
     plot.title   = element_text(hjust = 0.5, size = 14),
     axis.title.x = element_text(size = 16),
@@ -60,7 +60,7 @@ entropy_theme <- theme(
 )
 
 stage_titles <- c(normal = "Normal", fs = "Feature-Selected", agg = "Aggregated")
-granularity_titles <- c(organoid = "Organoid", sc = "Single-Cell")
+resolution_titles <- c(organoid = "Organoid", sc = "Single-Cell")
 
 make_entropy_plot <- function(df, title) {
     ggplot(df, aes(x = group_label, y = entropy, fill = group_label)) +
@@ -81,22 +81,22 @@ width <- 7
 height <- 6
 dpi <- 300
 
-for (gran in names(granularity_titles)) {
+for (res in names(resolution_titles)) {
     for (stage in names(stage_titles)) {
-        df_subset <- entropy_pooled %>% filter(granularity == gran, stage == !!stage)
+        df_subset <- entropy_pooled %>% filter(resolution == res, stage == !!stage)
         if (nrow(df_subset) == 0) {
-            cat("SKIPPED (no data):", gran, stage, "\n")
+            cat("SKIPPED (no data):", res, stage, "\n")
             next
         }
 
         title <- paste0(
-            "Shannon Entropy: ", granularity_titles[[gran]],
+            "Shannon Entropy: ", resolution_titles[[res]],
             " Profiles (", stage_titles[[stage]], ")"
         )
         p <- make_entropy_plot(df_subset, title)
         print(p)
         ggsave(
-            filename = file.path(figures_dir, paste0(gran, "_", stage, "_entropy.png")),
+            filename = file.path(figures_dir, paste0(res, "_", stage, "_entropy.png")),
             plot     = p,
             width    = width,
             height   = height,
@@ -105,6 +105,8 @@ for (gran in names(granularity_titles)) {
         )
     }
 }
+
+# Per patient plots
 
 make_per_patient_entropy_plot <- function(df, title) {
     ggplot(df, aes(x = patient, y = entropy, fill = patient)) +
@@ -127,22 +129,22 @@ make_per_patient_entropy_plot <- function(df, title) {
 pp_width  <- 12
 pp_height <- 8
 
-for (gran in names(granularity_titles)) {
+for (res in names(resolution_titles)) {
     for (stage in names(stage_titles)) {
-        df_subset <- entropy_per_patient %>% filter(granularity == gran, stage == !!stage)
+        df_subset <- entropy_per_patient %>% filter(resolution == res, stage == !!stage)
         if (nrow(df_subset) == 0) {
-            cat("SKIPPED (no data):", gran, stage, "\n")
+            cat("SKIPPED (no data):", res, stage, "\n")
             next
         }
 
         title <- paste0(
-            "Per-Patient Shannon Entropy: ", granularity_titles[[gran]],
+            "Per-Patient Shannon Entropy: ", resolution_titles[[res]],
             " Profiles (", stage_titles[[stage]], ")"
         )
         p <- make_per_patient_entropy_plot(df_subset, title)
         print(p)
         ggsave(
-            filename = file.path(figures_dir, paste0(gran, "_", stage, "_per_patient_entropy.png")),
+            filename = file.path(figures_dir, paste0(res, "_", stage, "_per_patient_entropy.png")),
             plot     = p,
             width    = pp_width,
             height   = pp_height,
