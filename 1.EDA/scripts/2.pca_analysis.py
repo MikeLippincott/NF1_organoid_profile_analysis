@@ -9,11 +9,10 @@ import pathlib
 import pandas as pd
 from sklearn.decomposition import PCA
 
-# In[2]:
+# In[ ]:
 
 
 # Configuration
-
 root_dir = pathlib.Path.cwd().parent.parent
 
 # PCA parameters
@@ -136,7 +135,7 @@ for projection_key in data_dict:
     data_dict[projection_key]["sc"]["output"].parent.mkdir(parents=True, exist_ok=True)
 
 
-# In[ ]:
+# In[4]:
 
 
 for projection_key in data_dict:
