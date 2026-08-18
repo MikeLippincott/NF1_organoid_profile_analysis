@@ -165,6 +165,8 @@ cython_debug/
 data/*
 *Rplots.pdf
 1.EDA/results/
+1.EDA/figures/linear_modeling/
+1.EDA/figures/correlation_heatmaps/
 1.EDA/figures/consensus_heatmaps/
 2.2d_vs_3d_analysis/results/
 3.viability_prediction_models/logs/

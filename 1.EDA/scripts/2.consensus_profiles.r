@@ -28,30 +28,6 @@ for (package in list_of_packages) {
     )
 }
 
-# set custom colors for each MOA
-custom_MOA_palette <- c(
-    'BRD4 inhibitor' = "#93152A",  # Dark red
-    'receptor tyrosine kinase inhibitor' = "#BA3924",  # Red
-    'tyrosine kinase inhibitor' = "#D08543",  # Orange
-    'MEK1/2 inhibitor' = "#A1961A",  # Yellow-green/olive
-
-    'IGF-1R inhibitor' = "#9FC62A",  # Yellow-green
-    'mTOR inhibitor' = "#1FAD23",  # Green
-    'PI3K inhibitor' = "#32D06A",  # Light green
-    'PI3K and HDAC inhibitor' = "#15937C",  # Teal/dark green
-    'HDAC inhibitor' = "#24A5BA",  # Light blue/cyan
-
-    'Apoptosis induction' = "#438CD0",  # Medium blue
-    'DNA binding' = "#1A24A1",  # Dark blue
-    'HSP90 inhibitor' = "#532AC6",  # Blue-purple
-
-    'histamine H1 receptor antagonist' = "#AD1FA6",  # Purple/magenta
-    'Na+/K+ pump inhibitor' = "#D03294",  # Pink/magenta
-
-    'Control' = "#444444"  # Gray
-)
-
-
 parser <- ArgumentParser(description = "Consensus Profiles Analysis")
 parser$add_argument("--patient", type = "character", required = TRUE, help = "Input file path")
 args <- parser$parse_args()
@@ -120,21 +96,29 @@ sc_consensus_df <- sc_consensus_df %>%
   distinct()
 sc_consensus_df$Metadata_Experiment_Treatment_Full <- paste(sc_consensus_df$Metadata_Experiment_Treatment, sc_consensus_df$Metadata_Experiment_Dose, sep = "_")
 
-if (all(is.na(sc_consensus_df$Viability_percentage))) {
+sc_consensus_df$Metadata_Experiment_Treatment <- factor(sc_consensus_df$Metadata_Experiment_Treatment, levels = custom_treatment_order)
+sc_consensus_df$Metadata_Experiment_MOA <- treatment_moa_map[sc_consensus_df$Metadata_Experiment_Treatment]
+
+
+if (all(is.na(sc_consensus_df$Metadata_Viability_percentage))) {
     # this patient has no viability data - show a flat grey "None" bar instead of a continuous scale
     viability_values <- rep("None", nrow(sc_consensus_df))
     viability_col <- c("None" = "grey")
 } else {
     viability_col_fun <- colorRamp2(
-        c(min(sc_consensus_df$Viability_percentage, na.rm = TRUE),
-          max(sc_consensus_df$Viability_percentage, na.rm = TRUE)),
+        c(min(sc_consensus_df$Metadata_Viability_percentage, na.rm = TRUE),
+          max(sc_consensus_df$Metadata_Viability_percentage, na.rm = TRUE)),
         c("white", "darkgreen")
     )
-    viability_values <- sc_consensus_df$Viability_percentage
+    viability_values <- sc_consensus_df$Metadata_Viability_percentage
     viability_col <- viability_col_fun
 }
+
+
 column_anno <- HeatmapAnnotation(
-    Target = sc_consensus_df$Metadata_Experiment_Treatment_Full,
+    Treatment = sc_consensus_df$Metadata_Experiment_Treatment,
+    Target = sc_consensus_df$Metadata_Experiment_MOA,
+    Dose = as.character(sc_consensus_df$Metadata_Experiment_Dose),
     Viability = viability_values,
     show_legend = TRUE,
     annotation_name_gp = gpar(fontsize = 16),
@@ -145,13 +129,15 @@ column_anno <- HeatmapAnnotation(
         title = gpar(fontsize = 16))),
     col = list(
         Viability = viability_col,
-        Target = custom_treatment_palette
+        Treatment = custom_treatment_palette,
+        Target = custom_MOA_palette,
+        Dose = dose_palette
     )
 )
 
 # get the list of features
 features <- colnames(sc_consensus_df)
-features <- features[!features %in% c("Metadata_Biology_PatientTumor", "Metadata_Experiment_Treatment", "Metadata_Experiment_Dose", "Metadata_Experiment_Treatment_Full", "Unit", "Drug", "Concentration_uM", "Viability_percentage")]
+features <- features[!features %in% c("Metadata_Biology_PatientTumor", "Metadata_Experiment_Treatment", "Metadata_Experiment_Dose", "Metadata_Experiment_Treatment_Full", "Unit", "Drug", "Concentration_uM", "Metadata_Viability_percentage", "min_max_viability", "Metadata_Experiment_MOA")]
 features <- as.data.frame(features)
 rownames(features) <- features$features
 # split the features by _ into multiple columns
@@ -184,12 +170,7 @@ row_compartment = rowAnnotation(
     annotation_name_gp = gpar(fontsize = 16),
     # color
     col = list(
-        Object = c(
-            "Cell" = "#B000B0",
-            "Cytoplasm" = "#00D55B",
-            "Nuclei" = "#0000AB"
-            # "Organoid" = "#B09FB0"
-            )
+        Object = sc_compartment_palette
     )
 )
 row_measurement = rowAnnotation(
@@ -202,13 +183,7 @@ row_measurement = rowAnnotation(
     annotation_name_side = "bottom",
     annotation_name_gp = gpar(fontsize = 16),
     col = list(
-            FeatureType = c(
-            "AreaSizeShape" = brewer.pal(8, "Paired")[1],
-            "Colocalization" = brewer.pal(8, "Paired")[2],
-            "Granularity" = brewer.pal(8, "Paired")[3],
-            "Intensity" = brewer.pal(8, "Paired")[4],
-            "Texture" = brewer.pal(8, "Paired")[8]
-        )
+            FeatureType = feature_type_palette
     ),
     show_legend = TRUE
 )
@@ -236,27 +211,21 @@ row_channel = rowAnnotation(
     # make font size bigger
     annotation_name_gp = gpar(fontsize = 16),
     col = list(
-    Channel = c(
-            "DNA" = "#0000AB",
-            "AGP" = "#b1001a",
-            "Mito" = "#B000B0",
-            "ER" = "#00D55B",
-            "BF" = "#FFFF00",
-            "NoChannel" = "#B09FB0")
+    Channel = channel_palette
     )
 )
 row_annotations = c(row_compartment, row_measurement, row_channel)
 
 mat <- sc_consensus_df %>%
-  select(-Metadata_Biology_PatientTumor, -Metadata_Experiment_Treatment, -Metadata_Experiment_Dose, -Metadata_Experiment_Treatment_Full, -Unit, -Drug, -Concentration_uM, -Viability_percentage) %>%
+  select(-Metadata_Biology_PatientTumor, -Metadata_Experiment_Treatment, -Metadata_Experiment_Dose, -Metadata_Experiment_Treatment_Full, -Unit, -Drug, -Concentration_uM, -Metadata_Viability_percentage, -min_max_viability, -Metadata_Experiment_MOA) %>%
   as.matrix()
 mat <- t(mat)
-colnames(mat) <- sc_consensus_df$Metadata_Experiment_Treatment_Full
+colnames(mat) <- sc_consensus_df$Metadata_Experiment_Treatment
 # clip extreme outlier values so they don't wash out the color scale
-mat[mat > 1e1] <- 1e1
-mat[mat < -1e1] <- -1e1
+mat[mat > 10] <- 10
+mat[mat < -10] <- -10
 
-width <- 10
+width <- 15
 height <- 10
 options(repr.plot.width = width, repr.plot.height = height)
 heatmap_plot <- Heatmap(
@@ -280,8 +249,6 @@ heatmap_plot <- Heatmap(
                     annotation_legend_side = "bottom"
                     ),
 
-        # row_dend_width = unit(2, "cm"),
-        # column_title = paste0("Dose: ", dose," uM"),
         right_annotation = row_annotations,
         top_annotation = column_anno,
         column_title = paste0("Single-cell heatmap of consensus profiles for:\npatient ", patient_id),
@@ -312,22 +279,32 @@ organoid_consensus_df <- organoid_consensus_df %>%
   distinct()
 organoid_consensus_df$Metadata_Experiment_Treatment_Full <- paste(organoid_consensus_df$Metadata_Experiment_Treatment, organoid_consensus_df$Metadata_Experiment_Dose, sep = "_")
 
+organoid_consensus_df$Metadata_Experiment_Treatment <- factor(organoid_consensus_df$Metadata_Experiment_Treatment, levels = custom_treatment_order)
+organoid_consensus_df$Metadata_Experiment_MOA <- treatment_moa_map[organoid_consensus_df$Metadata_Experiment_Treatment]
 
-if (all(is.na(organoid_consensus_df$Viability_percentage))) {
+if (all(is.na(organoid_consensus_df$Metadata_Viability_percentage))) {
     # this patient has no viability data - show a flat grey "None" bar instead of a continuous scale
     viability_values <- rep("None", nrow(organoid_consensus_df))
     viability_col <- c("None" = "grey")
 } else {
     viability_col_fun <- colorRamp2(
-        c(min(organoid_consensus_df$Viability_percentage, na.rm = TRUE),
-          max(organoid_consensus_df$Viability_percentage, na.rm = TRUE)),
+        c(min(organoid_consensus_df$Metadata_Viability_percentage, na.rm = TRUE),
+          max(organoid_consensus_df$Metadata_Viability_percentage, na.rm = TRUE)),
         c("white", "darkgreen")
     )
-    viability_values <- organoid_consensus_df$Viability_percentage
+    viability_values <- organoid_consensus_df$Metadata_Viability_percentage
     viability_col <- viability_col_fun
 }
+
+dose_palette <- c(
+    "1" = "#CFCFCF",
+    "10" = "#4D4D4D"
+)
+
 column_anno <- HeatmapAnnotation(
-    Target = organoid_consensus_df$Metadata_Experiment_Treatment_Full,
+    Treatment = organoid_consensus_df$Metadata_Experiment_Treatment,
+    Target = organoid_consensus_df$Metadata_Experiment_MOA,
+    Dose = as.character(organoid_consensus_df$Metadata_Experiment_Dose),
     Viability = viability_values,
     show_legend = TRUE,
     annotation_name_gp = gpar(fontsize = 16),
@@ -338,13 +315,15 @@ column_anno <- HeatmapAnnotation(
         title = gpar(fontsize = 16))),
     col = list(
         Viability = viability_col,
-        Target = custom_treatment_palette
+        Treatment = custom_treatment_palette,
+        Target = custom_MOA_palette,
+        Dose = dose_palette
     )
 )
 
 # get the list of features
 features <- colnames(organoid_consensus_df)
-features <- features[!features %in% c("Metadata_Biology_PatientTumor", "Metadata_Experiment_Treatment", "Metadata_Experiment_Dose", "Metadata_Experiment_Treatment_Full", "Unit", "Drug", "Concentration_uM", "Viability_percentage")]
+features <- features[!features %in% c("Metadata_Biology_PatientTumor", "Metadata_Experiment_Treatment", "Metadata_Experiment_Dose", "Metadata_Experiment_Treatment_Full", "Unit", "Drug", "Concentration_uM", "Metadata_Viability_percentage", "min_max_viability","Metadata_Experiment_MOA")]
 features <- as.data.frame(features)
 rownames(features) <- features$features
 # split the features by _ into multiple columns
@@ -361,7 +340,23 @@ features <- features %>%
 features <- features %>%
     arrange(`Feature Type`, Compartment, Channel, Measurement)
 
-
+# compartment row annotation
+row_compartment = rowAnnotation(
+    Object = features$Compartment,
+        show_legend = TRUE,
+    # change the legend titles
+    annotation_legend_param = list(
+        title_position = "topcenter",
+        title_gp = gpar(fontsize = 16, angle = 0, fontface = "bold", hjust = 1.0),
+        labels_gp = gpar(fontsize = 16,
+        title = gpar(fontsize = 16))),
+    annotation_name_side = "bottom",
+    annotation_name_gp = gpar(fontsize = 16),
+    # color
+    col = list(
+        Object = organoid_compartment_palette
+    )
+)
 row_measurement = rowAnnotation(
     FeatureType = features$`Feature Type`,
            annotation_legend_param = list(
@@ -372,13 +367,7 @@ row_measurement = rowAnnotation(
     annotation_name_side = "bottom",
     annotation_name_gp = gpar(fontsize = 16),
     col = list(
-            FeatureType = c(
-            "AreaSizeShape" = brewer.pal(8, "Paired")[1],
-            "Colocalization" = brewer.pal(8, "Paired")[2],
-            "Granularity" = brewer.pal(8, "Paired")[3],
-            "Intensity" = brewer.pal(8, "Paired")[4],
-            "Texture" = brewer.pal(8, "Paired")[8]
-        )
+            FeatureType = feature_type_palette
     ),
     show_legend = TRUE
 )
@@ -391,10 +380,10 @@ row_channel = rowAnnotation(
         # make annotation bar text bigger
         legend = gpar(fontsize = 16),
         annotation_name = gpar(fontsize = 16),
-        legend_height = unit(20, "cm"),
+        # legend_height = unit(20, "cm"),
         legend_width = unit(1, "cm"),
         # make legend taller
-        legend_height = unit(10, "cm"),
+        # legend_height = unit(10, "cm"),
         legend_width = unit(1, "cm"),
         legend_key = gpar(fontsize = 16)
         )
@@ -406,27 +395,21 @@ row_channel = rowAnnotation(
     # make font size bigger
     annotation_name_gp = gpar(fontsize = 16),
     col = list(
-    Channel = c(
-            "DNA" = "#0000AB",
-            "AGP" = "#b1001a",
-            "Mito" = "#B000B0",
-            "ER" = "#00D55B",
-            "BF" = "#FFFF00",
-            "NoChannel" = "#B09FB0")
+    Channel = channel_palette
     )
 )
-row_annotations = c(row_measurement, row_channel)
+row_annotations = c(row_compartment, row_measurement, row_channel)
 
 mat <- organoid_consensus_df %>%
-  select(-Metadata_Biology_PatientTumor, -Metadata_Experiment_Treatment, -Metadata_Experiment_Dose, -Metadata_Experiment_Treatment_Full, -Unit, -Drug, -Concentration_uM, -Viability_percentage) %>%
+  select(-Metadata_Biology_PatientTumor, -Metadata_Experiment_Treatment, -Metadata_Experiment_Dose, -Metadata_Experiment_Treatment_Full, -Unit, -Drug, -Concentration_uM, -Metadata_Viability_percentage, -min_max_viability, -Metadata_Experiment_MOA) %>%
   as.matrix()
 mat <- t(mat)
 colnames(mat) <- organoid_consensus_df$Metadata_Experiment_Treatment_Full
 # clip extreme outlier values so they don't wash out the color scale
-mat[mat > 1e1] <- 1e1
-mat[mat < -1e1] <- -1e1
+mat[mat > 10] <- 10
+mat[mat < -10] <- -10
 
-width <- 10
+width <- 15
 height <- 10
 options(repr.plot.width = width, repr.plot.height = height)
 heatmap_plot <- Heatmap(
