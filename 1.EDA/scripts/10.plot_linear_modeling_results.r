@@ -44,14 +44,14 @@ root_dir <- find_git_root()
 cat("Git root directory:", root_dir, "\n")
 
 
-figures_path <- file.path(root_dir,"5.EDA/figures/linear_modeling/")
+figures_path <- file.path(root_dir,"1.EDA/figures/linear_modeling/")
 if (!dir.exists(figures_path)) {
     dir.create(figures_path, recursive = TRUE)
 }
 
 organoid_fs_lm_results_path <- file.path(
     root_dir,
-    "5.EDA/results/linear_modeling/organoid_fs.parquet"
+    "1.EDA/results/linear_modeling/organoid_fs.parquet"
 )
 organoid_fs_lm_results_df <- arrow::read_parquet(
     organoid_fs_lm_results_path
@@ -154,7 +154,7 @@ for (patient_id in patients) {
 
 sc_fs_lm_results_path <- file.path(
     root_dir,
-    "5.EDA/results/linear_modeling/sc_fs.parquet"
+    "1.EDA/results/linear_modeling/sc_fs.parquet"
 )
 sc_fs_lm_results_df <- arrow::read_parquet(
     sc_fs_lm_results_path
