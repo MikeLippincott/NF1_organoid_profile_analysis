@@ -123,10 +123,10 @@ width <- 10
 height <- 5
 options(repr.plot.width = width, repr.plot.height = height)
 pca_sc_plot <- (
-    ggplot(max_projection_2D_sc_pca_results, aes(x = PC1, y = PC2, color = Metadata_treatment))
+    ggplot(max_projection_2D_sc_pca_results, aes(x = PC0, y = PC1, color = Metadata_treatment))
     + geom_point(alpha = 0.5, size = 1)
     + scale_color_manual(values = custom_treatment_palette)
-    + labs(title = "All patients: 2D MIP Single Cell FS Profiles", x = "PC1", y = "PC2")
+    + labs(title = "All patients: 2D MIP Single Cell FS Profiles", x = "PC0", y = "PC1")
     + theme_bw()
     + pca_theme
 
@@ -147,10 +147,10 @@ width <- 10
 height <- 5
 options(repr.plot.width = width, repr.plot.height = height)
 pca_sc_plot <- (
-    ggplot(max_projection_2D_sc_pca_results, aes(x = PC1, y = PC2, color = Metadata_treatment))
+    ggplot(max_projection_2D_sc_pca_results, aes(x = PC0, y = PC1, color = Metadata_treatment))
     + geom_point(alpha = 0.5, size = 1)
     + scale_color_manual(values = custom_treatment_palette)
-    + labs(title = "All patients: 2D MIP Single Cell FS Profiles", x = "PC1", y = "PC2")
+    + labs(title = "All patients: 2D MIP Single Cell FS Profiles", x = "PC0", y = "PC1")
     + theme_bw()
     + pca_theme
 
@@ -171,10 +171,10 @@ height <- 5
 options(repr.plot.width = width, repr.plot.height = height)
 
 pca_agg_mip_plot <- (
-    ggplot(max_projection_2D_agg_pca_results, aes(x = PC1, y = PC2, color = Metadata_treatment))
+    ggplot(max_projection_2D_agg_pca_results, aes(x = PC0, y = PC1, color = Metadata_treatment))
     + geom_point(alpha = 0.5, size = 1)
     + scale_color_manual(values = custom_treatment_palette)
-    + labs(title = "All patients: 2D MIP Aggregate Profiles", x = "PC1", y = "PC2")
+    + labs(title = "All patients: 2D MIP Aggregate Profiles", x = "PC0", y = "PC1")
     + theme_bw()
     + pca_theme
     + guides(
@@ -190,10 +190,10 @@ ggsave(pca_agg_mip_plot, file = pca_2d_agg_mip_path, width = width, height = hei
 pca_agg_mip_plot
 
 pca_cp_mip_plot <- (
-    ggplot(max_projection_2D_cp_pca_results, aes(x = PC1, y = PC2, color = Metadata_treatment))
+    ggplot(max_projection_2D_cp_pca_results, aes(x = PC0, y = PC1, color = Metadata_treatment))
     + geom_point(alpha = 0.5, size = 1)
     + scale_color_manual(values = custom_treatment_palette)
-    + labs(title = "All patients: 2D MIP Consensus Profiles", x = "PC1", y = "PC2")
+    + labs(title = "All patients: 2D MIP Consensus Profiles", x = "PC0", y = "PC1")
     + theme_bw()
     + pca_theme
     + guides(
@@ -212,10 +212,10 @@ width <- 10
 height <- 5
 options(repr.plot.width = width, repr.plot.height = height)
 pca_sc_plot <- (
-    ggplot(middle_slice_2D_sc_pca_results, aes(x = PC1, y = PC2, color = Metadata_treatment))
+    ggplot(middle_slice_2D_sc_pca_results, aes(x = PC0, y = PC1, color = Metadata_treatment))
     + geom_point(alpha = 0.5, size = 1)
     + scale_color_manual(values = custom_treatment_palette)
-    + labs(title = "All patients: 2D Middle Slice Single Cell FS Profiles", x = "PC1", y = "PC2")
+    + labs(title = "All patients: 2D Middle Slice Single Cell FS Profiles", x = "PC0", y = "PC1")
     + theme_bw()
     + pca_theme
 
@@ -236,10 +236,10 @@ width <- 10
 height <- 5
 options(repr.plot.width = width, repr.plot.height = height)
 pca_sc_plot <- (
-    ggplot(max_projection_2D_sc_pca_results, aes(x = PC1, y = PC2, color = Metadata_treatment))
+    ggplot(max_projection_2D_sc_pca_results, aes(x = PC0, y = PC1, color = Metadata_treatment))
     + geom_point(alpha = 0.5, size = 1)
     + scale_color_manual(values = custom_treatment_palette)
-    + labs(title = "All patients: 2D Middle Slice Single Cell FS Profiles", x = "PC1", y = "PC2")
+    + labs(title = "All patients: 2D Middle Slice Single Cell FS Profiles", x = "PC0", y = "PC1")
     + theme_bw()
     + pca_theme
 
@@ -256,10 +256,10 @@ ggsave(pca_sc_plot, file = pca_2d_sc_middle_slice_path, width = width, height = 
 pca_sc_plot
 
 pca_agg_middle_plot <- (
-    ggplot(middle_slice_2D_agg_pca_results, aes(x = PC1, y = PC2, color = Metadata_treatment))
+    ggplot(middle_slice_2D_agg_pca_results, aes(x = PC0, y = PC1, color = Metadata_treatment))
     + geom_point(alpha = 0.5, size = 1)
     + scale_color_manual(values = custom_treatment_palette)
-    + labs(title = "All patients: 2D Middle Slice Aggregate Profiles", x = "PC1", y = "PC2")
+    + labs(title = "All patients: 2D Middle Slice Aggregate Profiles", x = "PC0", y = "PC1")
     + theme_bw()
     + pca_theme
     + guides(
@@ -276,10 +276,10 @@ pca_agg_middle_plot
 
 
 pca_cp_middle_plot <- (
-    ggplot(middle_slice_2D_cp_pca_results, aes(x = PC1, y = PC2, color = Metadata_treatment))
+    ggplot(middle_slice_2D_cp_pca_results, aes(x = PC0, y = PC1, color = Metadata_treatment))
     + geom_point(alpha = 0.5, size = 1)
     + scale_color_manual(values = custom_treatment_palette)
-    + labs(title = "All patients: 2D Middle Slice Consensus Profiles", x = "PC1", y = "PC2")
+    + labs(title = "All patients: 2D Middle Slice Consensus Profiles", x = "PC0", y = "PC1")
     + theme_bw()
     + pca_theme
     + guides(
@@ -298,10 +298,10 @@ width <- 10
 height <- 5
 options(repr.plot.width = width, repr.plot.height = height)
 pca_sc_plot <- (
-    ggplot(sc_3D_pca_results, aes(x = PC1, y = PC2, color = Metadata_treatment))
+    ggplot(sc_3D_pca_results, aes(x = PC0, y = PC1, color = Metadata_treatment))
     + geom_point(alpha = 0.5, size = 1)
     + scale_color_manual(values = custom_treatment_palette)
-    + labs(title = "All patients: 3D Single Cell FS Profiles", x = "PC1", y = "PC2")
+    + labs(title = "All patients: 3D Single Cell FS Profiles", x = "PC0", y = "PC1")
     + theme_bw()
     + pca_theme
 
@@ -322,10 +322,10 @@ width <- 10
 height <- 5
 options(repr.plot.width = width, repr.plot.height = height)
 pca_sc_plot <- (
-    ggplot(max_projection_2D_sc_pca_results, aes(x = PC1, y = PC2, color = Metadata_treatment))
+    ggplot(max_projection_2D_sc_pca_results, aes(x = PC0, y = PC1, color = Metadata_treatment))
     + geom_point(alpha = 0.4, size = 1)
     + scale_color_manual(values = custom_treatment_palette)
-    + labs(title = "All patients: 3D MIP Single Cell FS Profiles", x = "PC1", y = "PC2")
+    + labs(title = "All patients: 3D MIP Single Cell FS Profiles", x = "PC0", y = "PC1")
     + theme_bw()
     + pca_theme
 
@@ -342,10 +342,10 @@ ggsave(pca_sc_plot, file = pca_3d_sc_path, width = width, height = height, dpi =
 pca_sc_plot
 
 pca_agg_3d_plot <- (
-    ggplot(agg_3D_pca_results, aes(x = PC1, y = PC2, color = Metadata_treatment))
+    ggplot(agg_3D_pca_results, aes(x = PC0, y = PC1, color = Metadata_treatment))
     + geom_point(alpha = 0.5, size = 1)
     + scale_color_manual(values = custom_treatment_palette)
-    + labs(title = "All patients: 3D Aggregate Profiles", x = "PC1", y = "PC2")
+    + labs(title = "All patients: 3D Aggregate Profiles", x = "PC0", y = "PC1")
     + theme_bw()
     + pca_theme
     + guides(
@@ -361,10 +361,10 @@ ggsave(pca_agg_3d_plot, file = pca_3d_agg_path, width = width, height = height, 
 pca_agg_3d_plot
 
 pca_cp_3d_plot <- (
-    ggplot(cp_3D_pca_results, aes(x = PC1, y = PC2, color = Metadata_treatment))
+    ggplot(cp_3D_pca_results, aes(x = PC0, y = PC1, color = Metadata_treatment))
     + geom_point(alpha = 0.5, size = 1)
     + scale_color_manual(values = custom_treatment_palette)
-    + labs(title = "All patients: 3D Consensus Profiles", x = "PC1", y = "PC2")
+    + labs(title = "All patients: 3D Consensus Profiles", x = "PC0", y = "PC1")
     + theme_bw()
     + pca_theme
     + guides(

@@ -76,29 +76,30 @@ head(middle_slice_2D_sc_umap_results)
 middle_slice_2D_sc_umap_results <- middle_slice_2D_sc_umap_results %>%
     mutate(Metadata_treatment = ifelse(Metadata_treatment == "STAURO", "Staurosporine", Metadata_treatment))
 
-# set custom colors for each MOA
-custom_MOA_palette <- c(
-    'Control' = "#5a5c5d",
-    'MEK1/2 inhibitor' = "#882E8B",
+# Set custom colors for each treatment
+custom_treatment_palette <- c(
+    'DMSO' = "#5a5c5d",              # Control - gray
+    'Staurosporine' = "#7D2780",     # Dark purple
 
+    'Fimepinostat' = "#1E6B61",      # Teal (HDAC inhibitor)
+    'Copanlisib' = "#0092E0",        # Blue (PI3K inhibitor)
 
-    'HDAC inhibitor' = "#1E6B61",
-    'PI3K and HDAC inhibitor' = "#2E6B8B",
-    'PI3K inhibitor'="#0092E0",
+    'Imatinib' = "#576A20",          # Olive green
+    'Nilotinib' = "#646722",         # Yellow-green
+    'Cabozantinib' = "#758B2D",      # Light olive
 
-    'receptor tyrosine kinase inhibitor' = "#576A20",
-    'tyrosine kinase inhibitor' = "#646722",
+    'Everolimus' = "#ACE089",        # Light green (mTOR inhibitor)
+    'Rapamycin' = "#90D070",         # Medium green (mTOR inhibitor)
+    'Linsitinib' = "#ACE040",        # Yellow-green (IGF-1R inhibitor)
 
-    'mTOR inhibitor' = "#ACE089",
-    'IGF-1R inhibitor' = "#ACE040",
+    'Onalespib' = "#33206A",         # Dark purple (HSP90 inhibitor)
+    'Digoxin' = "#A16C28",           # Orange-brown
+    'Ketotifen' = "#3A8F00",         # Green
 
-    'HSP90 inhibitor'="#33206A",
-    'Apoptosis induction'="#272267",
-    'Na+/K+ pump inhibitor' = "#A16C28",
-    'histamine H1 receptor antagonist' = "#3A8F00",
-    'DNA binding' = "#174F17",
-    'BRD4 inhibitor' = "#ff0000"
-
+    'Binimetinib' = "#ff0000",       # Red (MEK inhibitor)
+    'Mirdametinib' = "#cc0000",      # Dark red (MEK inhibitor)
+    'Trametinib' = "#ff3333",        # Light red (MEK inhibitor)
+    'Selumetinib' = "#ff6666"        # Lighter red (MEK inhibitor)
 )
 
 # head(organoid_umap_results)
