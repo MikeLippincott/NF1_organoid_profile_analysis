@@ -6,6 +6,7 @@
 
 import pathlib
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from notebook_init_utils import init_notebook
@@ -23,7 +24,7 @@ else:
 
 
 # PCA parameters
-N_COMPONENTS = 2
+N_COMPONENTS = 50
 OVERWRITE_EXISTING = False
 
 
@@ -67,33 +68,7 @@ for profile_path in all_patients_2D_and_3D_dirs:
     dimension = profile_path.parent.parent.parent.name.replace("profiles_", "")
     data_dict["save_path"].append(
         pathlib.Path(
-            f"{root_dir}/1.EDA/results/pca/{dimension}_{profile_strategy}_{profile_type}.parquet"
-        ).resolve()
-    )
-    data_dict["profile_type"].append(profile_type)
-    data_dict["profile_strategy"].append(profile_strategy)
-    data_dict["dimension"].append(dimension)
-    data_dict["input_path"].append(profile_path)
-
-
-# In[5]:
-
-
-# generate a dict for each path
-data_dict = {
-    "profile_type": [],
-    "profile_strategy": [],
-    "dimension": [],
-    "input_path": [],
-    "save_path": [],
-}
-for profile_path in all_patients_2D_and_3D_dirs:
-    profile_type = profile_path.stem
-    profile_strategy = profile_path.parent.name
-    dimension = profile_path.parent.parent.parent.name.replace("profiles_", "")
-    data_dict["save_path"].append(
-        pathlib.Path(
-            f"{root_dir}/1.EDA/results/pca/{dimension}_{profile_strategy}_{profile_type}/"
+            f"{root_dir}/1.EDA/results/pca/{dimension}_{profile_strategy}_{profile_type}_embeddings.parquet"
         ).resolve()
     )
     data_dict["profile_type"].append(profile_type)
@@ -119,7 +94,16 @@ for i, (
     ),
     total=len(data_dict["input_path"]),
 ):
-    if output_file_path.exists() and not OVERWRITE_EXISTING:
+    explained_variance_output_file_path = (
+        output_file_path.parent
+        / f"{dimension}_{profile_strategy}_{profile_type}_explained_variance.parquet"
+    )
+
+    if (
+        output_file_path.exists()
+        and explained_variance_output_file_path.exists()
+        and not OVERWRITE_EXISTING
+    ):
         continue
     df = pd.read_parquet(input_path)
     # Separate metadata columns from feature columns
@@ -165,14 +149,20 @@ for i, (
 
     # Combine metadata with PCA coordinates
     pca_df = pd.concat([metadata_df, pca_df], axis=1)
-    for pc_idx in range(n_components):
-        pca_df[f"PC{pc_idx}_explained_variance"] = pca_model.explained_variance_ratio_[
-            pc_idx
-        ]
 
     # Save results to parquet file
     output_file_path.parent.mkdir(parents=True, exist_ok=True)
     pca_df.to_parquet(
         output_file_path,
+        index=False,
+    )
+
+    # define a new df for explained variance ratio
+    explained_variance_df = pd.DataFrame(
+        pca_model.explained_variance_ratio_.reshape(1, -1),
+        columns=[f"PC{i}_explained_variance" for i in range(n_components)],
+    )
+    explained_variance_df.to_parquet(
+        explained_variance_output_file_path,
         index=False,
     )

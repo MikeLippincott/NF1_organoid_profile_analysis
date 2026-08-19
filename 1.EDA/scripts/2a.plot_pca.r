@@ -1,4 +1,4 @@
-list_of_packages <- c("ggplot2", "dplyr", "tidyr", "circlize")
+list_of_packages <- c("ggplot2", "dplyr", "tidyr", "circlize", "RColorBrewer")
 for (package in list_of_packages) {
     suppressPackageStartupMessages(
         suppressWarnings(
@@ -39,37 +39,12 @@ find_git_root <- function() {
 # Find the Git root directory
 root_dir <- find_git_root()
 cat("Git root directory:", root_dir, "\n")
+source(file.path(root_dir, "utils", "r_plot_themes.r"))
 
 figures_path <- file.path(root_dir,"1.EDA/figures/pca")
 if (!dir.exists(figures_path)) {
   dir.create(figures_path, recursive = TRUE)
 }
-
-# Set custom colors for each treatment
-custom_treatment_palette <- c(
-    'DMSO' = "#5a5c5d",              # Control - gray
-    'Staurosporine' = "#7D2780",     # Dark purple
-
-    'Fimepinostat' = "#1E6B61",      # Teal (HDAC inhibitor)
-    'Copanlisib' = "#0092E0",        # Blue (PI3K inhibitor)
-
-    'Imatinib' = "#576A20",          # Olive green
-    'Nilotinib' = "#646722",         # Yellow-green
-    'Cabozantinib' = "#758B2D",      # Light olive
-
-    'Everolimus' = "#ACE089",        # Light green (mTOR inhibitor)
-    'Rapamycin' = "#90D070",         # Medium green (mTOR inhibitor)
-    'Linsitinib' = "#ACE040",        # Yellow-green (IGF-1R inhibitor)
-
-    'Onalespib' = "#33206A",         # Dark purple (HSP90 inhibitor)
-    'Digoxin' = "#A16C28",           # Orange-brown
-    'Ketotifen' = "#3A8F00",         # Green
-
-    'Binimetinib' = "#ff0000",       # Red (MEK inhibitor)
-    'Mirdametinib' = "#cc0000",      # Dark red (MEK inhibitor)
-    'Trametinib' = "#ff3333",        # Light red (MEK inhibitor)
-    'Selumetinib' = "#ff6666"        # Lighter red (MEK inhibitor)
-)
 
 pca_theme <- theme(
         plot.title = element_text(hjust = 0.5, size = 16),
@@ -81,14 +56,21 @@ pca_theme <- theme(
 
 width <- 8
 height <- 8
-options(
-)
-make_pca_plot <- function(df, title, treatment_col, save_path, facet_col = NULL, width = 10, height = 5) {
+options(repr.plot.width = width, repr.plot.height = height)
+make_pca_plot <- function(df, explained_variance_df, title, treatment_col, save_path, facet_col = NULL, width = 10, height = 5) {
+    # Extract explained variance for PC0 and PC1
+    # Assumes explained_variance_df has columns: PC (e.g. "PC0", "PC1") and explained_variance (proportion, 0-1)
+    var_pc0 <- explained_variance_df$PC0_explained_variance
+    var_pc1 <- explained_variance_df$PC1_explained_variance
+
+    x_label <- sprintf("PC0 (%.1f%%)", var_pc0 * 100)
+    y_label <- sprintf("PC1 (%.1f%%)", var_pc1 * 100)
+
     p <- (
         ggplot(df, aes(x = PC0, y = PC1, color = .data[[treatment_col]]))
         + geom_point(alpha = 0.5, size = 1)
         + scale_color_manual(values = custom_treatment_palette)
-        + labs(title = title, x = "PC0", y = "PC1")
+        + labs(title = title, x = x_label, y = y_label)
         + theme_bw()
         + pca_theme
         + guides(
@@ -129,8 +111,10 @@ entity_specs <- list(
 for (slice in slice_specs) {
     for (entity in entity_specs) {
         for (profile in profile_specs_2d) {
-            file_name <- paste0(slice$file_prefix, "_", entity$entity, "_", profile$suffix)
+            file_name <- paste0(slice$file_prefix, "_", entity$entity, "_", profile$suffix, "_embeddings.parquet")
             file_path <- file.path(pca_results_dir, file_name)
+            explained_variance_file_name <- paste0(slice$file_prefix, "_", entity$entity, "_", profile$suffix, "_explained_variance.parquet")
+            explained_variance_df <- arrow::read_parquet(file.path(pca_results_dir, explained_variance_file_name))
             if (!file.exists(file_path)) {
                 cat("Missing file, skipping:", file_path, "\n")
                 next
@@ -141,19 +125,20 @@ for (slice in slice_specs) {
             save_dir <- file.path(figures_path, "2D", slice$dir_name)
 
             save_path <- file.path(save_dir, paste0(slice$save_prefix, "_pca_", entity$entity, "_", profile$file_tag, ".png"))
-            p <- make_pca_plot(df, title, "Metadata_treatment", save_path, width = width, height = height)
+            p <- make_pca_plot(df, explained_variance_df, title, "Metadata_treatment", save_path, width = width, height = height)
             print(p)
 
             if (profile$facet && "Metadata_patient" %in% colnames(df)) {
                 save_path_faceted <- file.path(save_dir, paste0(slice$save_prefix, "_pca_", entity$entity, "_", profile$file_tag, "_facet_by_patient.png"))
-                p_faceted <- make_pca_plot(df, title, "Metadata_treatment", save_path_faceted, facet_col = "Metadata_patient", width = width, height = height)
+                p_faceted <- make_pca_plot(df, explained_variance_df,title, "Metadata_treatment", save_path_faceted, facet_col = "Metadata_patient_tumor", width = width, height = height)
                 print(p_faceted)
             }
         }
     }
 }
 
-norm_variants <- c(
+# normalized profiles
+normalized_profiles <- c(
     "organoid_norm",
     "sammed_organoid_norm",
     "sc_norm",
@@ -168,31 +153,34 @@ profile_specs_3d <- list(
     list(file_prefix = "3D_3.consensus_profiles", suffix = "sc_consensus_profiles", label = "Consensus", file_tag = "consensus_features", facet = FALSE)
 )
 
-for (norm_variant in norm_variants) {
+for (norm_profile in normalized_profiles) {
     for (profile in profile_specs_3d) {
-        file_name <- paste0(profile$file_prefix, "_", norm_variant, "_", profile$suffix)
+        file_name <- paste0(profile$file_prefix, "_", norm_profile, "_", profile$suffix, "_embeddings.parquet")
         file_path <- file.path(pca_results_dir, file_name)
         if (!file.exists(file_path)) {
             cat("Missing file, skipping:", file_path, "\n")
             next
         }
 
+
+
         df <- arrow::read_parquet(file_path)
-        if (!("PC1" %in% colnames(df))) {
-            cat("Only one PC available, skipping plot:", file_path, "\n")
+        if (!"PC1" %in% colnames(df)) {
+            warning("PC1 column not found in df — skipping plot for '", title, "'.")
             next
         }
-
-        title <- paste0("All patients: 3D (", norm_variant, ") ", profile$label, " Profiles")
-        save_dir <- file.path(figures_path, "3D", norm_variant)
+        explained_variance_file_name <- paste0(profile$file_prefix, "_", norm_profile, "_", profile$suffix, "_explained_variance.parquet")
+        explained_variance_df <- arrow::read_parquet(file.path(pca_results_dir, explained_variance_file_name))
+        title <- paste0("All patients: 3D (", norm_profile, ") ", profile$label, " Profiles")
+        save_dir <- file.path(figures_path, "3D", norm_profile)
 
         save_path <- file.path(save_dir, paste0("all_patients_3D_pca_", profile$file_tag, ".png"))
-        p <- make_pca_plot(df, title, "Metadata_Experiment_Treatment", save_path, width = width, height = height)
+        p <- make_pca_plot(df, explained_variance_df,title, "Metadata_Experiment_Treatment", save_path, width = width, height = height)
         print(p)
 
         if (profile$facet && "Metadata_Biology_PatientTumor" %in% colnames(df)) {
             save_path_faceted <- file.path(save_dir, paste0("all_patients_3D_pca_", profile$file_tag, "_facet_by_patient.png"))
-            p_faceted <- make_pca_plot(df, title, "Metadata_Experiment_Treatment", save_path_faceted, facet_col = "Metadata_Biology_PatientTumor", width = width, height = height)
+            p_faceted <- make_pca_plot(df, explained_variance_df,title, "Metadata_Experiment_Treatment", save_path_faceted, facet_col = "Metadata_Biology_PatientTumor", width = width, height = height)
             print(p_faceted)
         }
     }

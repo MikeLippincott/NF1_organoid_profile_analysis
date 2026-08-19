@@ -8,7 +8,7 @@ fi
 
 conda activate GFF_analysis
 
-jupyter nbconvert --to=script --FilesWriter.build_directory="$git_root"/5.EDA/scripts/ "$git_root"/5.EDA/notebooks/*.ipynb
+jupyter nbconvert --to=script --FilesWriter.build_directory="$git_root"/1.EDA/scripts/ "$git_root"/1.EDA/notebooks/*.ipynb
 
 # python "$git_root"/5.EDA/scripts/0.generate_umap.py
 
