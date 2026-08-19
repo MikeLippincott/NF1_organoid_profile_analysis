@@ -1,4 +1,4 @@
-packages <- c("ggplot2", "dplyr", "arrow", "ComplexHeatmap", "circlize", "scales")
+packages <- c("ggplot2", "dplyr", "arrow", "ComplexHeatmap", "circlize", "scales","RColorBrewer")
 for (pkg in packages) {
     suppressPackageStartupMessages(
         suppressWarnings(
@@ -32,16 +32,8 @@ find_git_root <- function() {
 
 # Find the Git root directory
 root_dir <- find_git_root()
-cat("Git root directory:", root_dir, "\n")
 source(file.path(root_dir, "utils", "r_plot_themes.r"))
 
-# matplotlib's tab20 categorical palette
-tab20_palette <- c(
-    "#1f77b4", "#aec7e8", "#ff7f0e", "#ffbb78", "#2ca02c", "#98df8a",
-    "#d62728", "#ff9896", "#9467bd", "#c5b0d5", "#8c564b", "#c49c94",
-    "#e377c2", "#f7b6d2", "#7f7f7f", "#c7c7c7", "#bcbd22", "#dbdb8d",
-    "#17becf", "#9edae5"
-)
 
 correlation_dir <- file.path(root_dir, "1.EDA", "results", "correlation")
 figures_dir <- file.path(root_dir, "1.EDA", "figures", "correlation_heatmaps")
@@ -52,9 +44,6 @@ if (!dir.exists(figures_dir)) {
 correlation_files <- list.files(correlation_dir, full.names = TRUE)
 length(correlation_files)
 
-# Each correlation file has its own metadata schema (2D files use
-# e.g. Metadata_treatment, 3D files use Metadata_Experiment_Treatment), so
-# find columns by pattern instead of hard-coding a name.
 plot_correlation_heatmap <- function(file_path, figures_dir) {
     df <- arrow::read_parquet(file_path)
 
@@ -71,13 +60,8 @@ plot_correlation_heatmap <- function(file_path, figures_dir) {
 
     annotations <- list()
 
-    if (length(treatment_col) >= 1 && length(dose_col) >= 1) {
-        # custom_treatment_palette (from utils/r_plot_themes.r) is keyed by
-        # "Treatment_Dose", matching how these profiles encode treatment.
-        treatment_dose_values <- paste0(
-            as.character(df[[treatment_col[1]]]), "_", as.character(df[[dose_col[1]]])
-        )
-        annotations$Treatment <- treatment_dose_values
+    if (length(treatment_col) >= 1) {
+        annotations$Treatment <- df[[treatment_col[1]]]
     }
 
     if (length(patient_col) >= 1) {
@@ -91,6 +75,7 @@ plot_correlation_heatmap <- function(file_path, figures_dir) {
     }
 
     top_annotation <- NULL
+    left_annotation <- NULL
     if (length(annotations) > 0) {
         anno_cols <- list()
         if (!is.null(annotations$Treatment)) {
@@ -111,14 +96,28 @@ plot_correlation_heatmap <- function(file_path, figures_dir) {
                 annotation_name_gp = gpar(fontsize = 10)
             )
         ))
+
+        left_annotation <- do.call(rowAnnotation, c(
+            annotations,
+            list(
+                col = anno_cols,
+                show_legend = FALSE,
+                show_annotation_name = FALSE
+            )
+        ))
     }
 
     col_fun <- colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B"))
 
-    # A handful of samples have zero-variance feature vectors, which makes
-    # their Pearson correlation undefined (NA). hclust can't cluster on NA
-    # distances, so skip dendrograms for any matrix that contains them.
-    can_cluster <- !anyNA(mat)
+    # A handful of samples have zero-variance feature vectors, giving NA
+    # Pearson correlations for those rows/columns. Rather than disabling
+    # clustering entirely, treat NA as "no correlation" (0) when computing
+    # distances for hclust -- the plotted cells still show the true NA
+    # (grey80) since we only touch a local copy for distance calculation.
+    na_safe_dist <- function(m) {
+        m[is.na(m)] <- 0
+        stats::as.dist(1 - m)
+    }
 
     heatmap_plot <- Heatmap(
         mat,
@@ -128,10 +127,13 @@ plot_correlation_heatmap <- function(file_path, figures_dir) {
         show_row_names = FALSE,
         show_column_names = FALSE,
         show_row_dend = FALSE,
-        show_column_dend = can_cluster,
-        cluster_rows = can_cluster,
-        cluster_columns = can_cluster,
+        show_column_dend = TRUE,
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        clustering_distance_rows = na_safe_dist,
+        clustering_distance_columns = na_safe_dist,
         top_annotation = top_annotation,
+        left_annotation = left_annotation,
         column_title = tools::file_path_sans_ext(basename(file_path)),
         column_title_gp = gpar(fontsize = 10, fontface = "bold"),
         heatmap_legend_param = list(title = "Pearson\ncorrelation")

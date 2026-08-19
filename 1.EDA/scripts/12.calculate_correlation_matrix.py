@@ -1,7 +1,19 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
+# This notebook generates the correlation matrices for each of the 2D and 3D patient profiles.
+# The profiles cover single cell and organoid profiles:
+# - 2D:
+#     - maximum projection of the 3D volume
+#     - middle slice of the 3D volume
+#     - middle 3 slices of the 3D volume maxprojected
+# - 3D:
+#     - handcrafted 3D features
+#     - masked 3D Deep Learning features
+#     - nucleocentric 3D Deep Learning features
+#     - nucleocentric 2D maxprojected Deep Learning features
+
+# In[1]:
 
 
 import pathlib
