@@ -164,7 +164,8 @@ cython_debug/
 
 data/*
 *Rplots.pdf
-1.EDA/results/
+1.EDA/results/*
+1.EDA/figures/pca/
 1.EDA/figures/linear_modeling/
 1.EDA/figures/correlation_heatmaps/
 1.EDA/figures/consensus_heatmaps/
