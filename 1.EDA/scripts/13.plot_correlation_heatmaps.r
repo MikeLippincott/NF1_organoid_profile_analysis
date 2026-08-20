@@ -68,7 +68,7 @@ plot_correlation_heatmap <- function(file_path, figures_dir) {
         patient_values <- as.character(df[[patient_col[1]]])
         unique_patients <- sort(unique(patient_values))
         patient_colors <- setNames(
-            tab20_palette[seq_along(unique_patients)],
+            tab20_palette_for_patients[seq_along(unique_patients)],
             unique_patients
         )
         annotations$Patient <- patient_values
