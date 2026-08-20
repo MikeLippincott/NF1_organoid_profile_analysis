@@ -10,8 +10,12 @@ save_ggplot <- function(plot, path, width, height, dpi = 600) {
 
 plot_density_by_facet <- function(
     data, facet_col, facet_val, x_col, fill_col, y_max,
-    x_max = NULL, palette = "RdBu", base_size = 18
+    x_max = NULL, palette = "RdBu", base_size = 18,
+    x_lab = NULL, y_lab = "Density", fill_lab = NULL
 ) {
+    if (is.null(x_lab)) x_lab <- "Normalized Object Counts per Well FOV"
+    if (is.null(y_lab)) y_lab <- "Density"
+    if (is.null(fill_lab)) fill_lab <- "Profile Type"
     #' Density plot for one facet level, sharing a common y-axis max across facets.
     plot_data <- data[data[[facet_col]] == facet_val, ]
     p <- (
@@ -19,8 +23,8 @@ plot_density_by_facet <- function(
         + geom_density(alpha = 0.3)
         + ylim(0, y_max)
         + labs(
-            x = "Normalized Cell Counts per Well FOV",
-            y = "Density",
+            x = x_lab,
+            y = y_lab,
             fill = paste0("Profile Type: ", facet_val)
         )
         + guides(fill = guide_legend(override.aes = list(alpha = 0.5)))

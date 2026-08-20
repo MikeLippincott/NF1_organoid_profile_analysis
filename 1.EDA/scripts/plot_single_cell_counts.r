@@ -171,7 +171,7 @@ plot_list <- lapply(
         x_col = "Metadata_n_cells_norm_by_well_fov",
         fill_col = "Metadata_feature_type",
         y_max = max_density,
-        x_max = 50
+        x_max = 50,
     )
 )
 
