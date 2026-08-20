@@ -182,10 +182,99 @@ merged_df.to_parquet(results_dir / "cell_counts.parquet", index=False)
 merged_df.head()
 
 
+# ## From the organoid profiles get the number of cells per organoid
+# ## From the single-cell profiles get the number cells without a parent organoid
+
 # In[8]:
 
 
-merged_df
+organoid_path = pathlib.Path(
+    f"{root_dir}/data/profiles_3D/all_patients/0.normalized_profiles/organoid_norm_norm_profile.parquet"
+)
+sc_path = pathlib.Path(
+    f"{root_dir}/data/profiles_3D/all_patients/0.normalized_profiles/sc_norm_norm_profile.parquet"
+)
+organoid_counts_output_path = pathlib.Path(
+    f"{root_dir}/1.EDA/results/cell_counts/organoid_cell_counts.parquet"
+)
+organoid_counts_output_path.parent.mkdir(parents=True, exist_ok=True)
+organoid_df = pd.read_parquet(organoid_path)
+sc_df = pd.read_parquet(sc_path)
+metadata_cols_to_group_on = [
+    "Metadata_Biology_PatientTumor",
+    "Metadata_Experiment_Dose",
+    "Metadata_Experiment_Treatment",
+    "Metadata_Experiment_Well",
+]
+organoid_cell_count_col = ["Metadata_Object_OrganoidSingleCellCount"]
+single_cell_parent_organoid_col = ["Metadata_Object_ParentOrganoid"]
 
 
-# In[ ]:
+# In[9]:
+
+
+organoid_cell_counts = organoid_df.groupby(metadata_cols_to_group_on).agg(
+    total_cells=pd.NamedAgg(column=organoid_cell_count_col[0], aggfunc="sum"),
+    mean_cells_per_organoid=pd.NamedAgg(
+        column=organoid_cell_count_col[0], aggfunc="mean"
+    ),
+    total_number_of_FOVs=pd.NamedAgg(
+        column="Metadata_Experiment_WellFOV", aggfunc="nunique"
+    ),
+)
+organoid_cell_counts.reset_index(inplace=True)
+organoid_cell_counts["total_cells_normalized_per_FOV"] = (
+    organoid_cell_counts["total_cells"] / organoid_cell_counts["total_number_of_FOVs"]
+)
+
+
+# In[10]:
+
+
+# count the number of single cells that do and do not have a parent organoid
+single_cell_counts = sc_df.groupby(metadata_cols_to_group_on).agg(
+    n_cells_with_parent_organoid=pd.NamedAgg(
+        column=single_cell_parent_organoid_col[0],
+        aggfunc=lambda x: sum(1 for val in x if val > 0),
+    ),
+    n_cells_without_parent_organoid=pd.NamedAgg(
+        column=single_cell_parent_organoid_col[0],
+        aggfunc=lambda x: sum(1 for val in x if val < 0),
+    ),
+    total_number_of_FOVs=pd.NamedAgg(
+        column="Metadata_Experiment_WellFOV", aggfunc="nunique"
+    ),
+)
+single_cell_counts.reset_index(inplace=True)
+single_cell_counts["n_cells_with_parent_organoid_normalized_per_FOV"] = (
+    single_cell_counts["n_cells_with_parent_organoid"]
+    / single_cell_counts["total_number_of_FOVs"]
+)
+single_cell_counts["n_cells_without_parent_organoid_normalized_per_FOV"] = (
+    single_cell_counts["n_cells_without_parent_organoid"]
+    / single_cell_counts["total_number_of_FOVs"]
+)
+single_cell_counts[
+    "proportion_of_cells_with_parent_organoid_compared_to_n_cells_without_parent_organoid"
+] = single_cell_counts["n_cells_with_parent_organoid"] / (
+    single_cell_counts["n_cells_with_parent_organoid"]
+    + single_cell_counts["n_cells_without_parent_organoid"]
+)
+single_cell_counts[
+    "proportion_of_cells_without_parent_organoid_compared_to_n_cells_without_parent_organoid"
+] = single_cell_counts["n_cells_without_parent_organoid"] / (
+    single_cell_counts["n_cells_with_parent_organoid"]
+    + single_cell_counts["n_cells_without_parent_organoid"]
+)
+
+
+# In[11]:
+
+
+merged_organoid_count_information = pd.merge(
+    organoid_cell_counts,
+    single_cell_counts,
+    on=metadata_cols_to_group_on + ["total_number_of_FOVs"],
+    how="outer",
+)
+merged_organoid_count_information.to_parquet(organoid_counts_output_path, index=False)
