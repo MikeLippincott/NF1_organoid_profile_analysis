@@ -142,10 +142,28 @@ plot_bar_horizontal <- function(
 ) {
     #' Mean bar plot, treatments on y-axis, sorted by mean count, fill-only
     #' (e.g. by dose), shared across treatment bar plots. Axes are swapped
-    #' directly (not via coord_flip).
+    #' directly (not via coord_flip). Each treatment's dose bars stay
+    #' grouped on one row; the row order is by the dose-1 mean (falling
+    #' back to the overall mean for treatments with no dose-1 data).
 
-    # reorder x_col levels by mean of y_col (ascending -> highest mean at top)
-    data[[x_col]] <- reorder(data[[x_col]], data[[y_col]], FUN = mean)
+    order_df <- data %>%
+        dplyr::group_by(.data[[x_col]]) %>%
+        dplyr::summarise(
+            order_val = {
+                dose1_vals <- .data[[y_col]][.data[[fill_col]] == 1]
+                if (length(dose1_vals) > 0 && !all(is.na(dose1_vals))) {
+                    mean(dose1_vals, na.rm = TRUE)
+                } else {
+                    mean(.data[[y_col]], na.rm = TRUE)
+                }
+            },
+            .groups = "drop"
+        ) %>%
+        dplyr::arrange(order_val)
+
+    # reorder x_col levels by dose-1 mean (ascending -> highest at top);
+    # dose 1 and dose 10 bars for a treatment remain on the same row
+    data[[x_col]] <- factor(data[[x_col]], levels = order_df[[x_col]])
 
     p <- (
         ggplot(

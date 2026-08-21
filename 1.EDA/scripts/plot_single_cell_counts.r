@@ -77,7 +77,7 @@ add_feature_type <- function(df, x) {
                 grepl("sammed", col_vals, ignore.case = TRUE)
                 & !grepl("nucleocentric", col_vals, ignore.case = TRUE)
                 & grepl("sc", col_vals, ignore.case = TRUE)
-                ~ "Single Cell\nDL (SAMMed3D)",
+                ~ "Single cell\nDL (SAMMed3D)",
 
                 grepl("sammed", col_vals, ignore.case = TRUE)
                 & !grepl("nucleocentric", col_vals, ignore.case = TRUE)
@@ -88,45 +88,45 @@ add_feature_type <- function(df, x) {
                 & !grepl("nucleocentric", col_vals, ignore.case = TRUE)
                 & grepl("3D", col_vals, ignore.case = TRUE)
                 & grepl("sc", col_vals, ignore.case = TRUE)
-                ~ "Single Cell\nHandcrafted (ZedProfiler)",
+                ~ "Single cell\nhandcrafted (ZedProfiler)",
 
                 !grepl("sammed", col_vals, ignore.case = TRUE)
                 & !grepl("nucleocentric", col_vals, ignore.case = TRUE)
                 & grepl("3D", col_vals, ignore.case = TRUE)
                 & grepl("organoid", col_vals, ignore.case = TRUE)
-                ~ "Organoid\nHandcrafted (ZedProfiler)",
+                ~ "Organoid\nhandcrafted (ZedProfiler)",
 
 
 
                 grepl("2D", col_vals, ignore.case = TRUE)
                 & grepl("max", col_vals, ignore.case = TRUE)
                 & grepl("sc", col_vals, ignore.case = TRUE)
-                ~ "Single Cell\n2D Max Projection\n(CellProfiler)",
+                ~ "Single cell\n2D max projection\n(CellProfiler)",
 
                 grepl("2D", col_vals, ignore.case = TRUE)
                 & grepl("max", col_vals, ignore.case = TRUE)
                 & grepl("Organoid", col_vals, ignore.case = TRUE)
-                ~ "Organoid\n2D Max Projection\n(CellProfiler)",
+                ~ "Organoid\n2D max projection\n(CellProfiler)",
 
                 grepl("2D", col_vals, ignore.case = TRUE)
                 & grepl("middle_slice", col_vals, ignore.case = TRUE)
                 & grepl("sc", col_vals, ignore.case = TRUE)
-                ~ "Single Cell\n2D Middle Slice\n(CellProfiler)",
+                ~ "Single cell\n2D middle slice\n(CellProfiler)",
 
                 grepl("2D", col_vals, ignore.case = TRUE)
                 & grepl("middle_slice", col_vals, ignore.case = TRUE)
                 & grepl("Organoid", col_vals, ignore.case = TRUE)
-                ~ "Organoid\n2D Middle Slice\n(CellProfiler)",
+                ~ "Organoid\n2D middle slice\n(CellProfiler)",
 
                 grepl("2D", col_vals, ignore.case = TRUE)
                 & grepl("middle_n", col_vals, ignore.case = TRUE)
                 & grepl("sc", col_vals, ignore.case = TRUE)
-                ~ "Single Cell\n2D Middle 3 Slices\n(CellProfiler)",
+                ~ "Single cell\n2D middle 3 slices\n(CellProfiler)",
 
                 grepl("2D", col_vals, ignore.case = TRUE)
                 & grepl("middle_n", col_vals, ignore.case = TRUE)
                 & grepl("Organoid", col_vals, ignore.case = TRUE)
-                ~ "Organoid\n2D Middle 3 Slices\n(CellProfiler)",
+                ~ "Organoid\n2D middle 3 slices\n(CellProfiler)",
                 TRUE ~ "other"
             )
         )
@@ -137,7 +137,7 @@ cell_counts_df <- add_feature_type(cell_counts_df, "Metadata_profile_name")
 cell_counts_df$sc_or_organoid <- "other"
 cell_counts_df$sc_or_organoid <- dplyr::case_when(
     grepl("organoid", cell_counts_df$Metadata_profile_name, ignore.case = TRUE) ~ "Organoid",
-    grepl("(^|_)sc(_|$)", cell_counts_df$Metadata_profile_name, ignore.case = TRUE) ~ "Single Cell",
+    grepl("(^|_)sc(_|$)", cell_counts_df$Metadata_profile_name, ignore.case = TRUE) ~ "Single cell",
     grepl("(^|_)nucleocentric(_|$)", cell_counts_df$Metadata_profile_name, ignore.case = TRUE) ~ "Nucleocentric",
     TRUE ~ "other"
 )
@@ -170,6 +170,7 @@ plot_list <- lapply(
         fill_col = "Metadata_feature_type",
         y_max = max_density,
         x_max = 50,
+        palette = "PuOr"
     )
 )
 
@@ -209,7 +210,7 @@ save_ggplot(
 
 # get only thre ZedProfiler profiles
 zedprofiler_only_df <- cell_counts_df %>%
-    filter(Metadata_feature_type %in% c("Single Cell\nHandcrafted (ZedProfiler)", "Organoid\nHandcrafted (ZedProfiler)"))
+    filter(Metadata_feature_type %in% c("Single cell\nhandcrafted (ZedProfiler)", "Organoid\nhandcrafted (ZedProfiler)"))
 
 cell_count_per_patient_plot <- plot_boxplot(
     zedprofiler_only_df,
@@ -233,10 +234,10 @@ save_ggplot(
 no_nucleocentric_organoid_df <- zedprofiler_only_df %>%
     filter(sc_or_organoid == "Organoid")
 no_nucleocentric_sc_df <- zedprofiler_only_df %>%
-    filter(sc_or_organoid == "Single Cell")
+    filter(sc_or_organoid == "Single cell")
 
-width <- 20
-height <- 12
+width <- 24
+height <- 18
 options(repr.plot.width = width, repr.plot.height = height)
 organoid_count_by_treatment_plot <- plot_bar_horizontal(
     no_nucleocentric_organoid_df,
@@ -260,8 +261,8 @@ save_ggplot(
     height = height
 )
 
-width <- 20
-height <- 12
+width <- 24
+height <- 18
 options(repr.plot.width = width, repr.plot.height = height)
 cell_count_by_treatment_plot <- plot_bar_horizontal(
     no_nucleocentric_sc_df,
@@ -522,18 +523,18 @@ save_ggplot(
 organid_cell_counts_long <- dplyr::bind_rows(
     organid_cell_counts %>%
         mutate(
-            Parent_Organoid_Status = "With Parent Organoid",
+            Parent_Organoid_Status = "Inside organoid",
             n_cells_normalized_per_FOV = n_cells_with_parent_organoid_normalized_per_FOV
         ),
     organid_cell_counts %>%
         mutate(
-            Parent_Organoid_Status = "Without Parent Organoid",
+            Parent_Organoid_Status = "Outside organoid",
             n_cells_normalized_per_FOV = n_cells_without_parent_organoid_normalized_per_FOV
         )
 )
 parent_organoid_status_palette <- c(
-    "With Parent Organoid" = "#1FAD23",
-    "Without Parent Organoid" = "#CC29CC"
+    "Inside organoid" = "#1FAD23",
+    "Outside organoid" = "#CC29CC"
 )
 
 width <- 10
