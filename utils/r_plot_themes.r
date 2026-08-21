@@ -150,6 +150,40 @@ feature_type_palette = c(
     "Intensity" = brewer.pal(8, "Paired")[5],
     "Texture" = brewer.pal(8, "Paired")[8]
 )
+
+# Shared theme for manuscript-quality plots.
+# x_text controls how the x axis tick labels are rendered:
+#   "default" - leave tick labels as ggplot's default
+#   "blank"   - hide tick labels/ticks (e.g. many-category axes with a legend)
+#   "angled"  - 45-degree tick labels (e.g. few-category axes without a legend)
+theme_manuscript <- function(base_size = 18, x_text = c("default", "blank", "angled")) {
+    x_text <- match.arg(x_text)
+
+    x_axis_theme <- switch(
+        x_text,
+        blank = theme(
+            axis.text.x = element_blank(),
+            axis.ticks.x = element_blank()
+        ),
+        angled = theme(
+            axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = base_size)
+        ),
+        default = theme()
+    )
+
+    (
+        theme_bw()
+        + theme(
+            axis.text = element_text(size = base_size),
+            axis.title = element_text(size = base_size),
+            strip.text = element_text(size = base_size),
+            plot.title = element_text(size = base_size, face = "bold"),
+            legend.title = element_text(size = base_size),
+            legend.text = element_text(size = base_size)
+        )
+        + x_axis_theme
+    )
+}
 tab20_palette_for_patients <- c(
     "#1f77b4", "#aec7e8", "#ff7f0e", "#ffbb78", "#2ca02c", "#98df8a",
     "#d62728", "#ff9896", "#9467bd", "#c5b0d5", "#8c564b", "#c49c94",
