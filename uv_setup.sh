@@ -35,5 +35,24 @@ source .venv/bin/activate
 # Use RELATIVE path - simple and reliable
 uv pip install -e ./utils
 
+# Link R/Rscript from the gff_figure_env conda env (see environments/r_env.yml)
+# into the uv venv's bin dir, so `uv run Rscript ...` resolves to an R
+# installation that actually has the required packages (ggplot2, dplyr,
+# arrow, tidyr, readr, RColorBrewer, ...).
+if command -v conda >/dev/null 2>&1; then
+    R_ENV_PATH=$(conda env list | awk '$1 == "gff_figure_env" {print $NF}')
+    if [[ -n "$R_ENV_PATH" && -x "$R_ENV_PATH/bin/Rscript" ]]; then
+        ln -sf "$R_ENV_PATH/bin/R" "$ENV_PATH/bin/R"
+        ln -sf "$R_ENV_PATH/bin/Rscript" "$ENV_PATH/bin/Rscript"
+        echo "Linked R/Rscript from gff_figure_env ($R_ENV_PATH) into $ENV_PATH/bin"
+    else
+        echo "Warning: gff_figure_env not found or missing Rscript; run" \
+             "'mamba env create -f environments/r_env.yml' first" \
+             "(see environments/local_create_envs.sh)."
+    fi
+else
+    echo "Warning: conda not found; cannot link R/Rscript into the uv venv."
+fi
+
 echo "Virtual environment setup complete. To activate it, run:"
 echo "source $ENV_PATH/bin/activate"
