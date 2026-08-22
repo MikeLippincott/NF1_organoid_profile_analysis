@@ -4,12 +4,16 @@
 # set -e
 
 git_root=$(git rev-parse --show-toplevel)
-# convert to scripts
-jupyter nbconvert --to=script --FilesWriter.build_directory=scripts/ notebooks/*.ipynb
 
 # Activate uv environment
 # shellcheck disable=SC1091
 source "$git_root/.venv/bin/activate"
+
+# convert notebooks to scripts (uses absolute paths so this works regardless
+# of the caller's cwd)
+uv run jupyter nbconvert --to=script \
+    --FilesWriter.build_directory="$git_root/4.analysis/scripts" \
+    "$git_root"/4.analysis/notebooks/*.ipynb
 
 # Run the analysis scripts and plot scripts
 uv run python "$git_root"/4.analysis/scripts/0.harmonize_metadata.py
