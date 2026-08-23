@@ -56,6 +56,9 @@ fov_lookup_frames = []
 for path in tqdm.tqdm(normalized_profiles):
     profile_type = f"{path.stem}_{path.parent.parent.parent.name.split('_')[1]}"
     df = pd.read_parquet(path)
+    for patient_col in ("Metadata_Biology_PatientTumor", "Metadata_patient_tumor"):
+        if patient_col in df.columns:
+            df = df[df[patient_col] != "NF0037_T1_CQ1"]
     metadata_cols = [x for x in df.columns if "Metadata" in x]
     df = df[metadata_cols]
 
@@ -200,6 +203,10 @@ organoid_counts_output_path = pathlib.Path(
 organoid_counts_output_path.parent.mkdir(parents=True, exist_ok=True)
 organoid_df = pd.read_parquet(organoid_path)
 sc_df = pd.read_parquet(sc_path)
+organoid_df = organoid_df[
+    organoid_df["Metadata_Biology_PatientTumor"] != "NF0037_T1_CQ1"
+]
+sc_df = sc_df[sc_df["Metadata_Biology_PatientTumor"] != "NF0037_T1_CQ1"]
 metadata_cols_to_group_on = [
     "Metadata_Biology_PatientTumor",
     "Metadata_Experiment_Dose",

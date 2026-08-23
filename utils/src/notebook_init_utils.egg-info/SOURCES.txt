@@ -1,4 +1,5 @@
 pyproject.toml
+src/eda_helper_utils/utils_analysis.py
 src/notebook_init_utils/__init__.py
 src/notebook_init_utils/notebook_init_utils.py
 src/notebook_init_utils.egg-info/PKG-INFO

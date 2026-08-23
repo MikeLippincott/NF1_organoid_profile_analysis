@@ -1,1 +1,2 @@
+eda_helper_utils
 notebook_init_utils
