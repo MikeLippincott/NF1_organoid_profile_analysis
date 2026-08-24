@@ -9,7 +9,7 @@
 # for nucleus/cytoplasm/cell compartments, for both 2D (3 projections) and 3D
 # (different feature-name ordering handled by the two separate parsers).
 
-# In[1]:
+# In[ ]:
 
 
 import warnings
@@ -19,7 +19,7 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 
 
-# In[2]:
+# In[ ]:
 
 
 from notebook_init_utils import init_notebook
@@ -43,7 +43,7 @@ results_dir.mkdir(parents=True, exist_ok=True)
 SELECTED_INTENSITY_STATS = ["MeanIntensity", "IntegratedIntensity", "MedianIntensity"]
 
 
-# In[3]:
+# In[ ]:
 
 
 def summarize_intensity(df, parse_fn, group_cols):
@@ -121,13 +121,13 @@ for projection in PROJECTIONS:
 intensity_2d = pd.concat(all_2d, ignore_index=True)
 intensity_2d.to_parquet(results_dir / "intensity_summary_2D.parquet", index=False)
 print(
-    f"Wrote {results_dir / 'intensity_summary_2D.parquet'} ({len(intensity_2d)} rows)"
+    f"Wrote {(results_dir / 'intensity_summary_2D.parquet').relative_to(root_dir)} ({len(intensity_2d)} rows)"
 )
 
 intensity_values_2d = pd.concat(raw_2d, ignore_index=True)
 intensity_values_2d.to_parquet(results_dir / "intensity_values_2D.parquet", index=False)
 print(
-    f"Wrote {results_dir / 'intensity_values_2D.parquet'} ({len(intensity_values_2d)} rows)"
+    f"Wrote {(results_dir / 'intensity_values_2D.parquet').relative_to(root_dir)} ({len(intensity_values_2d)} rows)"
 )
 
 all_3d = []
@@ -161,11 +161,11 @@ for kind, fname in [("organoid", "organoid_norm.parquet"), ("sc", "sc_norm.parqu
 intensity_3d = pd.concat(all_3d, ignore_index=True)
 intensity_3d.to_parquet(results_dir / "intensity_summary_3D.parquet", index=False)
 print(
-    f"Wrote {results_dir / 'intensity_summary_3D.parquet'} ({len(intensity_3d)} rows)"
+    f"Wrote {(results_dir / 'intensity_summary_3D.parquet').relative_to(root_dir)} ({len(intensity_3d)} rows)"
 )
 
 intensity_values_3d = pd.concat(raw_3d, ignore_index=True)
 intensity_values_3d.to_parquet(results_dir / "intensity_values_3D.parquet", index=False)
 print(
-    f"Wrote {results_dir / 'intensity_values_3D.parquet'} ({len(intensity_values_3d)} rows)"
+    f"Wrote {(results_dir / 'intensity_values_3D.parquet').relative_to(root_dir)} ({len(intensity_values_3d)} rows)"
 )

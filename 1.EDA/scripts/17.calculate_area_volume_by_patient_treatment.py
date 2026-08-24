@@ -8,7 +8,7 @@
 # use separate pipelines/segmentations and organoid/cell IDs are not directly
 # comparable across modalities) and plots every point.
 
-# In[1]:
+# In[ ]:
 
 
 import warnings
@@ -18,7 +18,7 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 
 
-# In[2]:
+# In[ ]:
 
 
 from notebook_init_utils import init_notebook
@@ -70,7 +70,9 @@ for kind, area_col in COL_2D.items():
             rows.append(g)
     area_df = pd.concat(rows, ignore_index=True)
     area_df.to_parquet(results_dir / f"area_2D_{kind}.parquet", index=False)
-    print(f"Wrote {results_dir / f'area_2D_{kind}.parquet'} ({len(area_df)} rows)")
+    print(
+        f"Wrote {(results_dir / f'area_2D_{kind}.parquet').relative_to(root_dir)} ({len(area_df)} rows)"
+    )
 
 # --- 3D volume, raw per-record (organoid and single-cell) ---
 for kind, volume_col in COL_3D.items():
@@ -95,7 +97,9 @@ for kind, volume_col in COL_3D.items():
         rows.append(g)
     volume_df = pd.concat(rows, ignore_index=True)
     volume_df.to_parquet(results_dir / f"volume_3D_{kind}.parquet", index=False)
-    print(f"Wrote {results_dir / f'volume_3D_{kind}.parquet'} ({len(volume_df)} rows)")
+    print(
+        f"Wrote {(results_dir / f'volume_3D_{kind}.parquet').relative_to(root_dir)} ({len(volume_df)} rows)"
+    )
 
 # --- coverage diagnostics (organoid-level patient_tumor keys only in one modality) ---
 area_organoid = pd.read_parquet(results_dir / "area_2D_organoid.parquet")

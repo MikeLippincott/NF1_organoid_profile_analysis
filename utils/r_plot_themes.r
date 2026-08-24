@@ -124,6 +124,17 @@ custom_treatment_order <- c(
     'Trametinib',
     'Selumetinib'
 )
+
+# Order treatment levels by custom_treatment_order, appending any observed
+# treatments that are absent from it (instead of dropping them to NA via
+# factor(..., levels = intersect(...))).
+treatment_levels_with_unlisted <- function(observed_treatments) {
+    observed_treatments <- unique(observed_treatments)
+    ordered <- intersect(custom_treatment_order, observed_treatments)
+    unlisted <- setdiff(observed_treatments, custom_treatment_order)
+    c(ordered, unlisted)
+}
+
 channel_palette = c(
     "DNA" = "#0000AB",
     "AGP" = "#b1001a",

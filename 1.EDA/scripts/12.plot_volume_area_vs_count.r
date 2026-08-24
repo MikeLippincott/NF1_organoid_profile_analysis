@@ -28,6 +28,7 @@ source(file.path(root_dir, "utils", "r_plot_themes.r"))
 
 results_dir <- file.path(root_dir, "1.EDA", "results")
 figures_dir <- file.path(root_dir, "1.EDA", "figures", "volume_area_vs_count")
+figures_dir_rel <- file.path("1.EDA", "figures", "volume_area_vs_count")
 dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
 
 plot_theme <- (
@@ -284,7 +285,7 @@ ggsave(
     plot = p_2d_treatment, width = 16, height = 6, dpi = 600, units = "in"
 )
 
-cat("Wrote 5 figures to", figures_dir, "\n")
+cat("Wrote 3 figures to", figures_dir_rel, "\n")
 
 # --- 2D: same relationship, faceted by patient, by treatment, and by both
 # (all 2D methods included via the projection dimension) ---
@@ -349,4 +350,4 @@ for (proj in unique(joined_2d$projection)) {
     n_facet_both_figures <- n_facet_both_figures + 1
 }
 
-cat("Wrote", 2 + n_facet_both_figures, "2D facet figures to", figures_dir, "\n")
+cat("Wrote", 2 + n_facet_both_figures, "2D facet figures to", figures_dir_rel, "\n")

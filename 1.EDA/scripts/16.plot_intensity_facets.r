@@ -28,6 +28,7 @@ source(file.path(root_dir, "utils", "r_plot_themes.r"))
 
 results_dir <- file.path(root_dir, "1.EDA", "results", "intensity")
 figures_dir <- file.path(root_dir, "1.EDA", "figures", "intensity")
+figures_dir_rel <- file.path("1.EDA", "figures", "intensity")
 dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
 
 plot_theme <- theme_bw() + theme(
@@ -77,7 +78,7 @@ make_stat_figures <- function(df, modality_label, out_subdir, x_col_patient, x_c
         ggsave(filename = file.path(figures_dir, out_subdir, paste0(fname, "_pooled.png")),
                plot = p_pooled, width = 12, height = 8, dpi = 600, units = "in")
     }
-    cat("Wrote", 2 * length(stats), "figures to", file.path(figures_dir, out_subdir), "\n")
+    cat("Wrote", 2 * length(stats), "figures to", file.path(figures_dir_rel, out_subdir), "\n")
 }
 
 # --- 3D ---

@@ -28,6 +28,7 @@ source(file.path(root_dir, "utils", "r_plot_themes.r"))
 
 results_dir <- file.path(root_dir, "1.EDA", "results")
 figures_dir <- file.path(root_dir, "1.EDA", "figures", "count_viability")
+figures_dir_rel <- file.path("1.EDA", "figures", "count_viability")
 dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
 
 df <- read_parquet(file.path(results_dir, "count_viability_joined.parquet"))
@@ -80,7 +81,7 @@ ggsave(
     plot = p_pooled, width = 9, height = 6, dpi = 600, units = "in"
 )
 
-cat("Wrote 2 figures to", figures_dir, "\n")
+cat("Wrote 2 figures to", figures_dir_rel, "\n")
 
 
 df_norm <- read_parquet(file.path(results_dir, "count_norm_viability_joined.parquet"))
@@ -153,7 +154,7 @@ for (m in count_metrics) {
         plot = p_by_both, width = 16, height = 20, dpi = 600, units = "in"
     )
 }
-cat("Wrote", 3 * length(count_metrics), "3D figures to", figures_dir, "\n")
+cat("Wrote", 3 * length(count_metrics), "3D figures to", figures_dir_rel, "\n")
 
 # --- 2D: FOV-normalized cell/organoid counts vs. viability, all 2D methods
 # (max_projection, middle_slice, middle_n_slice), 3 facet variants ---
@@ -218,4 +219,4 @@ for (m in count_metrics) {
         n_2d_figures <- n_2d_figures + 1
     }
 }
-cat("Wrote", n_2d_figures, "2D figures to", figures_dir, "\n")
+cat("Wrote", n_2d_figures, "2D figures to", figures_dir_rel, "\n")

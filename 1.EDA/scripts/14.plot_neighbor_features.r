@@ -28,6 +28,7 @@ source(file.path(root_dir, "utils", "r_plot_themes.r"))
 
 results_dir <- file.path(root_dir, "1.EDA", "results", "neighbors")
 figures_dir <- file.path(root_dir, "1.EDA", "figures", "neighbors")
+figures_dir_rel <- file.path("1.EDA", "figures", "neighbors")
 dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
 
 plot_theme <- theme_bw() + theme(
@@ -144,4 +145,4 @@ p_3d_pooled <- (
 ggsave(filename = file.path(figures_dir, "3D_neighbor_count_pooled_by_treatment.png"),
        plot = p_3d_pooled, width = 9, height = 6, dpi = 600, units = "in")
 
-cat("Wrote 8 figures to", figures_dir, "\n")
+cat("Wrote 8 figures to", figures_dir_rel, "\n")

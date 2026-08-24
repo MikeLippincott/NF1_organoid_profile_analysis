@@ -6,7 +6,7 @@
 # combined_platemaps.parquet. Reports and logs dropped patients (those in
 # profiles but not in the platemap, and vice versa).
 
-# In[1]:
+# In[ ]:
 
 
 import warnings
@@ -16,7 +16,7 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 
 
-# In[2]:
+# In[ ]:
 
 
 from notebook_init_utils import init_notebook
@@ -59,7 +59,9 @@ joined = mean_counts.merge(
     how="inner",
 )
 joined.to_parquet(results_dir / "count_viability_joined.parquet", index=False)
-print(f"Wrote {results_dir / 'count_viability_joined.parquet'} ({len(joined)} rows)")
+print(
+    f"Wrote {(results_dir / 'count_viability_joined.parquet').relative_to(root_dir)} ({len(joined)} rows)"
+)
 
 profile_patients = set(mean_counts["Metadata_patient_tumor"].unique())
 platemap_patients = set(platemaps["patient_id"].unique())
@@ -74,7 +76,8 @@ dropped_patients = pd.DataFrame(
     + [
         {"patient_id": p, "reason": "missing_from_profiles"}
         for p in dropped_from_platemaps
-    ]
+    ],
+    columns=["patient_id", "reason"],
 )
 dropped_patients.to_parquet(
     results_dir / "count_viability_dropped_patients.parquet", index=False
@@ -82,10 +85,12 @@ dropped_patients.to_parquet(
 
 print("Dropped from profiles (no viability/platemap coverage):", dropped_from_profiles)
 print("In platemaps but not in profiles:", dropped_from_platemaps)
-print(f"Wrote {results_dir / 'count_viability_dropped_patients.parquet'}")
+print(
+    f"Wrote {(results_dir / 'count_viability_dropped_patients.parquet').relative_to(root_dir)}"
+)
 
 
-# In[3]:
+# In[ ]:
 
 
 # --- Additional metrics: total cells and total organoids per treatment,
@@ -172,6 +177,6 @@ joined_norm = pivoted.merge(
 )
 joined_norm.to_parquet(results_dir / "count_norm_viability_joined.parquet", index=False)
 print(
-    f"Wrote {results_dir / 'count_norm_viability_joined.parquet'} ({len(joined_norm)} rows)"
+    f"Wrote {(results_dir / 'count_norm_viability_joined.parquet').relative_to(root_dir)} ({len(joined_norm)} rows)"
 )
 print(joined_norm["modality"].value_counts().to_dict())

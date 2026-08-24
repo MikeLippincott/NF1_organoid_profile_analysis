@@ -28,6 +28,7 @@ source(file.path(root_dir, "utils", "r_plot_themes.r"))
 
 results_dir <- file.path(root_dir, "1.EDA", "results", "area_vs_volume")
 figures_dir <- file.path(root_dir, "1.EDA", "figures", "area_vs_volume")
+figures_dir_rel <- file.path("1.EDA", "figures", "area_vs_volume")
 dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
 
 plot_theme <- theme_bw() + theme(
@@ -113,4 +114,4 @@ for (kind in c("organoid", "cell")) {
         n_figures <- n_figures + 1
     }
 }
-cat("Wrote", n_figures, "figures to", figures_dir, "\n")
+cat("Wrote", n_figures, "figures to", figures_dir_rel, "\n")

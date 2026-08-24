@@ -20,7 +20,7 @@
 # into the same columns as 2D. No 3D organoid-level neighbor-density
 # equivalent to 2D's Organoid_Neighbors_* was found in the profiles.
 
-# In[1]:
+# In[ ]:
 
 
 import warnings
@@ -31,7 +31,7 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 
 
-# In[2]:
+# In[ ]:
 
 
 from notebook_init_utils import init_notebook
@@ -39,7 +39,7 @@ from notebook_init_utils import init_notebook
 root_dir, in_notebook = init_notebook()
 
 
-# In[3]:
+# In[ ]:
 
 
 from eda_helper_utils.utils_analysis import (
@@ -62,7 +62,7 @@ NUCLEI_NEIGHBOR_COLS_2D = [
 ORGANOID_NEIGHBOR_COLS_2D = ["Organoid_Neighbors_NumberOfNeighbors_Adjacent"]
 
 
-# In[4]:
+# In[ ]:
 
 
 # --- 2D nuclei-level ---
@@ -111,11 +111,15 @@ nuc_2d = pd.concat(nuc_rows, ignore_index=True) if nuc_rows else pd.DataFrame()
 org_2d = pd.concat(org_rows, ignore_index=True) if org_rows else pd.DataFrame()
 nuc_2d.to_parquet(results_dir / "nuclei_neighbors_2D.parquet", index=False)
 org_2d.to_parquet(results_dir / "organoid_neighbors_2D.parquet", index=False)
-print(f"Wrote {results_dir / 'nuclei_neighbors_2D.parquet'} ({len(nuc_2d)} rows)")
-print(f"Wrote {results_dir / 'organoid_neighbors_2D.parquet'} ({len(org_2d)} rows)")
+print(
+    f"Wrote {(results_dir / 'nuclei_neighbors_2D.parquet').relative_to(root_dir)} ({len(nuc_2d)} rows)"
+)
+print(
+    f"Wrote {(results_dir / 'organoid_neighbors_2D.parquet').relative_to(root_dir)} ({len(org_2d)} rows)"
+)
 
 
-# In[5]:
+# In[ ]:
 
 
 # --- 3D sc-level shell/distance neighbor metadata ---
@@ -162,7 +166,9 @@ for patient in patients_3d:
 
 sc_3d = pd.concat(sc3_rows, ignore_index=True) if sc3_rows else pd.DataFrame()
 sc_3d.to_parquet(results_dir / "nuclei_neighbors_3D.parquet", index=False)
-print(f"Wrote {results_dir / 'nuclei_neighbors_3D.parquet'} ({len(sc_3d)} rows)")
+print(
+    f"Wrote {(results_dir / 'nuclei_neighbors_3D.parquet').relative_to(root_dir)} ({len(sc_3d)} rows)"
+)
 print(
     "No 3D organoid-level neighbor-density equivalent found; skipping organoid_neighbors_3D output."
 )

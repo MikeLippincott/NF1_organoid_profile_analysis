@@ -27,6 +27,7 @@ root_dir <- find_git_root()
 source(file.path(root_dir, "utils", "r_plot_themes.r"))
 
 figures_dir <- file.path(root_dir, "1.EDA", "figures", "volume_area")
+figures_dir_rel <- file.path("1.EDA", "figures", "volume_area")
 dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
 
 plot_theme <- (
@@ -62,7 +63,7 @@ for (proj in names(projection_prefix)) {
 }
 area_df <- bind_rows(area_rows)
 area_df$Metadata_treatment <- factor(area_df$Metadata_treatment,
-                                       levels = intersect(custom_treatment_order, unique(area_df$Metadata_treatment)))
+                                       levels = treatment_levels_with_unlisted(area_df$Metadata_treatment))
 
 p_area_patient <- (
     ggplot(area_df, aes(x = patient, y = Organoid_AreaShape_Area, fill = patient))
@@ -112,7 +113,7 @@ for (proj in names(projection_prefix)) {
 }
 sc_area_df <- bind_rows(sc_area_rows)
 sc_area_df$Metadata_treatment <- factor(sc_area_df$Metadata_treatment,
-                                          levels = intersect(custom_treatment_order, unique(sc_area_df$Metadata_treatment)))
+                                          levels = treatment_levels_with_unlisted(sc_area_df$Metadata_treatment))
 
 p_sc_area_patient <- (
     ggplot(sc_area_df, aes(x = patient, y = Cells_AreaShape_Area, fill = patient))
@@ -160,7 +161,7 @@ for (patient in patients_3d) {
 vol_df <- bind_rows(vol_rows)
 colnames(vol_df)[colnames(vol_df) == "Metadata_Experiment_Treatment"] <- "Metadata_treatment"
 vol_df$Metadata_treatment <- factor(vol_df$Metadata_treatment,
-                                      levels = intersect(custom_treatment_order, unique(vol_df$Metadata_treatment)))
+                                      levels = treatment_levels_with_unlisted(vol_df$Metadata_treatment))
 
 p_vol_patient <- (
     ggplot(vol_df, aes(x = patient, y = Organoid_NoChannel_AreaSizeShape_Volume, fill = patient))
@@ -207,7 +208,7 @@ ggsave(
     plot = p_vol_patient_treatment, width = 16, height = 14, dpi = 600, units = "in"
 )
 
-cat("Wrote 5 figures to", figures_dir, "\n")
+cat("Wrote 5 figures to", figures_dir_rel, "\n")
 
 # --- 3D: single-cell Volume, by patient ---
 sc_vol_rows <- list()
@@ -221,7 +222,7 @@ for (patient in patients_3d) {
 sc_vol_df <- bind_rows(sc_vol_rows)
 colnames(sc_vol_df)[colnames(sc_vol_df) == "Metadata_Experiment_Treatment"] <- "Metadata_treatment"
 sc_vol_df$Metadata_treatment <- factor(sc_vol_df$Metadata_treatment,
-                                         levels = intersect(custom_treatment_order, unique(sc_vol_df$Metadata_treatment)))
+                                         levels = treatment_levels_with_unlisted(sc_vol_df$Metadata_treatment))
 
 p_sc_vol_patient <- (
     ggplot(sc_vol_df, aes(x = patient, y = Cell_NoChannel_AreaSizeShape_Volume, fill = patient))
@@ -268,5 +269,5 @@ ggsave(
     plot = p_sc_vol_patient_treatment, width = 16, height = 14, dpi = 600, units = "in"
 )
 
-cat("Wrote 5 single-cell figures to", figures_dir, "\n")
+cat("Wrote 5 single-cell figures to", figures_dir_rel, "\n")
 
