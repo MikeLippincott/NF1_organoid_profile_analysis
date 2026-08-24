@@ -103,7 +103,6 @@ joined_3d$Metadata_treatment <- factor(joined_3d$Metadata_treatment,
 p_3d_patient <- (
     ggplot(joined_3d, aes(x = total_cell_count_norm, y = Organoid_NoChannel_AreaSizeShape_Volume, color = Metadata_patient_tumor))
     + geom_point(size = 1, alpha = 0.5)
-    + geom_smooth(method = "lm", se = FALSE, linewidth = 0.6)
     + scale_color_manual(values = setNames(
         tab20_palette_for_patients[seq_along(unique(joined_3d$Metadata_patient_tumor))],
         unique(joined_3d$Metadata_patient_tumor)
@@ -122,7 +121,6 @@ ggsave(
 p_3d_treatment <- (
     ggplot(joined_3d, aes(x = total_cell_count_norm, y = Organoid_NoChannel_AreaSizeShape_Volume, color = Metadata_treatment))
     + geom_point(size = 1, alpha = 0.4)
-    + geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 0.6)
     + scale_color_manual(values = custom_treatment_palette, na.value = "grey70")
     + labs(
         title = "3D pooled (all patients): organoid volume vs. total cell count (FOV-normalized), colored by treatment",
@@ -138,7 +136,6 @@ ggsave(
 p_3d_pooled_density <- (
     ggplot(joined_3d, aes(x = total_cell_count_norm, y = Organoid_NoChannel_AreaSizeShape_Volume))
     + geom_bin2d(bins = 60)
-    + geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.6)
     + scale_fill_viridis_c(trans = "log10")
     + labs(
         title = "3D pooled (all patients): organoid volume vs. total cell count (FOV-normalized)",
@@ -238,7 +235,6 @@ joined_2d$Metadata_treatment <- factor(joined_2d$Metadata_treatment,
 p_2d_pooled <- (
     ggplot(joined_2d, aes(x = total_cell_count_norm, y = Organoid_AreaShape_Area))
     + geom_bin2d(bins = 60)
-    + geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.6)
     + scale_fill_viridis_c(trans = "log10")
     + facet_wrap(~projection)
     + labs(
@@ -256,7 +252,6 @@ ggsave(
 p_2d_patient <- (
     ggplot(joined_2d, aes(x = total_cell_count_norm, y = Organoid_AreaShape_Area, color = Metadata_patient_tumor))
     + geom_point(size = 1, alpha = 0.4)
-    + geom_smooth(method = "lm", se = FALSE, linewidth = 0.6)
     + scale_color_manual(values = setNames(
         tab20_palette_for_patients[seq_along(unique(joined_2d$Metadata_patient_tumor))],
         unique(joined_2d$Metadata_patient_tumor)
@@ -276,7 +271,6 @@ ggsave(
 p_2d_treatment <- (
     ggplot(joined_2d, aes(x = total_cell_count_norm, y = Organoid_AreaShape_Area, color = Metadata_treatment))
     + geom_point(size = 1, alpha = 0.3)
-    + geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 0.6)
     + scale_color_manual(values = custom_treatment_palette, na.value = "grey70")
     + facet_wrap(~projection)
     + labs(

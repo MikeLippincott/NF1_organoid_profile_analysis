@@ -49,7 +49,8 @@ make_stat_figures <- function(df, modality_label, out_subdir, x_col_patient, x_c
         # per-patient: distribution of raw values per patient x channel x compartment
         p_patient <- (
             ggplot(d, aes(x = .data[[x_col_patient]], y = value, fill = .data[[x_col_patient]]))
-            + geom_boxplot(outlier.size = 0.4, outlier.alpha = 0.4)
+            + geom_violin(alpha = 0.6, trim = TRUE, scale = "width")
+            + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.4, outlier.alpha = 0.4)
             + facet_grid(channel ~ compartment, scales = "free_y")
             + labs(title = paste0(modality_label, ": ", s, " by patient, faceted by compartment x channel"),
                    x = "Patient", y = paste0(s, " (z-scored)"))
@@ -65,7 +66,8 @@ make_stat_figures <- function(df, modality_label, out_subdir, x_col_patient, x_c
                                                     levels = intersect(custom_treatment_order, unique(d_treatment[[x_col_treatment]])))
         p_pooled <- (
             ggplot(d_treatment, aes(x = .data[[x_col_treatment]], y = value, fill = .data[[x_col_treatment]]))
-            + geom_boxplot(outlier.size = 0.4, outlier.alpha = 0.4)
+            + geom_violin(alpha = 0.6, trim = TRUE, scale = "width")
+            + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.4, outlier.alpha = 0.4)
             + scale_fill_manual(values = custom_treatment_palette, na.value = "grey70")
             + facet_grid(channel ~ compartment, scales = "free_y")
             + labs(title = paste0(modality_label, " pooled: ", s, " by treatment, faceted by compartment x channel"),

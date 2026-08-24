@@ -36,8 +36,20 @@ dependencies = [
     "jupyter>=1.1.1",
     "ipywidgets>=8.1.8",
     "statsmodels>=0.14.6",
+    "umap-learn>=0.5.12",
 ]
 
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "prek>=0.2.9",
+    "jupyter>=1.1.1",
+    "jupyterlab>=4.4.0",
+    "ipython>=9.6.0",
+    "ruff>=0.14.0",
+    "isort>=6.1.0",
+    "pytest>=8.4.2",
+]
 
 [tool.pycln]
 all = true
