@@ -284,7 +284,7 @@ ggsave(
     plot = p_2d_treatment, width = 16, height = 6, dpi = 600, units = "in"
 )
 
-cat("Wrote 5 figures to", figures_dir, "\n")
+cat("Wrote 3 figures to", figures_dir, "\n")
 
 # --- 2D: same relationship, faceted by patient, by treatment, and by both
 # (all 2D methods included via the projection dimension) ---

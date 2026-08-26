@@ -74,7 +74,8 @@ dropped_patients = pd.DataFrame(
     + [
         {"patient_id": p, "reason": "missing_from_profiles"}
         for p in dropped_from_platemaps
-    ]
+    ],
+    columns=["patient_id", "reason"],
 )
 dropped_patients.to_parquet(
     results_dir / "count_viability_dropped_patients.parquet", index=False
