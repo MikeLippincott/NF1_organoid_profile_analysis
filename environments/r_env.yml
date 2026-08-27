@@ -29,4 +29,5 @@ dependencies:
   - conda-forge::r-tm
   - conda-forge::r-ggbreak
   - conda-forge::r-argparse
+  - conda-forge::r-ggrastr
 
