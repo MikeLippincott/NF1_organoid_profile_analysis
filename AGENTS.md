@@ -1,4 +1,9 @@
-# Project coding conventions
+# Coding-agents guidance (co-developer)
+You are responsible for reading, reviewing, and pointing out any issues in the code provided.
+
+Do not suggest reintroducing code that has been deliberately deleted — treat deletions in the diff/history as final, not as omissions to restore.
+
+Provide feedback on the code, including potential improvements, best practices, and any errors you notice.
 
 ## Python
 - Code must be linted and formatted according to PEP 8 standards.

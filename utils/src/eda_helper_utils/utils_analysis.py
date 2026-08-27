@@ -17,24 +17,15 @@ PROJECTION_FILE_PREFIX = {
 MISSING_VIABILITY_PATIENTS = {"NF0016_T1", "NF0030_T1", "NF0040_T1", "NF0037_T1_CQ1"}
 
 HARMONIZE_2D_MAP = {
-    "Metadata_treatment": "Metadata_treatment",
-    "Metadata_dose": "Metadata_dose",
-    "Metadata_dose_unit": "Metadata_dose_unit",
-    "Metadata_target": "Metadata_target",
-    "Metadata_class": "Metadata_class",
-    "Metadata_therapeutic_categories": "Metadata_therapeutic_categories",
-    "Metadata_Well": "Metadata_well",
+    "Metadata_treatment": "Metadata_Experiment_Treatment",
+    "Metadata_dose": "Metadata_Experiment_Dose",
+    "Metadata_dose_unit": "Metadata_Experiment_Unit",
+    "Metadata_target": "Metadata_Experiment_Target",
+    "Metadata_class": "Metadata_Experiment_Class",
+    "Metadata_therapeutic_categories": "Metadata_Experiment_TherapeuticCategories",
+    "Metadata_Well": "Metadata_Experiment_Well",
 }
 
-HARMONIZE_3D_MAP = {
-    "Metadata_Experiment_Treatment": "Metadata_treatment",
-    "Metadata_Experiment_Dose": "Metadata_dose",
-    "Metadata_Experiment_Unit": "Metadata_dose_unit",
-    "Metadata_Experiment_Target": "Metadata_target",
-    "Metadata_Experiment_Class": "Metadata_class",
-    "Metadata_Experiment_TherapeuticCategories": "Metadata_therapeutic_categories",
-    "Metadata_Experiment_Well": "Metadata_well",
-}
 
 CHANNELS = {"AGP", "Brightfield", "ER", "Hoechst", "Mito", "DNA", "NoChannel"}
 CATEGORIES_2D = {
