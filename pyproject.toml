@@ -36,6 +36,8 @@ dependencies = [
     "jupyter>=1.1.1",
     "ipywidgets>=8.1.8",
     "statsmodels>=0.14.6",
+    "umap-learn>=0.5.12",
+    "pycytominer>=1.7.1",
 ]
 
 
