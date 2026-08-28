@@ -1,4 +1,4 @@
-list_of_packages <- c("ggplot2", "dplyr", "arrow", "RColorBrewer")
+list_of_packages <- c("ggplot2", "dplyr", "arrow", "RColorBrewer", "ggrastr", "scales")
 for (package in list_of_packages) {
     suppressPackageStartupMessages(
         suppressWarnings(
@@ -34,83 +34,73 @@ plot_theme <- theme_bw() + theme(
     plot.title = element_text(hjust = 0.5, size = 13),
     axis.title.x = element_text(size = 13),
     axis.title.y = element_text(size = 13),
-    axis.text.x = element_text(size = 8, angle = 90, hjust = 1, vjust = 0.5),
+    axis.text.x = element_text(size = 9),
     axis.text.y = element_text(size = 9),
-    strip.text = element_text(size = 8),
-    legend.title = element_text(size = 11),
-    legend.text = element_text(size = 8)
+    legend.position = "none"
 )
 
-metric_palette <- c("Area (2D)" = "#3D7DCC", "Volume (3D)" = "#E06C75")
+# Biological question: does 2D area track 3D volume the way simple organoid
+# geometry would predict? Restricted to max_projection -- the standard 2D
+# representation -- rather than comparing all 3 projection methods
+# side-by-side, and to one plot per kind (organoid/cell) in a single PDF.
+#
+# Plotted in RAW (unnormalized) units, read directly from each modality's
+# pre-normalization stage (script 17) -- not the z-scored values used
+# elsewhere in this repo. Area came out of its upstream pipeline already
+# z-scored per patient while volume didn't (previously mislabeled
+# "z-scored" in this script when it wasn't); rather than patch that
+# mismatch, we sidestep it entirely by plotting both in their native scale.
+# Both area (px^2) and volume (voxels) span ~3-4 orders of magnitude, so
+# both axes are log10.
+#
+# There's no shared organoid ID between the 2D and 3D pipelines (separate
+# segmentations per modality), so individual area/volume records can't be
+# paired per-object. We instead randomly pair a capped sample of each
+# patient's area values with a capped sample of that patient's volume
+# values. This shows the joint occupied range of the two distributions
+# under an independence assumption -- NOT a per-organoid correlation -- and
+# is capped per patient to keep the 2D density estimate tractable.
+set.seed(0)
+pair_sample_n <- 500
 
-load_kind <- function(kind) {
-    area <- read_parquet(file.path(results_dir, paste0("area_2D_", kind, ".parquet")))
-    volume <- read_parquet(file.path(results_dir, paste0("volume_3D_", kind, ".parquet")))
-    area$Metadata_treatment <- factor(area$Metadata_treatment,
-        levels = intersect(custom_treatment_order, unique(area$Metadata_treatment)))
-    volume$Metadata_treatment <- factor(volume$Metadata_treatment,
-        levels = intersect(custom_treatment_order, unique(volume$Metadata_treatment)))
+load_raw <- function(kind) {
+    area <- read_parquet(file.path(results_dir, paste0("area_2D_", kind, "_raw.parquet")))
+    volume <- read_parquet(file.path(results_dir, paste0("volume_3D_", kind, "_raw.parquet")))
     list(area = area, volume = volume)
 }
 
-# stack area (2D, one projection) and volume (3D) into one long table - no
-# join needed, since we're comparing the two distributions' shapes, not
-# pairing individual records
-stack_area_volume <- function(area_df, volume_df, projection_name) {
-    bind_rows(
-        area_df %>%
-            filter(projection == projection_name) %>%
-            transmute(Metadata_patient_tumor, Metadata_treatment, Metadata_dose,
-                      value = area, metric = "Area (2D)"),
-        volume_df %>%
-            transmute(Metadata_patient_tumor, Metadata_treatment, Metadata_dose,
-                      value = volume, metric = "Volume (3D)")
-    )
+pair_by_patient <- function(area_df, volume_df) {
+    shared_patients <- intersect(unique(area_df$Metadata_patient_tumor),
+                                  unique(volume_df$Metadata_patient_tumor))
+    bind_rows(lapply(shared_patients, function(p) {
+        a <- area_df$area[area_df$Metadata_patient_tumor == p]
+        v <- volume_df$volume[volume_df$Metadata_patient_tumor == p]
+        a_sample <- sample(a, min(length(a), pair_sample_n))
+        v_sample <- sample(v, min(length(v), pair_sample_n))
+        expand.grid(area = a_sample, volume = v_sample)
+    }))
 }
 
-# --- per kind (organoid / single-cell) x per 2D projection method: area and
-# volume distributions side-by-side, faceted by patient_tumor and pooled by
-# treatment ---
-n_figures <- 0
+pdf(file.path(figures_dir, "area_vs_volume_density.pdf"), width = 8, height = 7, onefile = TRUE)
 for (kind in c("organoid", "cell")) {
     label <- if (kind == "organoid") "Organoid" else "Single-cell"
-    d <- load_kind(kind)
+    d <- load_raw(kind)
+    paired <- pair_by_patient(d$area, d$volume)
 
-    for (proj in unique(d$area$projection)) {
-        long_df <- stack_area_volume(d$area, d$volume, proj)
-        long_df$metric <- factor(long_df$metric, levels = c("Area (2D)", "Volume (3D)"))
-
-        p_by_patient <- (
-            ggplot(long_df, aes(x = Metadata_patient_tumor, y = value, fill = metric))
-            + geom_violin(alpha = 0.6, trim = TRUE, position = position_dodge(width = 0.8), width = 0.8)
-            + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.3, outlier.alpha = 0.3,
-                            position = position_dodge(width = 0.8))
-            + scale_fill_manual(values = metric_palette)
-            + labs(
-                title = paste0(label, ": area (2D, ", proj, ") vs. volume (3D) distributions, by patient"),
-                x = "Patient", y = "Value (z-scored)", fill = "Metric"
-            )
-            + plot_theme
+    p <- (
+        ggplot(paired, aes(x = area, y = volume))
+        + rasterise(geom_point(alpha = 0.02, size = 0.3, color = "grey40"), dpi = 300)
+        + geom_density_2d(color = "#3D7DCC", linewidth = 0.4)
+        + scale_x_log10(labels = label_number())
+        + scale_y_log10(labels = label_number())
+        + labs(
+            title = paste0(label, ": area (2D, max projection) vs. volume (3D), raw units"),
+            x = "Area (px^2, log10 scale)", y = "Volume (voxels, log10 scale)"
         )
-        ggsave(filename = file.path(figures_dir, paste0(kind, "_area_vs_volume_", proj, "_by_patient.png")),
-               plot = p_by_patient, width = 12, height = 7, dpi = 600, units = "in")
-        n_figures <- n_figures + 1
-
-        p_by_treatment <- (
-            ggplot(long_df, aes(x = Metadata_treatment, y = value, fill = metric))
-            + geom_violin(alpha = 0.6, trim = TRUE, position = position_dodge(width = 0.8), width = 0.8)
-            + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.3, outlier.alpha = 0.3,
-                            position = position_dodge(width = 0.8))
-            + scale_fill_manual(values = metric_palette)
-            + labs(
-                title = paste0(label, " pooled (all patients): area (2D, ", proj, ") vs. volume (3D) distributions, by treatment"),
-                x = "Treatment", y = "Value (z-scored)", fill = "Metric"
-            )
-            + plot_theme
-        )
-        ggsave(filename = file.path(figures_dir, paste0(kind, "_area_vs_volume_", proj, "_by_treatment.png")),
-               plot = p_by_treatment, width = 14, height = 7, dpi = 600, units = "in")
-        n_figures <- n_figures + 1
-    }
+        + plot_theme
+    )
+    print(p)
 }
-cat("Wrote", n_figures, "figures to", figures_dir, "\n")
+dev.off()
+
+cat("Wrote 1 PDF to", figures_dir, "\n")
