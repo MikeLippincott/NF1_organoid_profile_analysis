@@ -91,6 +91,7 @@ for (kind in c("organoid", "cell")) {
         ggplot(paired, aes(x = area, y = volume))
         + rasterise(geom_point(alpha = 0.02, size = 0.3, color = "grey40"), dpi = 300)
         + geom_density_2d(color = "#3D7DCC", linewidth = 0.4)
+        + geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey20", linewidth = 0.4)
         + scale_x_log10(labels = label_number())
         + scale_y_log10(labels = label_number())
         + labs(
