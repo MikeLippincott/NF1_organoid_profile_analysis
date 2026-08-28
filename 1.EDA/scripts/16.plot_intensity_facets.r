@@ -57,11 +57,24 @@ plot_theme <- theme_bw() + theme(
 
 mek_treatments <- names(treatment_moa_map)[treatment_moa_map == "MEK1/2 inhibitor"]
 keep_treatments <- c("DMSO", mek_treatments)
+keep_stats <- c("MeanIntensity", "MedianIntensity")
+keep_compartments <- c("whole_organoid", "cell", "nucleus")
 
 intensity_3d <- read_parquet(file.path(results_dir, "intensity_values_3D.parquet")) %>%
-    filter(Metadata_treatment %in% keep_treatments)
-intensity_3d$Metadata_treatment <- factor(intensity_3d$Metadata_treatment,
-                                            levels = intersect(custom_treatment_order, keep_treatments))
+    filter(Metadata_treatment %in% keep_treatments,
+           stat %in% keep_stats,
+           compartment %in% keep_compartments)
+treatment_levels <- intersect(custom_treatment_order, keep_treatments)
+intensity_3d$Metadata_treatment <- factor(intensity_3d$Metadata_treatment, levels = treatment_levels)
+
+# Diverging palette, scoped to this script only (not the shared
+# custom_treatment_palette, which is categorical/MOA-hued) -- DMSO sits at
+# the neutral midpoint so each inhibitor's shift reads as a divergence
+# away from control rather than an arbitrary hue.
+non_dmso <- setdiff(treatment_levels, "DMSO")
+half <- length(non_dmso) / 2
+ordered_for_palette <- c(non_dmso[seq_len(half)], "DMSO", non_dmso[(half + 1):length(non_dmso)])
+diverging_colors <- setNames(brewer.pal(length(treatment_levels), "RdBu"), ordered_for_palette)
 
 pdf(file.path(figures_dir, "3D_intensity_MEK_vs_DMSO.pdf"), width = 16, height = 8, onefile = TRUE)
 for (s in unique(intensity_3d$stat)) {
@@ -81,8 +94,8 @@ for (s in unique(intensity_3d$stat)) {
         p <- (
             ggplot(d, aes(x = value, color = Metadata_treatment, fill = Metadata_treatment))
             + geom_density(alpha = 0.25, linewidth = 0.5)
-            + scale_color_manual(values = custom_treatment_palette, na.value = "grey70")
-            + scale_fill_manual(values = custom_treatment_palette, na.value = "grey70")
+            + scale_color_manual(values = diverging_colors, na.value = "grey70")
+            + scale_fill_manual(values = diverging_colors, na.value = "grey70")
             # facet_grid's "free" scales are still shared down each column/row,
             # so one extreme patient x channel combination distorts every
             # other panel in its row or column. facet_wrap frees each panel
