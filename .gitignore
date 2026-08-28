@@ -162,7 +162,9 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-data/*
+data/profiles_2D*
+data/profiles_3D*
+shippable_dir.zip
 *Rplots.pdf
 1.EDA/results/
 1.EDA/figures/consensus_heatmaps/

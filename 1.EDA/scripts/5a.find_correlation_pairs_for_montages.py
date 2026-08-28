@@ -38,11 +38,29 @@ else:
 viability_df = pd.read_parquet(
     pathlib.Path(f"{root_dir}/data/viabilities/combined_platemaps.parquet")
 )
-df = pd.read_parquet(
+pairs_df = pd.read_parquet(
     pathlib.Path(
-        f"{root_dir}/1.EDA/results/correlation/3D_2.aggregated_profiles_sc_norm_sc_agg_profiles.parquet"
+        f"{root_dir}/1.EDA/results/correlation/3D_sc_correlation_pairs.parquet"
     )
 )
+samples_df = pd.read_parquet(
+    pathlib.Path(
+        f"{root_dir}/1.EDA/results/correlation/3D_sc_correlation_samples.parquet"
+    )
+)
+
+# sc_norm/agg matches this script's previous default input
+# (3D_2.aggregated_profiles_sc_norm_sc_agg_profiles.parquet)
+normalization_variant = "sc_norm"
+profile_type = "agg"
+pairs_df = pairs_df.loc[
+    (pairs_df["normalization_variant"] == normalization_variant)
+    & (pairs_df["profile_type"] == profile_type)
+].reset_index(drop=True)
+samples_df = samples_df.loc[
+    (samples_df["normalization_variant"] == normalization_variant)
+    & (samples_df["profile_type"] == profile_type)
+].reset_index(drop=True)
 
 figures_base_dir = pathlib.Path(f"{root_dir}/1.EDA/figures/").resolve()
 montage_figure_base_dir = pathlib.Path(f"{figures_base_dir}/montages/").resolve()
@@ -55,51 +73,39 @@ montage_figure_base_dir.mkdir(parents=True, exist_ok=True)
 # In[3]:
 
 
-df_metadata = df.filter(like="Metadata_").reset_index()
-df.drop(columns=df.filter(like="Metadata_").columns, inplace=True)
-df.reset_index(inplace=True)
-df.rename(columns={"index": "group1"}, inplace=True)
-
-
-# In[4]:
-
-
-# pivot the correlation matrix to long format
-# the correlations columns should be labeled group1 and group2, with the correlation value in a column called correlation
-# find the valid pairs too
-
-df_long = df.melt(
-    id_vars=["group1"],
-    var_name="group2",
-    value_name="correlation",
-)
-df_long["group1"] = df_long["group1"].apply(lambda x: f"Sample_{x}")
+# pairs_df is already long-format (one row per sample pair), unlike the old
+# wide correlation-matrix format this script used to read -- no melt
+# needed, just rename to the group1/group2 convention montage_utils expects
+df_long = pairs_df.rename(columns={"sample_i": "group1", "sample_j": "group2"})
 
 
 # In[5]:
 
 
-metadata_cols = [c for c in df_metadata.columns if c.startswith("Metadata_")]
+metadata_cols = [c for c in samples_df.columns if c.startswith("Metadata_")]
 
-# build a per-sample metadata table, one row per sample, keyed by Sample_N
-sample_meta = df_metadata[metadata_cols].copy()
-sample_meta["sample_id"] = [f"Sample_{i}" for i in range(len(sample_meta))]
+# per-sample metadata table, one row per sample, keyed by sample_index
+sample_meta = samples_df[["sample_index"] + metadata_cols].copy()
 
 # merge for group1
 df_long_with_meta = df_long.merge(
-    sample_meta.add_prefix("group1_").rename(columns={"group1_sample_id": "sample_id"}),
+    sample_meta.add_prefix("group1_").rename(
+        columns={"group1_sample_index": "sample_index"}
+    ),
     left_on="group1",
-    right_on="sample_id",
+    right_on="sample_index",
     how="left",
-).drop(columns=["sample_id"])
+).drop(columns=["sample_index"])
 
 # merge for group2
 df_long_with_meta = df_long_with_meta.merge(
-    sample_meta.add_prefix("group2_").rename(columns={"group2_sample_id": "sample_id"}),
+    sample_meta.add_prefix("group2_").rename(
+        columns={"group2_sample_index": "sample_index"}
+    ),
     left_on="group2",
-    right_on="sample_id",
+    right_on="sample_index",
     how="left",
-).drop(columns=["sample_id"])
+).drop(columns=["sample_index"])
 
 
 # In[6]:
@@ -235,7 +241,7 @@ df_long_with_meta_and_viability = filter_out_self_correlations(
 # save the long df
 df_long_with_meta_and_viability.to_parquet(
     pathlib.Path(
-        f"{root_dir}/1.EDA/results/correlation/3D_2.aggregated_profiles_sc_norm_sc_agg_profiles_with_meta_and_viability.parquet"
+        f"{root_dir}/1.EDA/results/correlation/3D_sc_correlation_pairs_{normalization_variant}_{profile_type}_with_meta_and_viability.parquet"
     )
 )
 
@@ -360,6 +366,26 @@ low_correlation_similar_viability_list = retrieve_quadrant_info(
     low_correlation_similar_viability_df
 )
 
+# retrieve_quadrant_info adds a "combinations" column to each df (matching
+# the combination_string built from the same row) -- use it to look up each
+# pair's correlation/viability_diff value for the individual montage
+# filenames below.
+combination_to_values = {}
+for _df in (
+    high_correlation_dissimilar_viability_df,
+    high_correlation_similar_viability_df,
+    low_correlation_dissimilar_viability_df,
+    low_correlation_similar_viability_df,
+):
+    combination_to_values.update(
+        dict(
+            zip(
+                _df["combinations"],
+                zip(_df["correlation"], _df["group1_group2_viability_diff"]),
+            )
+        )
+    )
+
 
 # In[15]:
 
@@ -412,6 +438,14 @@ for quadrent_of_correlation_and_viability in tqdm.tqdm(
         image_label1 = f"{'_'.join(image_label1.split('_')[:2])}_{'_'.join(image_label1.split('_')[3:5])}"
         image_label2 = "_".join(combination_string.split("__")[-4:])
         image_label2 = f"{'_'.join(image_label2.split('_')[:2])}_{'_'.join(image_label2.split('_')[3:5])}"
+        correlation_value, viability_diff_value = combination_to_values[
+            combination_string
+        ]
+        # "-" instead of "." for the decimal point: a "." anywhere but right
+        # before the real extension breaks tools that read the extension as
+        # everything after the first "." in the filename.
+        correlation_str = f"{correlation_value:.3f}".replace(".", "-")
+        viability_diff_str = f"{viability_diff_value:.3f}".replace(".", "-")
         # disable stdout for the plots here, since they are being saved to disk and not displayed in the notebook
         create_and_save_two_image_panel(
             image_1_array=make_multi_channel_image_array(image_1_file_path),
@@ -420,5 +454,5 @@ for quadrent_of_correlation_and_viability in tqdm.tqdm(
             image_2_label=image_label2,
             output_path=pathlib.Path(f"{montage_figure_base_dir}")
             / f"{quadrent_of_correlation_and_viability}"
-            / f"{combination_string}.png",
+            / f"{combination_string}_corr{correlation_str}_viabilitydiff{viability_diff_str}.png",
         )
