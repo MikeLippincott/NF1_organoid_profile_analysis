@@ -75,6 +75,7 @@ non_dmso <- setdiff(treatment_levels, "DMSO")
 half <- length(non_dmso) / 2
 ordered_for_palette <- c(non_dmso[seq_len(half)], "DMSO", non_dmso[(half + 1):length(non_dmso)])
 diverging_colors <- setNames(brewer.pal(length(treatment_levels), "RdBu"), ordered_for_palette)
+diverging_colors["DMSO"] <- "grey50"
 
 pdf(file.path(figures_dir, "3D_intensity_MEK_vs_DMSO.pdf"), width = 16, height = 8, onefile = TRUE)
 for (s in unique(intensity_3d$stat)) {
