@@ -47,7 +47,9 @@ FILE_3D = {
 
 
 def list_patient_dirs(base_dir):
-    return sorted(p.name for p in base_dir.iterdir() if p.is_dir() and p.name != "all_patients")
+    return sorted(
+        p.name for p in base_dir.iterdir() if p.is_dir() and p.name != "all_patients"
+    )
 
 
 patients_2d = list_patient_dirs(root_dir / "data" / "profiles_2D")
@@ -59,23 +61,17 @@ patients_3d = list_patient_dirs(root_dir / "data" / "profiles_3D")
 for kind, area_col in COL_2D.items():
     rows = []
     for patient in patients_2d:
-        f = (
-            root_dir
-            / "data"
-            / "profiles_2D"
-            / patient
-            / "4.annotated"
-            / FILE_2D[kind]
-        )
+        f = root_dir / "data" / "profiles_2D" / patient / "4.annotated" / FILE_2D[kind]
         if not f.exists():
             continue
-        df = pd.read_parquet(f, columns=["Metadata_treatment", "Metadata_dose", area_col])
+        df = pd.read_parquet(
+            f, columns=["Metadata_treatment", "Metadata_dose", area_col]
+        )
         g = df.rename(columns={area_col: "area"})
         g["Metadata_patient_tumor"] = patient
         rows.append(g)
     area_df = pd.concat(rows, ignore_index=True)
     area_df.to_parquet(results_dir / f"area_2D_{kind}_raw.parquet", index=False)
-    print(f"Wrote {results_dir / f'area_2D_{kind}_raw.parquet'} ({len(area_df)} rows)")
 
 # --- 3D volume, raw ---
 for kind, volume_col in COL_3D.items():
@@ -111,7 +107,6 @@ for kind, volume_col in COL_3D.items():
         rows.append(g)
     volume_df = pd.concat(rows, ignore_index=True)
     volume_df.to_parquet(results_dir / f"volume_3D_{kind}_raw.parquet", index=False)
-    print(f"Wrote {results_dir / f'volume_3D_{kind}_raw.parquet'} ({len(volume_df)} rows)")
 
 # --- coverage diagnostics (organoid-level patient_tumor keys only in one modality) ---
 area_organoid = pd.read_parquet(results_dir / "area_2D_organoid_raw.parquet")
