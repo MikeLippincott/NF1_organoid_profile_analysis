@@ -34,10 +34,12 @@ plot_theme <- theme_bw() + theme(
     plot.title = element_text(hjust = 0.5, size = 12),
     axis.title.x = element_text(size = 12),
     axis.title.y = element_text(size = 12),
-    axis.text.x = element_text(size = 8, angle = 45, hjust = 1),
+    axis.text.x = element_text(size = 7),
     axis.text.y = element_text(size = 7),
     strip.text = element_text(size = 8),
-    legend.position = "none"
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8)
 )
 
 # Biological question: how does intensity, per channel and per patient,
@@ -48,9 +50,10 @@ plot_theme <- theme_bw() + theme(
 # comparisons didn't serve this question and were dropped.
 #
 # `value` is z-scored PER PATIENT upstream, so Metadata_patient is always a
-# facet (never an x-axis category) with free y-scales -- every panel is
-# valid on its own terms. Outlier points on the boxplots are suppressed (the
-# violin already shows the tails) to keep the file size down.
+# facet (never an x-axis category) with free scales -- every panel is
+# valid on its own terms. Treatments are overlapping density curves (color)
+# within each panel rather than separate x-axis categories, so the shift
+# between DMSO and each MEK inhibitor's distribution is visible directly.
 
 mek_treatments <- names(treatment_moa_map)[treatment_moa_map == "MEK1/2 inhibitor"]
 keep_treatments <- c("DMSO", mek_treatments)
@@ -64,29 +67,32 @@ pdf(file.path(figures_dir, "3D_intensity_MEK_vs_DMSO.pdf"), width = 16, height =
 for (s in unique(intensity_3d$stat)) {
     for (cmp in unique(intensity_3d$compartment)) {
         d <- intensity_3d %>% filter(stat == s, compartment == cmp)
-        # A handful of rows carry extreme z-scores (near-zero within-patient
-        # variance blows up the z-score for the rare non-zero raw value --
-        # e.g. ER MedianIntensity hits 1e21). Left alone, one such point
-        # forces free_y to stretch to cover it, flattening every other
-        # channel/patient panel to a line at 0. Clip per patient x channel
-        # to the 1st/99th percentile so panel scales reflect the bulk of
-        # the distribution; this only affects the plot, not the data file.
-        d <- d %>%
-            group_by(Metadata_patient, channel) %>%
-            mutate(
-                value = pmin(pmax(value, quantile(value, 0.01, na.rm = TRUE)),
-                             quantile(value, 0.99, na.rm = TRUE))
-            ) %>%
-            ungroup()
+        # A small fraction of rows (~0.1% overall, but concentrated as high
+        # as 34% within some single patient x channel groups, e.g. NF0055's
+        # ER MedianIntensity) carry corrupted z-scores in the 1e15-1e21
+        # range -- near-zero within-patient variance blowing up the z-score
+        # for the rare non-zero raw value. Genuine z-scores across the
+        # whole dataset stay under ~500, so this is a distinct corrupted
+        # population, not real tail data -- a percentile-based clip breaks
+        # down for the groups where it's >1% of the data, so drop by a
+        # fixed sanity threshold instead. This only affects the plot, not
+        # the data file.
+        d <- d %>% filter(abs(value) < 1e6)
         p <- (
-            ggplot(d, aes(x = Metadata_treatment, y = value, fill = Metadata_treatment))
-            + geom_violin(alpha = 0.6, trim = TRUE, scale = "width")
-            + geom_boxplot(width = 0.15, alpha = 0.85, outlier.shape = NA)
+            ggplot(d, aes(x = value, color = Metadata_treatment, fill = Metadata_treatment))
+            + geom_density(alpha = 0.25, linewidth = 0.5)
+            + scale_color_manual(values = custom_treatment_palette, na.value = "grey70")
             + scale_fill_manual(values = custom_treatment_palette, na.value = "grey70")
-            + facet_grid(channel ~ Metadata_patient, scales = "free_y")
+            # facet_grid's "free" scales are still shared down each column/row,
+            # so one extreme patient x channel combination distorts every
+            # other panel in its row or column. facet_wrap frees each panel
+            # independently; nrow pins the layout to one row per channel so
+            # it still reads as a channel x patient grid.
+            + facet_wrap(channel ~ Metadata_patient, scales = "free", nrow = length(unique(d$channel)))
             + labs(
                 title = paste0("3D (", cmp, "): ", s, ", MEK inhibitors vs. DMSO, by patient x channel"),
-                x = "Treatment", y = paste0(s, " (z-scored within patient)")
+                x = paste0(s, " (z-scored within patient)"), y = "Density",
+                color = "Treatment", fill = "Treatment"
             )
             + plot_theme
         )
