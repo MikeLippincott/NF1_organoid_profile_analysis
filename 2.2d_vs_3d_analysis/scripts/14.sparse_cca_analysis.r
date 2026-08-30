@@ -47,7 +47,7 @@ profile_pairs <- data.frame(
         "Single-cell - Handcrafted",
         "Single-cell - Deep Learning (SAM-Med3D)",
         "Single-cell - Nucleocentric DL (SAM-Med3D)",
-        "Single-cell - Nucleocentric MorphEM (2D ViT)"
+        "Single-cell - Nucleocentric DL (MorphEM)"
     ),
     slug = c(
         "organoid_handcrafted",

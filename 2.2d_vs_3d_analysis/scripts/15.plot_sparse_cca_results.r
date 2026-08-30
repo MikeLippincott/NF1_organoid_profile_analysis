@@ -36,6 +36,13 @@ results_dir <- file.path(root_dir, "2.2d_vs_3d_analysis/results/sparse_cca")
 figures_dir <- file.path(root_dir, "2.2d_vs_3d_analysis/figures/sparse_cca")
 dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
 
+tab20_palette_for_patients <- c(
+    "#1f77b4", "#aec7e8", "#ff7f0e", "#ffbb78", "#2ca02c", "#98df8a",
+    "#d62728", "#ff9896", "#9467bd", "#c5b0d5", "#8c564b", "#c49c94",
+    "#e377c2", "#f7b6d2", "#7f7f7f", "#c7c7c7", "#bcbd22", "#dbdb8d",
+    "#17becf", "#9edae5"
+)
+
 profile_pairs <- data.frame(
     label = c(
         "Organoid - Handcrafted",
@@ -43,7 +50,7 @@ profile_pairs <- data.frame(
         "Single-cell - Handcrafted",
         "Single-cell - Deep Learning (SAM-Med3D)",
         "Single-cell - Nucleocentric DL (SAM-Med3D)",
-        "Single-cell - Nucleocentric MorphEM (2D ViT)"
+        "Single-cell - Nucleocentric DL (MorphEM)"
     ),
     slug = c(
         "organoid_handcrafted",
@@ -63,15 +70,16 @@ plot_pair <- function(label, slug, results_dir, figures_dir) {
     r_val <- round(cor_summary$canonical_correlation[1], 2)
     subtitle <- paste0("r = ", r_val)
 
-    score_plot <- ggplot(canonical_scores, aes(x = CC1_2D, y = CC1_3D, color = Metadata_patient)) +
+    score_plot <- ggplot(canonical_scores, aes(x = CC1_2D, y = CC1_3D, color = Metadata_patient_tumor)) +
         geom_point(alpha = 0.7, size = 2) +
         geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed", linewidth = 0.5) +
+        scale_color_manual(values = tab20_palette_for_patients) +
         labs(
             title = paste0("Sparse CCA: ", label),
             subtitle = subtitle,
             x = "2D canonical score",
             y = "3D canonical score",
-            color = "Patient"
+            color = "Patient tumor"
         ) +
         theme_bw() +
         theme(text = element_text(size = 14))
