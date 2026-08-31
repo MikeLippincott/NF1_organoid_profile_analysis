@@ -63,11 +63,12 @@ low_correlation_cutoff <- 0.1
 similar_viability_difference_cutoff <- 0.1
 dissimilar_viability_difference_cutoff <- 0.9
 
-# --- bivariate point color: a 2D (4-corner) bilinear blend, so a point's
-# color shows where it sits on BOTH axes at once, not just which quadrant it
-# falls in. Y (viability difference) selects the hue family -- cyan at 0,
-# purple at 1 -- and X (correlation) selects lightness within that family --
-# dark at the minimum observed correlation, light at correlation = 1.
+# --- bivariate point color: correlation drives one hue axis (teal) and
+# viability difference drives another (magenta), blended bilinearly across
+# 4 distinct corners -- so top-left and bottom-right land on different
+# hues instead of collapsing to the same shade. Bottom-left (both low) is
+# neutral light gray; top-right (both high) is the darkest blend of the
+# two hues.
 corr_min <- min(correlation_viability_df$correlation, na.rm = TRUE)
 corr_max <- 1  # correlation is bounded above by 1
 
@@ -77,23 +78,22 @@ correlation_viability_df <- correlation_viability_df %>%
     viability_norm = pmin(pmax(group1_group2_viability_diff, 0), 1)
   )
 
-corner_dark_cyan    <- c(0, 102, 102)    # bottom-left:  low corr,  viability = 0
-corner_light_cyan   <- c(204, 255, 255)  # bottom-right: corr = 1,  viability = 0
-corner_light_purple <- c(217, 179, 255)  # top-right:    corr = 1,  viability = 1
-corner_dark_purple  <- c(75, 0, 130)     # indigo, used only to build the top-left mix below
-corner_top_left     <- (corner_dark_cyan + corner_dark_purple) / 2  # top-left: low corr, viability = 1 -- dark cyan/purple mix
+corner_bottom_left  <- c(230, 230, 230)  # low corr,  low viability diff  -- neutral light gray
+corner_bottom_right <- c(0, 148, 148)    # high corr, low viability diff  -- teal
+corner_top_left     <- c(197, 27, 138)   # low corr,  high viability diff -- magenta
+corner_top_right    <- c(40, 5, 80)      # high corr, high viability diff -- dark indigo
 
 u <- correlation_viability_df$corr_norm
 v <- correlation_viability_df$viability_norm
-bilinear <- function(channel) {
-  (1 - u) * (1 - v) * corner_dark_cyan[channel] +
-    u * (1 - v) * corner_light_cyan[channel] +
+bilinear_channel <- function(channel) {
+  (1 - u) * (1 - v) * corner_bottom_left[channel] +
+    u * (1 - v) * corner_bottom_right[channel] +
     (1 - u) * v * corner_top_left[channel] +
-    u * v * corner_light_purple[channel]
+    u * v * corner_top_right[channel]
 }
 
 correlation_viability_df$point_color <- rgb(
-  bilinear(1), bilinear(2), bilinear(3), maxColorValue = 255
+  bilinear_channel(1), bilinear_channel(2), bilinear_channel(3), maxColorValue = 255
 )
 
 width <- 6
@@ -105,7 +105,7 @@ correlation_viability_plot <- ggplot(
 ) +
   geom_point(aes(color = point_color), alpha = 0.5, size = 1.5) +
   scale_color_identity() +
-  geom_density_2d(color = "black", linewidth = 0.3, alpha = 0.6) +
+  geom_density_2d(color = "black", linewidth = 0.8, alpha = 0.6) +
   geom_vline(xintercept = high_correlation_cutoff, color = "black", linetype = "dashed") +
   geom_vline(xintercept = low_correlation_cutoff, color = "black", linetype = "dotted") +
   geom_hline(yintercept = similar_viability_difference_cutoff, color = "black", linetype = "dotdash") +
@@ -115,7 +115,11 @@ correlation_viability_plot <- ggplot(
     y = "abs(Viability Difference)"
   ) +
   theme_minimal() +
-  theme(legend.position = "none")
+  theme(
+    legend.position = "none",
+    axis.title = element_text(size = 18),
+    axis.text = element_text(size = 14)
+  )
 
 height <- 8
 width <- 24
@@ -221,17 +225,17 @@ get_panel_box_fraction <- function(plot, box_width_in, box_height_in) {
   )
 }
 
-panel_box <- get_panel_box_fraction(p_base, box_width_in = width * 0.40, box_height_in = height * 1)
+panel_box <- get_panel_box_fraction(p_base, box_width_in = width * 0.385, box_height_in = height * 1)
 
 # maps a (correlation, viability_diff) data point to its position inside the
-# scatterplot's canvas box (draw_plot(p_base, x = 0.30, y = 0, width = 0.40,
+# scatterplot's canvas box (draw_plot(p_base, x = 0.315, y = 0, width = 0.385,
 # height = 1) below), via the panel's actual position within that box
 data_to_canvas <- function(correlation_value, viability_diff_value) {
   norm_x <- (correlation_value - corr_range[1]) / diff(corr_range)
   norm_y <- (viability_diff_value - viability_range[1]) / diff(viability_range)
   panel_x <- panel_box$left + norm_x * (panel_box$right - panel_box$left)
   panel_y <- panel_box$bottom + norm_y * (panel_box$top - panel_box$bottom)
-  list(x = 0.30 + 0.40 * panel_x, y = 0 + 1 * panel_y)
+  list(x = 0.315 + 0.385 * panel_x, y = 0 + 1 * panel_y)
 }
 
 arrow_targets <- lapply(img_paths, function(p) {
@@ -239,41 +243,56 @@ arrow_targets <- lapply(img_paths, function(p) {
   data_to_canvas(coord$correlation, coord$viability_diff)
 })
 
+# image box geometry, reused below by both draw_image and the arrows so an
+# arrow always starts exactly on its box's edge, at that box's vertical
+# center -- rather than a separate set of hand-picked numbers that can drift
+# out of sync with where the boxes actually are
+img_box_width <- 0.28
+img_box_height <- 0.44
+left_box_x <- 0.02
+right_box_x <- 0.70
+top_box_y <- 0.50
+bottom_box_y <- 0.00
+left_box_edge_x <- left_box_x + img_box_width  # right edge of the left-column boxes
+right_box_edge_x <- right_box_x                # left edge of the right-column boxes
+top_box_center_y <- top_box_y + img_box_height / 2
+bottom_box_center_y <- bottom_box_y + img_box_height / 2
+
 canvas <- ggdraw() +
-  draw_plot(p_base, x = 0.30, y = 0, width = 0.40, height = 1) +
+  draw_plot(p_base, x = 0.315, y = 0, width = 0.385, height = 1) +
 
   # images shrunk to height 0.44 (from 0.5) to leave a strip above each for
   # its title tile
-  draw_image(imgs$top_left,     x = 0.02, y = 0.50, width = 0.28, height = 0.44) +
-  draw_image(imgs$bottom_left,  x = 0.02, y = 0.00, width = 0.28, height = 0.44) +
-  draw_image(imgs$top_right,    x = 0.70, y = 0.50, width = 0.28, height = 0.44) +
-  draw_image(imgs$bottom_right, x = 0.70, y = 0.00, width = 0.28, height = 0.44) +
+  draw_image(imgs$top_left,     x = left_box_x, y = top_box_y, width = img_box_width, height = img_box_height) +
+  draw_image(imgs$bottom_left,  x = left_box_x, y = bottom_box_y, width = img_box_width, height = img_box_height) +
+  draw_image(imgs$top_right,    x = right_box_x, y = top_box_y, width = img_box_width, height = img_box_height) +
+  draw_image(imgs$bottom_right, x = right_box_x, y = bottom_box_y, width = img_box_width, height = img_box_height) +
 
   # title tiles, colored to match each image's border, replacing what used
   # to be a separate legend keyed by "top_left"/"top_right"/etc.
   draw_label(quadrant_labels[["top_left"]], x = 0.16, y = 0.97,
-             size = 11, fontface = "bold", color = quadrant_palette[["top_left"]]) +
+             size = 16, fontface = "bold", color = quadrant_palette[["top_left"]]) +
   draw_label(quadrant_labels[["bottom_left"]], x = 0.16, y = 0.47,
-             size = 11, fontface = "bold", color = quadrant_palette[["bottom_left"]]) +
+             size = 16, fontface = "bold", color = quadrant_palette[["bottom_left"]]) +
   draw_label(quadrant_labels[["top_right"]], x = 0.84, y = 0.97,
-             size = 11, fontface = "bold", color = quadrant_palette[["top_right"]]) +
+             size = 16, fontface = "bold", color = quadrant_palette[["top_right"]]) +
   draw_label(quadrant_labels[["bottom_right"]], x = 0.84, y = 0.47,
-             size = 11, fontface = "bold", color = quadrant_palette[["bottom_right"]]) +
+             size = 16, fontface = "bold", color = quadrant_palette[["bottom_right"]]) +
 
-  # colored arrows from each image to the exact point it was picked from
-  # (arrow_targets, computed above from each filename's encoded
-  # correlation/viability_diff), matching the border/quadrant color so the
-  # source is unambiguous
-  draw_line(x = c(0.30, arrow_targets$top_left$x), y = c(0.75, arrow_targets$top_left$y),
+  # colored arrows from each image's box edge (at that box's vertical
+  # center) to the exact point it was picked from (arrow_targets, computed
+  # above from each filename's encoded correlation/viability_diff),
+  # matching the border/quadrant color so the source is unambiguous
+  draw_line(x = c(left_box_edge_x, arrow_targets$top_left$x), y = c(top_box_center_y, arrow_targets$top_left$y),
             color = quadrant_palette[["top_left"]], size = 1.2,
             arrow = arrow(length = unit(0.08, "inches"), type = "closed")) +
-  draw_line(x = c(0.30, arrow_targets$bottom_left$x), y = c(0.25, arrow_targets$bottom_left$y),
+  draw_line(x = c(left_box_edge_x, arrow_targets$bottom_left$x), y = c(bottom_box_center_y, arrow_targets$bottom_left$y),
             color = quadrant_palette[["bottom_left"]], size = 1.2,
             arrow = arrow(length = unit(0.08, "inches"), type = "closed")) +
-  draw_line(x = c(0.70, arrow_targets$top_right$x), y = c(0.75, arrow_targets$top_right$y),
+  draw_line(x = c(right_box_edge_x, arrow_targets$top_right$x), y = c(top_box_center_y, arrow_targets$top_right$y),
             color = quadrant_palette[["top_right"]], size = 1.2,
             arrow = arrow(length = unit(0.08, "inches"), type = "closed")) +
-  draw_line(x = c(0.70, arrow_targets$bottom_right$x), y = c(0.25, arrow_targets$bottom_right$y),
+  draw_line(x = c(right_box_edge_x, arrow_targets$bottom_right$x), y = c(bottom_box_center_y, arrow_targets$bottom_right$y),
             color = quadrant_palette[["bottom_right"]], size = 1.2,
             arrow = arrow(length = unit(0.08, "inches"), type = "closed"))
 
