@@ -1,4 +1,4 @@
-list_of_packages <- c("ggplot2", "dplyr", "arrow", "tidyr", "RColorBrewer")
+list_of_packages <- c("ggplot2", "dplyr", "arrow", "tidyr", "RColorBrewer", "ggrastr", "patchwork")
 for (package in list_of_packages) {
     suppressPackageStartupMessages(
         suppressWarnings(
@@ -40,108 +40,63 @@ plot_theme <- theme_bw() + theme(
     legend.position = "none"
 )
 
-# --- 2D nuclei-level: distance to first closest neighbor, by patient (faceted by projection) ---
-nuc_2d <- read_parquet(file.path(results_dir, "nuclei_neighbors_2D.parquet"))
-p_nuc_2d_patient <- (
-    ggplot(nuc_2d, aes(x = Metadata_patient, y = Nuclei_Neighbors_FirstClosestDistance_Adjacent, fill = Metadata_patient))
-    + geom_violin(alpha = 0.6, trim = TRUE)
-    + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.2, outlier.alpha = 0.2)
-    + facet_wrap(~projection, ncol = 1)
-    + labs(title = "2D: nuclei first-closest-neighbor distance, by patient and projection method",
-           x = "Patient", y = "First closest neighbor distance (z-scored)")
-    + plot_theme
-)
-ggsave(filename = file.path(figures_dir, "2D_nuclei_first_closest_distance_per_patient.png"),
-       plot = p_nuc_2d_patient, width = 11, height = 12, dpi = 600, units = "in")
-
-p_nuc_2d_pooled <- nuc_2d %>%
-    mutate(Metadata_treatment = factor(Metadata_treatment, levels = intersect(custom_treatment_order, unique(Metadata_treatment)))) %>%
-    ggplot(aes(x = Metadata_treatment, y = Nuclei_Neighbors_FirstClosestDistance_Adjacent, fill = Metadata_treatment))
-p_nuc_2d_pooled <- (
-    p_nuc_2d_pooled
-    + geom_violin(alpha = 0.6, trim = TRUE)
-    + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.2, outlier.alpha = 0.2)
-    + scale_fill_manual(values = custom_treatment_palette, na.value = "grey70")
-    + facet_wrap(~projection, ncol = 1)
-    + labs(title = "2D pooled (all patients): nuclei first-closest-neighbor distance, by treatment",
-           x = "Treatment", y = "First closest neighbor distance (z-scored)")
-    + plot_theme
-)
-ggsave(filename = file.path(figures_dir, "2D_nuclei_first_closest_distance_pooled.png"),
-       plot = p_nuc_2d_pooled, width = 11, height = 12, dpi = 600, units = "in")
-
-# --- 2D nuclei-level: number of neighbors + percent touching (long format), pooled ---
-nuc_long <- nuc_2d %>%
-    select(Metadata_patient, projection, Nuclei_Neighbors_NumberOfNeighbors_Adjacent, Nuclei_Neighbors_PercentTouching_Adjacent) %>%
-    pivot_longer(cols = starts_with("Nuclei_Neighbors"), names_to = "metric", values_to = "value")
-p_nuc_metrics <- (
-    ggplot(nuc_long, aes(x = Metadata_patient, y = value, fill = Metadata_patient))
-    + geom_boxplot(outlier.size = 0.2, outlier.alpha = 0.2)
-    + facet_grid(metric ~ projection, scales = "free_y")
-    + labs(title = "2D: nuclei neighbor count and percent touching, by patient and projection method",
-           x = "Patient", y = "Value (z-scored)")
-    + plot_theme + theme(strip.text.y = element_text(size = 7))
-)
-ggsave(filename = file.path(figures_dir, "2D_nuclei_neighbor_metrics_per_patient.png"),
-       plot = p_nuc_metrics, width = 14, height = 8, dpi = 600, units = "in")
-
-# --- 2D organoid-level: number of neighboring organoids, by patient ---
-org_2d <- read_parquet(file.path(results_dir, "organoid_neighbors_2D.parquet"))
-p_org_2d <- (
-    ggplot(org_2d, aes(x = Metadata_patient, y = Organoid_Neighbors_NumberOfNeighbors_Adjacent, fill = Metadata_patient))
-    + geom_boxplot(outlier.size = 0.2, outlier.alpha = 0.2)
-    + facet_wrap(~projection, ncol = 1)
-    + labs(title = "2D: number of neighboring organoids, by patient and projection method",
-           x = "Patient", y = "Number of neighboring organoids (z-scored)")
-    + plot_theme
-)
-ggsave(filename = file.path(figures_dir, "2D_organoid_neighbor_count_per_patient.png"),
-       plot = p_org_2d, width = 11, height = 12, dpi = 600, units = "in")
-
-# --- 3D: shell/distance-based neighbor metrics, by patient (one plot per metric) ---
+# --- local crowding: 3D nuc (single-cell) and 3D org (organoid), plus 3D org density ---
+# Patient/treatment are shown as separate marginal panels (not a full
+# patient x treatment grid, which would be ~250 tiny panels) so it's possible
+# to see which factor accounts for more of the spread in each metric.
 nuc_3d <- read_parquet(file.path(results_dir, "nuclei_neighbors_3D.parquet"))
+# 3D organoid neighbor counts are derived in notebook 13 (bounding-sphere
+# touch test within each organoid's own image), since no Organoid_Neighbors_*
+# column exists in the 3D profiles the way it does in 2D.
+org_3d <- read_parquet(file.path(results_dir, "organoid_neighbors_3D.parquet"))
+# Organoid cell density (cells / organoid volume in um^3), also derived in
+# notebook 13 since it isn't a profile column either.
+org_density_3d <- read_parquet(file.path(results_dir, "organoid_density_3D.parquet"))
 
-p_3d_neighbor_count <- (
-    ggplot(nuc_3d, aes(x = Metadata_patient, y = Metadata_Neighbors_NeighborsCountAdjacent, fill = Metadata_patient))
-    + geom_boxplot(outlier.size = 0.2, outlier.alpha = 0.2)
-    + labs(title = "3D: adjacent neighbor count, by patient",
-           x = "Patient", y = "Adjacent neighbor count")
-    + plot_theme
+nuc_3d <- nuc_3d %>%
+    mutate(Metadata_Experiment_Treatment = factor(Metadata_Experiment_Treatment, levels = intersect(custom_treatment_order, unique(Metadata_Experiment_Treatment))))
+org_3d <- org_3d %>%
+    mutate(Metadata_Experiment_Treatment = factor(Metadata_Experiment_Treatment, levels = intersect(custom_treatment_order, unique(Metadata_Experiment_Treatment))))
+org_density_3d <- org_density_3d %>%
+    mutate(Metadata_Experiment_Treatment = factor(Metadata_Experiment_Treatment, levels = intersect(custom_treatment_order, unique(Metadata_Experiment_Treatment))))
+
+patient_treatment_panel <- function(df, y_col, y_label, title_prefix, y_trans = "identity") {
+    p_patient <- (
+        ggplot(df, aes(x = Metadata_Biology_PatientTumor, y = .data[[y_col]], fill = Metadata_Biology_PatientTumor))
+        + rasterise(geom_boxplot(outlier.size = 0.2, outlier.alpha = 0.2), dpi = 300)
+        + scale_y_continuous(trans = y_trans)
+        + labs(title = paste0(title_prefix, " - by patient (treatments pooled)"),
+               x = "Patient", y = y_label)
+        + plot_theme
+    )
+    p_treatment <- (
+        ggplot(df, aes(x = Metadata_Experiment_Treatment, y = .data[[y_col]], fill = Metadata_Experiment_Treatment))
+        + rasterise(geom_boxplot(outlier.size = 0.2, outlier.alpha = 0.2), dpi = 300)
+        + scale_fill_manual(values = custom_treatment_palette, na.value = "grey70")
+        + scale_y_continuous(trans = y_trans)
+        + labs(title = paste0(title_prefix, " - by treatment (patients pooled)"),
+               x = "Treatment", y = y_label)
+        + plot_theme
+    )
+    p_patient + p_treatment
+}
+
+p_crowding_nuc <- patient_treatment_panel(
+    nuc_3d, "Metadata_Neighbors_NeighborsCountAdjacent", "Adjacent neighbor count",
+    "Nuclei number of neighbors"
 )
-ggsave(filename = file.path(figures_dir, "3D_neighbor_count_per_patient.png"),
-       plot = p_3d_neighbor_count, width = 9, height = 6, dpi = 600, units = "in")
-
-p_3d_distance_from_center <- (
-    ggplot(nuc_3d, aes(x = Metadata_patient, y = Metadata_Neighbors_DistancesFromCenter, fill = Metadata_patient))
-    + geom_boxplot(outlier.size = 0.2, outlier.alpha = 0.2)
-    + labs(title = "3D: nucleus distance from organoid center, by patient",
-           x = "Patient", y = "Distance from organoid center")
-    + plot_theme
+p_crowding_organoid <- patient_treatment_panel(
+    org_3d, "Organoid_Neighbors_NumberOfNeighbors_Adjacent", "Adjacent neighbor count",
+    "Organoids number of neighbors"
 )
-ggsave(filename = file.path(figures_dir, "3D_distance_from_center_per_patient.png"),
-       plot = p_3d_distance_from_center, width = 9, height = 6, dpi = 600, units = "in")
-
-p_3d_distance_from_exterior <- (
-    ggplot(nuc_3d, aes(x = Metadata_patient, y = Metadata_Neighbors_DistancesFromExterior, fill = Metadata_patient))
-    + geom_boxplot(outlier.size = 0.2, outlier.alpha = 0.2)
-    + labs(title = "3D: nucleus distance from organoid exterior, by patient",
-           x = "Patient", y = "Distance from organoid exterior")
-    + plot_theme
+p_density_organoid <- patient_treatment_panel(
+    org_density_3d, "Organoid_CellDensity_CellsPerUm3", "Cell density (cells / um^3, pseudo-log scale)",
+    "Organoids cell density", y_trans = scales::pseudo_log_trans(sigma = 1e-4)
 )
-ggsave(filename = file.path(figures_dir, "3D_distance_from_exterior_per_patient.png"),
-       plot = p_3d_distance_from_exterior, width = 9, height = 6, dpi = 600, units = "in")
 
-p_3d_pooled_data <- nuc_3d %>%
-    mutate(Metadata_treatment = factor(Metadata_treatment, levels = intersect(custom_treatment_order, unique(Metadata_treatment))))
-p_3d_pooled <- (
-    ggplot(p_3d_pooled_data, aes(x = Metadata_treatment, y = Metadata_Neighbors_NeighborsCountAdjacent, fill = Metadata_treatment))
-    + geom_boxplot(outlier.size = 0.2, outlier.alpha = 0.2)
-    + scale_fill_manual(values = custom_treatment_palette, na.value = "grey70")
-    + labs(title = "3D pooled (all patients): adjacent neighbor count, by treatment",
-           x = "Treatment", y = "Adjacent neighbor count")
-    + plot_theme
-)
-ggsave(filename = file.path(figures_dir, "3D_neighbor_count_pooled_by_treatment.png"),
-       plot = p_3d_pooled, width = 9, height = 6, dpi = 600, units = "in")
-
-cat("Wrote 8 figures to", figures_dir, "\n")
+pdf_path <- file.path(figures_dir, "3D_neighbor_organoid_story.pdf")
+pdf(pdf_path, width = 16, height = 9, onefile = TRUE)
+print(p_crowding_nuc)
+print(p_crowding_organoid)
+print(p_density_organoid)
+invisible(dev.off())
