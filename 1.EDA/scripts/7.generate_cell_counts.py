@@ -218,6 +218,7 @@ organoid_cell_counts = organoid_df.groupby(metadata_cols_to_group_on).agg(
     mean_cells_per_organoid=pd.NamedAgg(
         column=organoid_cell_count_col[0], aggfunc="mean"
     ),
+    n_organoids=pd.NamedAgg(column=organoid_cell_count_col[0], aggfunc="count"),
     total_number_of_FOVs=pd.NamedAgg(
         column="Metadata_Experiment_WellFOV", aggfunc="nunique"
     ),
