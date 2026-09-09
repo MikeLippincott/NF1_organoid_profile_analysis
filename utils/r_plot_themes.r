@@ -191,11 +191,10 @@ tab20_palette_for_patients <- c(
     "#17becf", "#9edae5"
 )
 
-
 # cNF = cutaneous/subcutaneous neurofibroma, pNF = plexiform neurofibroma,
-# MPNST = malignant peripheral nerve sheath tumor. NF0030_T1 (myopericytoma),
-# NF0040_T1 (schwannoma), and SARCO361_T1 (sarcoma) are not NF1 nerve-sheath
-# tumors and are grouped as "Other".
+# MPNST = malignant peripheral nerve sheath tumor. NF0030_T1 (myopericytoma)
+# and NF0040_T1 (schwannoma) are not NF1 nerve-sheath tumors and are grouped
+# as "Other".
 # Source: https://github.com/WayScience/NF1_3D_organoid_profiling_pipeline/blob/4072be16543851063df9bcd16500498f269f45fd/figures/table1_patients_and_counts/results/table1_patients_and_counts_results.tsv
 tumor_type_lookup <- c(
     "NF0014_T1" = "cNF",
@@ -209,7 +208,7 @@ tumor_type_lookup <- c(
     "NF0040_T1" = "Other",
     "NF0055_T1" = "pNF",
     "SARCO219_T2" = "MPNST",
-    "SARCO361_T1" = "Other"
+    "SARCO361_T1" = "MPNST"
 )
 
 tumor_type_palette <- c(
@@ -217,4 +216,21 @@ tumor_type_palette <- c(
     "pNF" = "#D95F02",
     "MPNST" = "#7570B3",
     "Other" = "#999999"
+)
+
+# Short display labels for the 3D normalization variants, for use in plot
+# titles/legends instead of the raw snake_case identifiers (e.g.
+# "nucleocentric_morphem_norm" -> "Nucleocentric (MorphEm)"). First-pass
+# scheme: level (Organoid / Single-cell / Nucleocentric) + a parenthetical
+# naming the feature-extraction method (ZEDProfiler, MorphEm/CHAMMI, or
+# SAM-Med3D). See
+# https://github.com/WayScience/NF1_organoid_profile_analysis/issues/33 for
+# expanding this to a full cross-notebook labeling standard.
+normalization_variant_labels <- c(
+    organoid_norm = "Organoid (ZEDProfiler)",
+    sammed_organoid_norm = "Organoid (SAM-med)",
+    sc_norm = "Single-cell (ZEDProfiler)",
+    sammed_sc_norm = "Single-cell (SAM-med)",
+    nucleocentric_morphem_norm = "Nucleocentric (MorphEm)",
+    sammed_nucleocentric_norm = "Nucleocentric (SAM-med)"
 )
