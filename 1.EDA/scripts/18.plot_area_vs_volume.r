@@ -85,8 +85,8 @@ load_raw <- function(kind) {
 # cross join so the pair count stays tractable. Attaches group_cols back
 # onto the output so the result can be faceted by them.
 pair_within_group <- function(area_df, volume_df, group_cols, sample_n) {
-    area_key <- do.call(paste, c(area_df[group_cols], sep = ""))
-    volume_key <- do.call(paste, c(volume_df[group_cols], sep = ""))
+    area_key <- do.call(paste, c(area_df[group_cols], sep = ""))
+    volume_key <- do.call(paste, c(volume_df[group_cols], sep = ""))
     a_split <- split(area_df$area, area_key)
     v_split <- split(volume_df$volume, volume_key)
     shared_keys <- intersect(names(a_split), names(v_split))
@@ -133,6 +133,10 @@ base_layers <- function() {
         # a correctness issue, so raster is the right geom here.
         stat_density_2d(aes(fill = after_stat(ndensity)), geom = "raster", contour = FALSE),
         scale_fill_gradient(low = "white", high = "#3B0764", name = "Density", limits = c(0, 1)),
+        # Contour lines on top of the raster fill so density structure is
+        # readable even where the white/purple gradient is hard to judge by
+        # eye (e.g. printed in grayscale, or subtle mid-range differences).
+        geom_density_2d(color = "grey30", linewidth = 0.3, bins = 8),
         geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "orange", linewidth = 0.4),
         # 3 breaks per axis (not the default ~5-6) so scientific-notation
         # labels have room and don't overlap.

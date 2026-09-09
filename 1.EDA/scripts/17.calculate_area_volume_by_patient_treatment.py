@@ -55,6 +55,10 @@ def list_patient_dirs(base_dir):
 patients_2d = list_patient_dirs(root_dir / "data" / "profiles_2D")
 patients_3d = list_patient_dirs(root_dir / "data" / "profiles_3D")
 
+
+# In[3]:
+
+
 # --- 2D area, raw, max_projection only (raw values not available for the
 # other 2 projection methods without extra QC work, and moving away from
 # comparing projection methods anyway) ---
@@ -72,6 +76,10 @@ for kind, area_col in COL_2D.items():
         rows.append(g)
     area_df = pd.concat(rows, ignore_index=True)
     area_df.to_parquet(results_dir / f"area_2D_{kind}_raw.parquet", index=False)
+
+
+# In[4]:
+
 
 # --- 3D volume, raw ---
 for kind, volume_col in COL_3D.items():
