@@ -9,13 +9,13 @@ for (package in list_of_packages) {
 
 find_git_root <- function() {
     cwd <- getwd()
-    if (dir.exists(file.path(cwd, ".git"))) {
+    if (file.exists(file.path(cwd, ".git"))) {
         return(cwd)
     }
     current_path <- cwd
     while (dirname(current_path) != current_path) {
         parent_path <- dirname(current_path)
-        if (dir.exists(file.path(parent_path, ".git"))) {
+        if (file.exists(file.path(parent_path, ".git"))) {
             return(parent_path)
         }
         current_path <- parent_path
@@ -92,6 +92,19 @@ for (s in unique(intensity_3d$stat)) {
         # fixed sanity threshold instead. This only affects the plot, not
         # the data file.
         d <- d %>% filter(abs(value) < 1e6)
+        # facet_wrap's default panel order sorts by the first facet variable
+        # then the second, so this is already channel-major -- but that's an
+        # implicit contract that breaks silently if facet_wrap's fill
+        # behavior ever changes or the channel/patient sets become unbalanced.
+        # Build the ordering explicitly via an ordered combined key instead
+        # of relying on nrow alone to keep channels grouped by row.
+        channel_order <- intersect(names(channel_palette), unique(d$channel))
+        patient_order <- sort(unique(as.character(d$Metadata_patient)))
+        d$channel <- factor(d$channel, levels = channel_order)
+        d$Metadata_patient <- factor(d$Metadata_patient, levels = patient_order)
+        d$facet_key <- interaction(
+            d$channel, d$Metadata_patient, sep = " | ", lex.order = TRUE, drop = TRUE
+        )
         p <- (
             ggplot(d, aes(x = value, color = Metadata_treatment, fill = Metadata_treatment))
             + geom_density(alpha = 0.25, linewidth = 0.5)
@@ -102,7 +115,7 @@ for (s in unique(intensity_3d$stat)) {
             # other panel in its row or column. facet_wrap frees each panel
             # independently; nrow pins the layout to one row per channel so
             # it still reads as a channel x patient grid.
-            + facet_wrap(channel ~ Metadata_patient, scales = "free", nrow = length(unique(d$channel)))
+            + facet_wrap(~ facet_key, scales = "free", nrow = length(channel_order))
             + labs(
                 title = paste0("3D (", cmp, "): ", s, ", MEK inhibitors vs. DMSO, by patient x channel"),
                 x = paste0(s, " (z-scored within patient)"), y = "Density",
