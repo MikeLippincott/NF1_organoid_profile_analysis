@@ -1,14 +1,9 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# Section 7: per-object Mean/MedianIntensity values across channels and
-# compartments, long-format, for 16.plot_intensity_facets. Uses
-# organoid-level tables for the whole_organoid compartment and sc-level
-# tables for the cell/nucleus compartments. `value` is z-scored PER PATIENT
-# (within patient x compartment x channel x stat, across all treatments) so
-# every panel in the downstream plot is comparable on a common scale.
+# Section 7: per-object Mean/MedianIntensity values across channels and compartments, long-format, for 16.plot_intensity_facets. Uses organoid-level tables for the whole_organoid compartment and sc-level tables for the cell/nucleus compartments. `value` is z-scored PER PATIENT (within patient x compartment x channel x stat, across all treatments) so every panel in the downstream plot is comparable on a common scale.
 
-# In[ ]:
+# In[1]:
 
 
 import re
@@ -26,7 +21,7 @@ KEEP_STATS = ["MeanIntensity", "MedianIntensity"]
 COMPARTMENT_LABELS = {"Organoid": "whole_organoid", "Cell": "cell", "Nuclei": "nucleus"}
 
 
-# In[ ]:
+# In[2]:
 
 
 def patient_id(patient_dir_name: str) -> str:
@@ -70,7 +65,7 @@ def melt_intensity(df: pd.DataFrame, patient: str) -> pd.DataFrame:
     return long.drop(columns=["feature"]).dropna(subset=["value"])
 
 
-# In[ ]:
+# In[3]:
 
 
 rows = []

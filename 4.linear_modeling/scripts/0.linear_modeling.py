@@ -32,7 +32,7 @@ profile_dict = {
             "data/profiles_3D/all_patients/1.feature_selected_profiles/organoid_norm_fs_profiles.parquet",
         ),
         "output_profile_path": pathlib.Path(
-            root_dir, "1.EDA/results/linear_modeling/organoid_fs.parquet"
+            root_dir, "4.linear_modeling/results/linear_modeling/organoid_fs.parquet"
         ),
     },
     "single_cell_fs": {
@@ -41,7 +41,7 @@ profile_dict = {
             "data/profiles_3D/all_patients/1.feature_selected_profiles/sc_norm_fs_profiles.parquet",
         ),
         "output_profile_path": pathlib.Path(
-            root_dir, "1.EDA/results/linear_modeling/sc_fs.parquet"
+            root_dir, "4.linear_modeling/results/linear_modeling/sc_fs.parquet"
         ),
     },
 }
@@ -207,9 +207,6 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     )
     # TODO: temporarily drop texture features
     df = df.drop(columns=[col for col in df.columns if "_Texture_" in col])
-    # clip feature values to reduce the influence of extreme outliers on the model fit
-    feature_columns = [col for col in df.columns if col not in metadata_columns]
-    df[feature_columns] = df[feature_columns].clip(lower=-1e1, upper=1e1)
     # rename feature columns as the "." dod not play nice with the formula
     for col in df.columns:
         new_col = col.replace(
@@ -218,6 +215,9 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
             # the linear model interprets the "." as an operator and not as part of the column name
         )  # Replace . with empty string for compatibility in formula
         df.rename(columns={col: new_col}, inplace=True)
+    # clip feature values to reduce the influence of extreme outliers on the model fit
+    feature_columns = [col for col in df.columns if col not in metadata_columns]
+    df[feature_columns] = df[feature_columns].clip(lower=-1e1, upper=1e1)
 
     # Filter for specific treatment/dose combinations
     # DMSO's combined label is consistent across all patients
