@@ -70,12 +70,19 @@ dose_shape_palette <- c("1" = 16, "10" = 17)  # 16 = circle, 17 = triangle
 # Results only carry the combined "Drug_Dose" string; split it into bare drug
 # (for color) and bare dose (for shape) before plotting.
 split_treatment_dose <- function(df) {
+    # Exclude this sample from displays and plotted summaries only.
+    # Pooled inter-patient scores retain their original calculation cohort.
+    if ("Metadata_patient" %in% names(df)) {
+        df <- df %>% filter(is.na(Metadata_patient) | Metadata_patient != "NF0037_T1_CQ1")
+    }
     df$Metadata_treatment <- sub("_[0-9]+$", "", df$Metadata_treatment_dose)
     df$Metadata_dose <- sub(".*_([0-9]+)$", "\\1", df$Metadata_treatment_dose)
     df
 }
 
 plot_theme <- theme(
+    aspect.ratio = 1,
+    panel.spacing.x = grid::unit(1.2, "lines"),
     plot.title   = element_text(hjust = 0.5, size = 14),
     axis.title.x = element_text(size = 16),
     axis.title.y = element_text(size = 16),
@@ -95,7 +102,7 @@ point_layer <- function(..., rasterize_dpi = 300) {
 }
 
 # Saves a list of ggplot objects as a single multi-page PDF, one page per plot.
-save_plots_pdf <- function(plots, output_path, width = 10, height = 6) {
+save_plots_pdf <- function(plots, output_path, width = 10, height = 12) {
     pdf(output_path, width = width, height = height)
     on.exit(dev.off(), add = TRUE)
     for (p in plots) {
@@ -103,13 +110,17 @@ save_plots_pdf <- function(plots, output_path, width = 10, height = 6) {
     }
 }
 
+intra_plots <- list()
+inter_plots <- list()
+cross_plots <- list()
+
 # mAP volcano-style scatter (mAP vs -log10(p))
 make_mAP_plot <- function(df, title, faceted) {
     p <- (
         ggplot(df, aes(x = mean_average_precision, y = `-log10(p-value)`, color = Metadata_treatment, shape = Metadata_dose))
         + point_layer(size = 3, alpha = 0.7)
         + scale_color_manual(name = "Treatment", values = custom_treatment_palette,
-                              guide = guide_legend(title.position = "top", title.hjust = 0.5, order = 1))
+                              guide = guide_legend(ncol = 4, title.position = "top", title.hjust = 0.5, order = 1))
         + scale_shape_manual(name = "Dose", values = dose_shape_palette,
                               guide = guide_legend(title.position = "top", title.hjust = 0.5, order = 2))
         + geom_hline(yintercept = 1.3, linetype = "dashed", color = "red")
@@ -127,26 +138,22 @@ make_mAP_plot <- function(df, title, faceted) {
 # mAP vs cosine distance scatter
 make_mAP_vs_distance_plot <- function(df, title, faceted) {
     p <- (
-        ggplot(df, aes(x = cosine_distance_mean, y = mean_average_precision, color = Metadata_treatment, shape = Metadata_dose))
+        ggplot(df, aes(x = mean_average_precision, y = cosine_distance_mean, color = Metadata_treatment, shape = Metadata_dose))
         + point_layer(size = 3, alpha = 0.7)
         + scale_color_manual(name = "Treatment", values = custom_treatment_palette,
-                              guide = guide_legend(title.position = "top", title.hjust = 0.5, order = 1))
+                              guide = guide_legend(ncol = 4, title.position = "top", title.hjust = 0.5, order = 1))
         + scale_shape_manual(name = "Dose", values = dose_shape_palette,
                               guide = guide_legend(title.position = "top", title.hjust = 0.5, order = 2))
-        + labs(x = "Cosine Distance", y = "Mean Average Precision", title = title)
+        + labs(x = "Mean Average Precision", y = "Cosine Distance", title = title)
         + theme_bw()
         + plot_theme
-        + ylim(0, 1)
+        + xlim(0, 1)
     )
     if (faceted) {
         p <- p + facet_wrap(~Metadata_patient, ncol = 4)
     }
     p
 }
-
-intra_plots <- list()
-inter_plots <- list()
-cross_plots <- list()
 
 # mAP-vs-p and mAP-vs-distance, one intra + one inter pair of plots per profile type
 for (i in seq_len(nrow(profile_types))) {
@@ -215,7 +222,7 @@ for (i in seq_len(nrow(profile_types))) {
         ggplot(merged_df, aes(x = inter_patient_mAP, y = intra_patient_mAP, color = Metadata_treatment, shape = Metadata_dose))
         + point_layer(size = 2, alpha = 0.7)
         + scale_color_manual(name = "Treatment", values = custom_treatment_palette,
-                              guide = guide_legend(title.position = "top", title.hjust = 0.5, order = 1))
+                              guide = guide_legend(ncol = 4, title.position = "top", title.hjust = 0.5, order = 1))
         + scale_shape_manual(name = "Dose", values = dose_shape_palette,
                               guide = guide_legend(title.position = "top", title.hjust = 0.5, order = 2))
         + geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red")
@@ -255,14 +262,16 @@ for (i in seq_len(nrow(pairs_2d_3d))) {
         ggplot(intra_merged, aes(x = mAP_2D, y = mAP_3D, color = Metadata_treatment, shape = Metadata_dose))
         + point_layer(size = 3, alpha = 0.7)
         + scale_color_manual(name = "Treatment", values = custom_treatment_palette,
-                              guide = guide_legend(title.position = "top", title.hjust = 0.5, order = 1))
+                              guide = guide_legend(ncol = 4, title.position = "top", title.hjust = 0.5, order = 1))
         + scale_shape_manual(name = "Dose", values = dose_shape_palette,
                               guide = guide_legend(title.position = "top", title.hjust = 0.5, order = 2))
         + geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red")
         + labs(x = "2D mAP Score", y = "3D mAP Score", title = paste0("2D vs 3D Intra-patient mAP - ", label))
         + theme_bw()
         + plot_theme
-        + xlim(0, 1) + ylim(0, 1)
+        + xlim(0, 1)
+        + ylim(0, 1)
+        + coord_fixed(ratio = 1)
         + facet_wrap(~Metadata_patient, ncol = 4)
     )
 
@@ -270,14 +279,16 @@ for (i in seq_len(nrow(pairs_2d_3d))) {
         ggplot(inter_merged, aes(x = mAP_2D, y = mAP_3D, color = Metadata_treatment, shape = Metadata_dose))
         + point_layer(size = 4, alpha = 0.7)
         + scale_color_manual(name = "Treatment", values = custom_treatment_palette,
-                              guide = guide_legend(title.position = "top", title.hjust = 0.5, order = 1))
+                              guide = guide_legend(ncol = 4, title.position = "top", title.hjust = 0.5, order = 1))
         + scale_shape_manual(name = "Dose", values = dose_shape_palette,
                               guide = guide_legend(title.position = "top", title.hjust = 0.5, order = 2))
         + geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red")
         + labs(x = "2D mAP Score", y = "3D mAP Score", title = paste0("2D vs 3D Inter-patient mAP - ", label))
         + theme_bw()
         + plot_theme
-        + xlim(0, 1) + ylim(0, 1)
+        + xlim(0, 1)
+        + ylim(0, 1)
+        + coord_fixed(ratio = 1)
     )
 }
 
@@ -309,12 +320,17 @@ for (i in seq_len(nrow(pairs_2d_3d))) {
         ggplot(intra_merged, aes(x = cosine_2D, y = cosine_3D, color = Metadata_treatment, shape = Metadata_dose))
         + point_layer(size = 3, alpha = 0.7)
         + scale_color_manual(name = "Treatment", values = custom_treatment_palette,
-                              guide = guide_legend(title.position = "top", title.hjust = 0.5, order = 1))
+                              guide = guide_legend(ncol = 4, title.position = "top", title.hjust = 0.5, order = 1))
         + scale_shape_manual(name = "Dose", values = dose_shape_palette,
                               guide = guide_legend(title.position = "top", title.hjust = 0.5, order = 2))
         + geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red")
         + labs(x = "2D Cosine Distance", y = "3D Cosine Distance",
                title = paste0("2D vs 3D Intra-patient Cosine Distance - ", label))
+        + coord_fixed(
+            ratio = 1,
+            xlim = range(c(intra_merged$cosine_2D, intra_merged$cosine_3D), finite = TRUE),
+            ylim = range(c(intra_merged$cosine_2D, intra_merged$cosine_3D), finite = TRUE)
+        )
         + theme_bw()
         + plot_theme
         + facet_wrap(~Metadata_patient, ncol = 4)
@@ -324,18 +340,23 @@ for (i in seq_len(nrow(pairs_2d_3d))) {
         ggplot(inter_merged, aes(x = cosine_2D, y = cosine_3D, color = Metadata_treatment, shape = Metadata_dose))
         + point_layer(size = 4, alpha = 0.7)
         + scale_color_manual(name = "Treatment", values = custom_treatment_palette,
-                              guide = guide_legend(title.position = "top", title.hjust = 0.5, order = 1))
+                              guide = guide_legend(ncol = 4, title.position = "top", title.hjust = 0.5, order = 1))
         + scale_shape_manual(name = "Dose", values = dose_shape_palette,
                               guide = guide_legend(title.position = "top", title.hjust = 0.5, order = 2))
         + geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red")
         + labs(x = "2D Cosine Distance", y = "3D Cosine Distance",
                title = paste0("2D vs 3D Inter-patient Cosine Distance - ", label))
+        + coord_fixed(
+            ratio = 1,
+            xlim = range(c(inter_merged$cosine_2D, inter_merged$cosine_3D), finite = TRUE),
+            ylim = range(c(inter_merged$cosine_2D, inter_merged$cosine_3D), finite = TRUE)
+        )
         + theme_bw()
         + plot_theme
     )
 }
 
 # One multi-page, rasterized-point PDF per category, instead of a PNG per plot
-save_plots_pdf(intra_plots, file.path(figures_dir, "intra_patient_metrics.pdf"), width = 12, height = 8)
-save_plots_pdf(inter_plots, file.path(figures_dir, "inter_patient_metrics.pdf"), width = 10, height = 6)
-save_plots_pdf(cross_plots, file.path(figures_dir, "intra_vs_inter_metrics.pdf"), width = 9, height = 6)
+save_plots_pdf(intra_plots, file.path(figures_dir, "intra_patient_metrics.pdf"), width = 14, height = 14)
+save_plots_pdf(inter_plots, file.path(figures_dir, "inter_patient_metrics.pdf"), width = 10, height = 12)
+save_plots_pdf(cross_plots, file.path(figures_dir, "intra_vs_inter_metrics.pdf"), width = 10, height = 12)
