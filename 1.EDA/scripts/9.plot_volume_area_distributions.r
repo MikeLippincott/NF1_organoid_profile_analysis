@@ -47,226 +47,189 @@ patients_3d <- setdiff(list.dirs(file.path(root_dir, "data", "profiles_3D"), rec
 
 projection_prefix <- c(max_projection = "max_projected", middle_slice = "middle_slice", middle_n_slice = "middle_n_slice")
 
-# --- 2D: organoid Area, by patient x projection ---
-area_rows <- list()
-for (proj in names(projection_prefix)) {
-    prefix <- projection_prefix[[proj]]
-    for (patient in patients_2d) {
-        f <- file.path(root_dir, "data", "profiles_2D", patient, "5.normalized", paste0(prefix, "_organoid.parquet"))
-        if (!file.exists(f)) next
-        df <- read_parquet(f, col_select = c("Metadata_treatment", "Organoid_AreaShape_Area"))
-        df$patient <- patient
-        df$projection <- proj
-        area_rows[[paste(proj, patient)]] <- df
+# --- helpers shared by every distribution plot below ---
+
+# Read one parquet per (projection, patient), tagging each with its source.
+load_2d_profiles <- function(patients, projections, path_fn, col_select) {
+    rows <- list()
+    for (proj in names(projections)) {
+        prefix <- projections[[proj]]
+        for (patient in patients) {
+            f <- path_fn(patient, prefix)
+            if (!file.exists(f)) next
+            df <- read_parquet(f, col_select = col_select)
+            df$patient <- patient
+            df$projection <- proj
+            rows[[paste(proj, patient)]] <- df
+        }
     }
+    bind_rows(rows)
 }
-area_df <- bind_rows(area_rows)
-area_df$Metadata_treatment <- factor(area_df$Metadata_treatment,
-                                       levels = intersect(custom_treatment_order, unique(area_df$Metadata_treatment)))
 
-p_area_patient <- (
-    ggplot(area_df, aes(x = patient, y = Organoid_AreaShape_Area, fill = patient))
-    + geom_violin(alpha = 0.6, trim = TRUE)
-    + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.2, outlier.alpha = 0.2)
-    + facet_wrap(~projection, ncol = 1, scales = "free_y")
-    + labs(
-        title = "2D: organoid area by patient, by projection method",
-        x = "Patient", y = "Organoid area (z-scored)"
-    )
-    + plot_theme
-)
-ggsave(
-    filename = file.path(figures_dir, "2D_area_per_patient_by_projection.png"),
-    plot = p_area_patient, width = 11, height = 14, dpi = 600, units = "in"
-)
+# Read one parquet per patient, tagging each with its source.
+load_3d_profiles <- function(patients, path_fn, col_select) {
+    rows <- list()
+    for (patient in patients) {
+        f <- path_fn(patient)
+        if (!file.exists(f)) next
+        df <- read_parquet(f, col_select = col_select)
+        df$patient <- patient
+        rows[[patient]] <- df
+    }
+    bind_rows(rows)
+}
 
-p_area_pooled <- (
-    ggplot(area_df, aes(x = Metadata_treatment, y = Organoid_AreaShape_Area, fill = Metadata_treatment))
-    + geom_violin(alpha = 0.6, trim = TRUE)
-    + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.2, outlier.alpha = 0.2)
-    + scale_fill_manual(values = custom_treatment_palette, na.value = "grey70")
-    + facet_wrap(~projection, ncol = 1, scales = "free_y")
-    + labs(
-        title = "2D pooled (all patients): organoid area by treatment, by projection method",
-        x = "Treatment", y = "Organoid area (z-scored)"
+# Order a treatment column by custom_treatment_order, unseen levels appended.
+set_treatment_factor <- function(df, col = "Metadata_treatment") {
+    df[[col]] <- factor(
+        df[[col]],
+        levels = c(
+            intersect(custom_treatment_order, unique(df[[col]])),
+            setdiff(unique(df[[col]]), custom_treatment_order)
+        )
     )
-    + plot_theme
+    df
+}
+
+# The violin + boxplot layout every panel in this notebook uses.
+violin_box_plot <- function(df, x, y, fill, title, ylab, xlab = NULL,
+                             facet = NULL, facet_ncol = NULL, facet_scales = "free_y",
+                             palette = NULL) {
+    p <- (
+        ggplot(df, aes(x = .data[[x]], y = .data[[y]], fill = .data[[fill]]))
+        + geom_violin(alpha = 0.6, trim = TRUE)
+        + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.2, outlier.alpha = 0.2)
+        + labs(title = title, x = if (is.null(xlab)) x else xlab, y = ylab)
+        + plot_theme
+    )
+    if (!is.null(palette)) {
+        p <- p + scale_fill_manual(values = palette, na.value = "grey70")
+    }
+    if (!is.null(facet)) {
+        p <- p + facet_wrap(as.formula(paste("~", facet)), ncol = facet_ncol, scales = facet_scales)
+    }
+    p
+}
+
+save_fig <- function(plot, filename, width, height) {
+    ggsave(
+        filename = file.path(figures_dir, filename),
+        plot = plot, width = width, height = height, dpi = 300, units = "in"
+    )
+}
+
+# --- 2D: organoid Area, by patient x projection ---
+area_df <- load_2d_profiles(
+    patients_2d, projection_prefix,
+    path_fn = function(patient, prefix) {
+        file.path(root_dir, "data", "profiles_2D", patient, "5.normalized", paste0(prefix, "_organoid.parquet"))
+    },
+    col_select = c("Metadata_treatment", "Organoid_AreaShape_Area")
 )
-ggsave(
-    filename = file.path(figures_dir, "2D_area_pooled_by_treatment.png"),
-    plot = p_area_pooled, width = 11, height = 14, dpi = 600, units = "in"
+area_df <- set_treatment_factor(area_df)
+
+p_area_patient <- violin_box_plot(
+    area_df, x = "patient", y = "Organoid_AreaShape_Area", fill = "patient",
+    title = "2D: organoid area by patient, by projection method",
+    ylab = "Organoid area (z-scored)", xlab = "Patient",
+    facet = "projection", facet_ncol = 1
 )
+save_fig(p_area_patient, "2D_area_per_patient_by_projection.png", width = 11, height = 14)
+
+p_area_pooled <- violin_box_plot(
+    area_df, x = "Metadata_treatment", y = "Organoid_AreaShape_Area", fill = "Metadata_treatment",
+    title = "2D pooled (all patients): organoid area by treatment, by projection method",
+    ylab = "Organoid area (z-scored)", xlab = "Treatment",
+    facet = "projection", facet_ncol = 1, palette = custom_treatment_palette
+)
+save_fig(p_area_pooled, "2D_area_pooled_by_treatment.png", width = 11, height = 14)
 
 # --- 2D: single-cell Area, by patient x projection ---
-sc_area_rows <- list()
-for (proj in names(projection_prefix)) {
-    prefix <- projection_prefix[[proj]]
-    for (patient in patients_2d) {
-        f <- file.path(root_dir, "data", "profiles_2D", patient, "5.normalized", paste0(prefix, "_sc.parquet"))
-        if (!file.exists(f)) next
-        df <- read_parquet(f, col_select = c("Metadata_treatment", "Cells_AreaShape_Area"))
-        df$patient <- patient
-        df$projection <- proj
-        sc_area_rows[[paste(proj, patient)]] <- df
-    }
-}
-sc_area_df <- bind_rows(sc_area_rows)
-sc_area_df$Metadata_treatment <- factor(sc_area_df$Metadata_treatment,
-                                          levels = intersect(custom_treatment_order, unique(sc_area_df$Metadata_treatment)))
+sc_area_df <- load_2d_profiles(
+    patients_2d, projection_prefix,
+    path_fn = function(patient, prefix) {
+        file.path(root_dir, "data", "profiles_2D", patient, "5.normalized", paste0(prefix, "_sc.parquet"))
+    },
+    col_select = c("Metadata_treatment", "Cells_AreaShape_Area")
+)
+sc_area_df <- set_treatment_factor(sc_area_df)
 
-p_sc_area_patient <- (
-    ggplot(sc_area_df, aes(x = patient, y = Cells_AreaShape_Area, fill = patient))
-    + geom_violin(alpha = 0.6, trim = TRUE)
-    + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.2, outlier.alpha = 0.2)
-    + facet_wrap(~projection, ncol = 1, scales = "free_y")
-    + labs(
-        title = "2D: single-cell area by patient, by projection method",
-        x = "Patient", y = "Cell area (z-scored)"
-    )
-    + plot_theme
+p_sc_area_patient <- violin_box_plot(
+    sc_area_df, x = "patient", y = "Cells_AreaShape_Area", fill = "patient",
+    title = "2D: single-cell area by patient, by projection method",
+    ylab = "Cell area (z-scored)", xlab = "Patient",
+    facet = "projection", facet_ncol = 1
 )
-ggsave(
-    filename = file.path(figures_dir, "2D_sc_area_per_patient_by_projection.png"),
-    plot = p_sc_area_patient, width = 11, height = 14, dpi = 600, units = "in"
-)
+save_fig(p_sc_area_patient, "2D_sc_area_per_patient_by_projection.png", width = 11, height = 14)
 
-p_sc_area_pooled <- (
-    ggplot(sc_area_df, aes(x = Metadata_treatment, y = Cells_AreaShape_Area, fill = Metadata_treatment))
-    + geom_violin(alpha = 0.6, trim = TRUE)
-    + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.2, outlier.alpha = 0.2)
-    + scale_fill_manual(values = custom_treatment_palette, na.value = "grey70")
-    + facet_wrap(~projection, ncol = 1, scales = "free_y")
-    + labs(
-        title = "2D pooled (all patients): single-cell area by treatment, by projection method",
-        x = "Treatment", y = "Cell area (z-scored)"
-    )
-    + plot_theme
+p_sc_area_pooled <- violin_box_plot(
+    sc_area_df, x = "Metadata_treatment", y = "Cells_AreaShape_Area", fill = "Metadata_treatment",
+    title = "2D pooled (all patients): single-cell area by treatment, by projection method",
+    ylab = "Cell area (z-scored)", xlab = "Treatment",
+    facet = "projection", facet_ncol = 1, palette = custom_treatment_palette
 )
-ggsave(
-    filename = file.path(figures_dir, "2D_sc_area_pooled_by_treatment.png"),
-    plot = p_sc_area_pooled, width = 11, height = 14, dpi = 600, units = "in"
-)
-
+save_fig(p_sc_area_pooled, "2D_sc_area_pooled_by_treatment.png", width = 11, height = 14)
 
 # --- 3D: organoid Volume, by patient ---
-vol_rows <- list()
-for (patient in patients_3d) {
-    f <- file.path(root_dir, "data", "profiles_3D", patient, "5.normalized_profiles", "organoid_norm.parquet")
-    if (!file.exists(f)) next
-    df <- read_parquet(f, col_select = c("Metadata_Experiment_Treatment", "Organoid_NoChannel_AreaSizeShape_Volume"))
-    df$patient <- patient
-    vol_rows[[patient]] <- df
-}
-vol_df <- bind_rows(vol_rows)
+vol_df <- load_3d_profiles(
+    patients_3d,
+    path_fn = function(patient) {
+        file.path(root_dir, "data", "profiles_3D", patient, "5.normalized_profiles", "organoid_norm.parquet")
+    },
+    col_select = c("Metadata_Experiment_Treatment", "Organoid_NoChannel_AreaSizeShape_Volume")
+)
 colnames(vol_df)[colnames(vol_df) == "Metadata_Experiment_Treatment"] <- "Metadata_treatment"
-vol_df$Metadata_treatment <- factor(vol_df$Metadata_treatment,
-                                      levels = intersect(custom_treatment_order, unique(vol_df$Metadata_treatment)))
+vol_df <- set_treatment_factor(vol_df)
 
-p_vol_patient <- (
-    ggplot(vol_df, aes(x = patient, y = Organoid_NoChannel_AreaSizeShape_Volume, fill = patient))
-    + geom_violin(alpha = 0.6, trim = TRUE)
-    + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.2, outlier.alpha = 0.2)
-    + labs(title = "3D: organoid volume by patient", x = "Patient", y = "Organoid volume (z-scored)")
-    + plot_theme
+p_vol_patient <- violin_box_plot(
+    vol_df, x = "patient", y = "Organoid_NoChannel_AreaSizeShape_Volume", fill = "patient",
+    title = "3D: organoid volume by patient", ylab = "Organoid volume (z-scored)", xlab = "Patient"
 )
-ggsave(
-    filename = file.path(figures_dir, "3D_volume_per_patient.png"),
-    plot = p_vol_patient, width = 10, height = 6, dpi = 600, units = "in"
-)
+save_fig(p_vol_patient, "3D_volume_per_patient.png", width = 10, height = 6)
 
-p_vol_pooled <- (
-    ggplot(vol_df, aes(x = Metadata_treatment, y = Organoid_NoChannel_AreaSizeShape_Volume, fill = Metadata_treatment))
-    + geom_violin(alpha = 0.6, trim = TRUE)
-    + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.2, outlier.alpha = 0.2)
-    + scale_fill_manual(values = custom_treatment_palette, na.value = "grey70")
-    + labs(
-        title = "3D pooled (all patients): organoid volume by treatment",
-        x = "Treatment", y = "Organoid volume (z-scored)"
-    )
-    + plot_theme
+p_vol_pooled <- violin_box_plot(
+    vol_df, x = "Metadata_treatment", y = "Organoid_NoChannel_AreaSizeShape_Volume", fill = "Metadata_treatment",
+    title = "3D pooled (all patients): organoid volume by treatment",
+    ylab = "Organoid volume (z-scored)", xlab = "Treatment", palette = custom_treatment_palette
 )
-ggsave(
-    filename = file.path(figures_dir, "3D_volume_pooled_by_treatment.png"),
-    plot = p_vol_pooled, width = 10, height = 6, dpi = 600, units = "in"
-)
+save_fig(p_vol_pooled, "3D_volume_pooled_by_treatment.png", width = 10, height = 6)
 
-p_vol_patient_treatment <- (
-    ggplot(vol_df, aes(x = Metadata_treatment, y = Organoid_NoChannel_AreaSizeShape_Volume, fill = Metadata_treatment))
-    + geom_violin(alpha = 0.6, trim = TRUE)
-    + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.2, outlier.alpha = 0.2)
-    + scale_fill_manual(values = custom_treatment_palette, na.value = "grey70")
-    + facet_wrap(~patient, scales = "free_y")
-    + labs(
-        title = "3D: organoid volume by treatment, faceted by patient",
-        x = "Treatment", y = "Organoid volume (z-scored)"
-    )
-    + plot_theme
+p_vol_patient_treatment <- violin_box_plot(
+    vol_df, x = "Metadata_treatment", y = "Organoid_NoChannel_AreaSizeShape_Volume", fill = "Metadata_treatment",
+    title = "3D: organoid volume by treatment, faceted by patient",
+    ylab = "Organoid volume (z-scored)", xlab = "Treatment",
+    facet = "patient", palette = custom_treatment_palette
 )
-ggsave(
-    filename = file.path(figures_dir, "3D_volume_by_patient_and_treatment.png"),
-    plot = p_vol_patient_treatment, width = 16, height = 14, dpi = 600, units = "in"
-)
-
-cat("Wrote 5 figures to", figures_dir, "\n")
+save_fig(p_vol_patient_treatment, "3D_volume_by_patient_and_treatment.png", width = 16, height = 14)
 
 # --- 3D: single-cell Volume, by patient ---
-sc_vol_rows <- list()
-for (patient in patients_3d) {
-    f <- file.path(root_dir, "data", "profiles_3D", patient, "5.normalized_profiles", "sc_norm.parquet")
-    if (!file.exists(f)) next
-    df <- read_parquet(f, col_select = c("Metadata_Experiment_Treatment", "Cell_NoChannel_AreaSizeShape_Volume"))
-    df$patient <- patient
-    sc_vol_rows[[patient]] <- df
-}
-sc_vol_df <- bind_rows(sc_vol_rows)
+sc_vol_df <- load_3d_profiles(
+    patients_3d,
+    path_fn = function(patient) {
+        file.path(root_dir, "data", "profiles_3D", patient, "5.normalized_profiles", "sc_norm.parquet")
+    },
+    col_select = c("Metadata_Experiment_Treatment", "Cell_NoChannel_AreaSizeShape_Volume")
+)
 colnames(sc_vol_df)[colnames(sc_vol_df) == "Metadata_Experiment_Treatment"] <- "Metadata_treatment"
-sc_vol_df$Metadata_treatment <- factor(sc_vol_df$Metadata_treatment,
-                                         levels = intersect(custom_treatment_order, unique(sc_vol_df$Metadata_treatment)))
+sc_vol_df <- set_treatment_factor(sc_vol_df)
 
-p_sc_vol_patient <- (
-    ggplot(sc_vol_df, aes(x = patient, y = Cell_NoChannel_AreaSizeShape_Volume, fill = patient))
-    + geom_violin(alpha = 0.6, trim = TRUE)
-    + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.2, outlier.alpha = 0.2)
-    + labs(title = "3D: single-cell volume by patient", x = "Patient", y = "Cell volume (z-scored)")
-    + plot_theme
+p_sc_vol_patient <- violin_box_plot(
+    sc_vol_df, x = "patient", y = "Cell_NoChannel_AreaSizeShape_Volume", fill = "patient",
+    title = "3D: single-cell volume by patient", ylab = "Cell volume (z-scored)", xlab = "Patient"
 )
-ggsave(
-    filename = file.path(figures_dir, "3D_sc_volume_per_patient.png"),
-    plot = p_sc_vol_patient, width = 10, height = 6, dpi = 600, units = "in"
-)
+save_fig(p_sc_vol_patient, "3D_sc_volume_per_patient.png", width = 10, height = 6)
 
-p_sc_vol_pooled <- (
-    ggplot(sc_vol_df, aes(x = Metadata_treatment, y = Cell_NoChannel_AreaSizeShape_Volume, fill = Metadata_treatment))
-    + geom_violin(alpha = 0.6, trim = TRUE)
-    + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.2, outlier.alpha = 0.2)
-    + scale_fill_manual(values = custom_treatment_palette, na.value = "grey70")
-    + labs(
-        title = "3D pooled (all patients): single-cell volume by treatment",
-        x = "Treatment", y = "Cell volume (z-scored)"
-    )
-    + plot_theme
+p_sc_vol_pooled <- violin_box_plot(
+    sc_vol_df, x = "Metadata_treatment", y = "Cell_NoChannel_AreaSizeShape_Volume", fill = "Metadata_treatment",
+    title = "3D pooled (all patients): single-cell volume by treatment",
+    ylab = "Cell volume (z-scored)", xlab = "Treatment", palette = custom_treatment_palette
 )
-ggsave(
-    filename = file.path(figures_dir, "3D_sc_volume_pooled_by_treatment.png"),
-    plot = p_sc_vol_pooled, width = 10, height = 6, dpi = 600, units = "in"
-)
+save_fig(p_sc_vol_pooled, "3D_sc_volume_pooled_by_treatment.png", width = 10, height = 6)
 
-p_sc_vol_patient_treatment <- (
-    ggplot(sc_vol_df, aes(x = Metadata_treatment, y = Cell_NoChannel_AreaSizeShape_Volume, fill = Metadata_treatment))
-    + geom_violin(alpha = 0.6, trim = TRUE)
-    + geom_boxplot(width = 0.15, alpha = 0.85, outlier.size = 0.2, outlier.alpha = 0.2)
-    + scale_fill_manual(values = custom_treatment_palette, na.value = "grey70")
-    + facet_wrap(~patient, scales = "free_y")
-    + labs(
-        title = "3D: single-cell volume by treatment, faceted by patient",
-        x = "Treatment", y = "Cell volume (z-scored)"
-    )
-    + plot_theme
+p_sc_vol_patient_treatment <- violin_box_plot(
+    sc_vol_df, x = "Metadata_treatment", y = "Cell_NoChannel_AreaSizeShape_Volume", fill = "Metadata_treatment",
+    title = "3D: single-cell volume by treatment, faceted by patient",
+    ylab = "Cell volume (z-scored)", xlab = "Treatment",
+    facet = "patient", palette = custom_treatment_palette
 )
-ggsave(
-    filename = file.path(figures_dir, "3D_sc_volume_by_patient_and_treatment.png"),
-    plot = p_sc_vol_patient_treatment, width = 16, height = 14, dpi = 600, units = "in"
-)
-
-cat("Wrote 5 single-cell figures to", figures_dir, "\n")
-
+save_fig(p_sc_vol_patient_treatment, "3D_sc_volume_by_patient_and_treatment.png", width = 16, height = 14)
