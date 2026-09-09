@@ -7,6 +7,7 @@ name = "notebook_init_utils"
 version = "0.1.0"
 description = "Utility functions for notebook initialization"
 requires-python = ">=3.8"
+dependencies = ["pandas"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
