@@ -169,6 +169,7 @@ for patient in patients_3d:
                     else pd.to_numeric(v, errors="coerce")
                 )
             )
+    df = harmonize_metadata(df, "3D", patient)
     sc3_rows.append(df)
 
 sc_3d = pd.concat(sc3_rows, ignore_index=True) if sc3_rows else pd.DataFrame()
