@@ -29,7 +29,7 @@ profile_dict = {
     "organoid_fs": {
         "input_profile_path": pathlib.Path(
             root_dir,
-            "data/profiles_3D/all_patients/1.feature_selected_profiles/organoid_norm_fs_profiles.parquet",
+            "data/profiles_3D/all_patients/0.normalized_profiles/organoid_norm_fs_profiles.parquet",
         ),
         "output_profile_path": pathlib.Path(
             root_dir, "4.linear_modeling/results/linear_modeling/organoid_fs.parquet"
@@ -38,7 +38,7 @@ profile_dict = {
     "single_cell_fs": {
         "input_profile_path": pathlib.Path(
             root_dir,
-            "data/profiles_3D/all_patients/1.feature_selected_profiles/sc_norm_fs_profiles.parquet",
+            "data/profiles_3D/all_patients/0.normalized_profiles/sc_norm_fs_profiles.parquet",
         ),
         "output_profile_path": pathlib.Path(
             root_dir, "4.linear_modeling/results/linear_modeling/sc_fs.parquet"
@@ -57,9 +57,9 @@ profile_dict = {
 #
 # **Model specification:**
 #
-# $$y \sim \text{txt} + \text{patient tumor} + + \text{tumor type} \text{txt} \times \text{patient tumpr} + \text{cell count} + \text{organoid count} + \text{cell/organoid count} $$
+# $$y \sim \text{txt} + \text{patient tumor} + \text{txt} \times \text{patient tumor} + \text{cell count} + \text{organoid count} + \text{cell/organoid count}$$
 #
-# $$y = \beta_0 + X_1\beta_1 + X_2\beta_2 + (X_1 X_2)\beta_3 + X_4\beta_4 + X_5\beta_5 + X_6\beta_6 + X_7\beta_7 + \epsilon$$
+# $$y = \beta_0 + X_1\beta_1 + X_2\beta_2 + X_3\beta_3 + X_4\beta_4 + X_5\beta_5 + (X_1 X_2)\beta_6 + \epsilon$$
 #
 # **Where:**
 #
@@ -68,12 +68,10 @@ profile_dict = {
 # | — | $\beta_0$ | Intercept |
 # | $X_1$ | $\beta_1$ | Treatment (e.g., control, drug + dosage) |
 # | $X_2$ | $\beta_2$ | Patient tumor |
-# | $X_3$ | $\beta_3$ | Tumor type |
-# | $X_4$ | $\beta_4$ | Cell count |
-# | $X_5$ | $\beta_5$ | Organoid count |
-# | $X_6$ | $\beta_6$ | Cell/organoid count |
-# | $X_1 X_2$ | $\beta_7$ | Interaction between treatment and patient tumor (product of $X_1$ and $X_2$) |
-#
+# | $X_3$ | $\beta_3$ | Cell count |
+# | $X_4$ | $\beta_4$ | Organoid count |
+# | $X_5$ | $\beta_5$ | Cell/organoid count |
+# | $X_1 X_2$ | $\beta_6$ | Interaction between treatment and patient tumor (product of $X_1$ and $X_2$) |
 #
 # $y$ = feature to predict, $\epsilon$ = error term
 #
@@ -88,7 +86,7 @@ profile_dict = {
 
 
 lm_equation_terms = (
-    "C(Metadata_treatment_full) + C(patient) + C(tumor_type) "
+    "C(Metadata_treatment_full) + C(patient) "
     "+ cell_count + organoid_count + cell_per_organoid_count "
     "+ C(Metadata_treatment_full):C(patient)"
 )
@@ -113,7 +111,7 @@ tumor_type_dict = {
 }
 
 
-# In[5]:
+# In[ ]:
 
 
 for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
@@ -122,6 +120,9 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     # (combo, feature, term), where "term" identifies which piece of
     # the model specification the coefficient/pvalue belongs to
     # (treatment, patient, cell_count, organoid_count, cell_per_organoid_count).
+    if profile_dict[profile]["output_profile_path"].exists():
+        continue  # skip if the output already exists
+
     linear_modeling_results_dict = {
         "term": [],
         "patient": [],
@@ -143,7 +144,6 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
             "Metadata_Experiment_Treatment": "treatment",
         }
     )
-
     # drop the NF0037_T1_CQ1 patient
     df = df.loc[df["patient"] != "NF0037_T1_CQ1"]
     # map each patient to its tumor type via the manually defined lookup
@@ -207,17 +207,24 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     )
     # TODO: temporarily drop texture features
     df = df.drop(columns=[col for col in df.columns if "_Texture_" in col])
-    # rename feature columns as the "." dod not play nice with the formula
-    for col in df.columns:
-        new_col = col.replace(
-            ".",
-            "",  # we replace the "." with an empty string because it causes issues in the formula
-            # the linear model interprets the "." as an operator and not as part of the column name
-        )  # Replace . with empty string for compatibility in formula
-        df.rename(columns={col: new_col}, inplace=True)
     # clip feature values to reduce the influence of extreme outliers on the model fit
     feature_columns = [col for col in df.columns if col not in metadata_columns]
     df[feature_columns] = df[feature_columns].clip(lower=-1e1, upper=1e1)
+    # rename feature columns as the "." dod not play nice with the formula
+    # the linear model interprets the "." as an operator and not as part of the column name
+    # track the sanitized -> original name mapping so the original feature
+    # names can be recovered after the results are loaded in any other
+    # environment/notebook (the "feature" column in the output only ever
+    # contains the sanitized names)
+    sanitized_to_original_col_map = {}
+    for col in df.columns:
+        new_col = col.replace(
+            ".", ""
+        )  # Replace . with empty string for compatibility in formula
+        sanitized_to_original_col_map[new_col] = col
+        df.rename(columns={col: new_col}, inplace=True)
+    # redefine the feature columns after renaming
+    feature_columns = [col for col in df.columns if col not in metadata_columns]
 
     # Filter for specific treatment/dose combinations
     # DMSO's combined label is consistent across all patients
@@ -320,6 +327,13 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
                     results.pvalues[covariate].item(),
                 )
     linear_modeling_results_df = pd.DataFrame(linear_modeling_results_dict)
+    # map the sanitized feature names back to their original (pre-".": removal)
+    # names so downstream consumers loading this parquet in any other
+    # env/notebook can recover the native column name without needing access
+    # to the sanitization logic above
+    linear_modeling_results_df["feature_original"] = linear_modeling_results_df[
+        "feature"
+    ].map(sanitized_to_original_col_map)
     # split the feature column into multiple columns
     # feature names follow the pattern: Compartment_Channel_Feature_type_Measurement
     linear_modeling_results_df[
@@ -355,6 +369,16 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     linear_modeling_results_df.to_parquet(
         profile_dict[profile]["output_profile_path"], index=False
     )
-
-
-# In[ ]:
+    # persist the sanitized -> original feature name mapping on its own so it
+    # can be loaded independently of the results file in any other env/notebook
+    feature_name_mapping_df = pd.DataFrame(
+        {
+            "feature": list(sanitized_to_original_col_map.keys()),
+            "feature_original": list(sanitized_to_original_col_map.values()),
+        }
+    )
+    feature_name_mapping_path = (
+        profile_dict[profile]["output_profile_path"].parent
+        / f"{profile}_feature_name_mapping.parquet"
+    )
+    feature_name_mapping_df.to_parquet(feature_name_mapping_path, index=False)
