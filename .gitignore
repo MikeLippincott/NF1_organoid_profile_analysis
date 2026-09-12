@@ -167,6 +167,9 @@ data/profiles_3D*
 shippable_dir.zip
 *Rplots.pdf
 1.EDA/results/
+1.EDA/figures/
+2.2d_vs_3d_analysis/results/
+4.linear_modeling/results/
 1.EDA/figures/consensus_heatmaps/
 1.EDA/figures/distance_metrics/
 1.EDA/figures/heatmaps/
