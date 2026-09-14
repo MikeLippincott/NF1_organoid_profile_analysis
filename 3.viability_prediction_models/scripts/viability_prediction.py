@@ -433,6 +433,26 @@ def train_elastic_net(
 
 
 # ---------------------------------------------------------------------
+# Shared output-path helper
+# ---------------------------------------------------------------------
+def get_run_output_paths(split_name: str, tag: str) -> dict:
+    """
+    Paths for the four artifact files a single run_group_cv /
+    run_random_split call produces, keyed by artifact type. Shared between
+    the "already ran this?" skip check and the actual save calls at the end
+    of each function, so the two can never drift apart.
+    """
+    return {
+        "metrics": RESULTS_OUTPUT / f"{split_name}_model_performance__{tag}.parquet",
+        "predictions": RESULTS_OUTPUT
+        / f"{split_name}_predicted_viabilities__{tag}.parquet",
+        "importances": RESULTS_OUTPUT
+        / f"{split_name}_feature_importances__{tag}.parquet",
+        "summary": RESULTS_OUTPUT / f"{split_name}_summary_metrics__{tag}.parquet",
+    }
+
+
+# ---------------------------------------------------------------------
 # Strategy 1 & 2: grouped CV (LOPO / LOTO), reusing the same core logic
 # ---------------------------------------------------------------------
 def run_group_cv(
@@ -481,6 +501,16 @@ def run_group_cv(
         list_of_metadatas.append(image_mode)
     retrain = kwargs.get("retrain")
     tag = "__".join(list_of_metadatas) if list_of_metadatas else split_name
+    shuffled_yn = "Yes" if shuffle_status == "shuffled" else "No"
+
+    output_paths = get_run_output_paths(split_name, tag)
+    if not retrain and all(p.exists() for p in output_paths.values()):
+        logging.info(
+            f"All output files already exist for {split_name}/{shuffle_status}/"
+            f"{profile_type} (tag={tag}) - skipping this run and loading existing "
+            f"metrics from {output_paths['metrics']}."
+        )
+        return pd.read_parquet(output_paths["metrics"])
 
     if viabilities_df.empty:
         raise ValueError(
@@ -602,6 +632,7 @@ def run_group_cv(
                     "Metadata_n_samples": len(X_eval),
                     "Metadata_split_method": split_name,
                     "Metadata_shuffle_status": shuffle_status,
+                    "Metadata_shuffled": shuffled_yn,
                     "Metadata_profile_type": profile_type,
                     "Metadata_image_mode": image_mode,
                     "Metadata_alpha": fold_alpha,
@@ -626,6 +657,7 @@ def run_group_cv(
         fold_preds["Metadata_held_out_group"] = held_out
         fold_preds["Metadata_split_method"] = split_name
         fold_preds["Metadata_shuffle_status"] = shuffle_status
+        fold_preds["Metadata_shuffled"] = shuffled_yn
         fold_preds["Metadata_profile_type"] = profile_type
         fold_preds["Metadata_image_mode"] = image_mode
         all_predictions.append(fold_preds)
@@ -640,6 +672,7 @@ def run_group_cv(
                 "Metadata_held_out_group": held_out,
                 "Metadata_split_method": split_name,
                 "Metadata_shuffle_status": shuffle_status,
+                "Metadata_shuffled": shuffled_yn,
                 "Metadata_profile_type": profile_type,
                 "Metadata_image_mode": image_mode,
             }
@@ -660,6 +693,7 @@ def run_group_cv(
             "Metadata_n_samples",
             "Metadata_split_method",
             "Metadata_shuffle_status",
+            "Metadata_shuffled",
             "Metadata_profile_type",
             "Metadata_image_mode",
             "Metadata_alpha",
@@ -670,20 +704,13 @@ def run_group_cv(
             "RMSE",
         ]
     ]
-    metrics_df.to_parquet(
-        RESULTS_OUTPUT / f"{split_name}_model_performance__{tag}.parquet", index=False
-    )
+    metrics_df.to_parquet(output_paths["metrics"], index=False)
 
     predictions_df = pd.concat(all_predictions, ignore_index=True)
-    predictions_df.to_parquet(
-        RESULTS_OUTPUT / f"{split_name}_predicted_viabilities__{tag}.parquet",
-        index=False,
-    )
+    predictions_df.to_parquet(output_paths["predictions"], index=False)
 
     importances_df = pd.concat(all_importances, ignore_index=True)
-    importances_df.to_parquet(
-        RESULTS_OUTPUT / f"{split_name}_feature_importances__{tag}.parquet", index=False
-    )
+    importances_df.to_parquet(output_paths["importances"], index=False)
 
     # Aggregate summary (mean/std across folds, test set only), plus a
     # pooled (out-of-fold) metric computed over every held-out prediction
@@ -697,12 +724,13 @@ def run_group_cv(
     summary.loc["pooled"] = pooled
     summary["Metadata_split_method"] = split_name
     summary["Metadata_shuffle_status"] = shuffle_status
+    summary["Metadata_shuffled"] = shuffled_yn
     summary["Metadata_profile_type"] = profile_type
     summary["Metadata_image_mode"] = image_mode
     logging.info(
         f"--- {split_name} summary (across {n_splits} folds, test set) ---\n{summary}"
     )
-    summary.to_parquet(RESULTS_OUTPUT / f"{split_name}_summary_metrics__{tag}.parquet")
+    summary.to_parquet(output_paths["summary"])
 
     return metrics_df
 
@@ -751,6 +779,16 @@ def run_random_split(
         list_of_metadatas.append(image_mode)
     retrain = kwargs.get("retrain")
     tag = "__".join(list_of_metadatas) if list_of_metadatas else split_name
+    shuffled_yn = "Yes" if shuffle_status == "shuffled" else "No"
+
+    output_paths = get_run_output_paths(split_name, tag)
+    if not retrain and all(p.exists() for p in output_paths.values()):
+        logging.info(
+            f"All output files already exist for {split_name}/{shuffle_status}/"
+            f"{profile_type} (tag={tag}) - skipping this run and loading existing "
+            f"metrics from {output_paths['metrics']}."
+        )
+        return pd.read_parquet(output_paths["metrics"])
 
     if viabilities_df.empty:
         raise ValueError(
@@ -838,6 +876,7 @@ def run_random_split(
                 "Metadata_n_samples": len(X_eval),
                 "Metadata_split_method": split_name,
                 "Metadata_shuffle_status": shuffle_status,
+                "Metadata_shuffled": shuffled_yn,
                 "Metadata_profile_type": profile_type,
                 "Metadata_image_mode": image_mode,
                 "Metadata_alpha": tuned_alpha,
@@ -859,6 +898,7 @@ def run_random_split(
     fold_preds["Metadata_held_out_group"] = held_out_label
     fold_preds["Metadata_split_method"] = split_name
     fold_preds["Metadata_shuffle_status"] = shuffle_status
+    fold_preds["Metadata_shuffled"] = shuffled_yn
     fold_preds["Metadata_profile_type"] = profile_type
     fold_preds["Metadata_image_mode"] = image_mode
 
@@ -872,6 +912,7 @@ def run_random_split(
             "Metadata_held_out_group": held_out_label,
             "Metadata_split_method": split_name,
             "Metadata_shuffle_status": shuffle_status,
+            "Metadata_shuffled": shuffled_yn,
             "Metadata_profile_type": profile_type,
             "Metadata_image_mode": image_mode,
         }
@@ -885,6 +926,7 @@ def run_random_split(
             "Metadata_n_samples",
             "Metadata_split_method",
             "Metadata_shuffle_status",
+            "Metadata_shuffled",
             "Metadata_profile_type",
             "Metadata_image_mode",
             "Metadata_alpha",
@@ -895,16 +937,9 @@ def run_random_split(
             "RMSE",
         ]
     ]
-    metrics_df.to_parquet(
-        RESULTS_OUTPUT / f"{split_name}_model_performance__{tag}.parquet", index=False
-    )
-    fold_preds.to_parquet(
-        RESULTS_OUTPUT / f"{split_name}_predicted_viabilities__{tag}.parquet",
-        index=False,
-    )
-    fold_importance.to_parquet(
-        RESULTS_OUTPUT / f"{split_name}_feature_importances__{tag}.parquet", index=False
-    )
+    metrics_df.to_parquet(output_paths["metrics"], index=False)
+    fold_preds.to_parquet(output_paths["predictions"], index=False)
+    fold_importance.to_parquet(output_paths["importances"], index=False)
 
     # Single-split summary, plus a "pooled" row for schema consistency with
     # run_group_cv - with only one split, pooled and mean are identical by
@@ -916,10 +951,11 @@ def run_random_split(
     )
     summary["Metadata_split_method"] = split_name
     summary["Metadata_shuffle_status"] = shuffle_status
+    summary["Metadata_shuffled"] = shuffled_yn
     summary["Metadata_profile_type"] = profile_type
     summary["Metadata_image_mode"] = image_mode
     logging.info(f"--- {split_name} summary (single split, test set) ---\n{summary}")
-    summary.to_parquet(RESULTS_OUTPUT / f"{split_name}_summary_metrics__{tag}.parquet")
+    summary.to_parquet(output_paths["summary"])
 
     return metrics_df
 
