@@ -33,24 +33,32 @@ find_git_root <- function() {
 
 # Find the Git root directory
 root_dir <- find_git_root()
-cat("Git root directory:", root_dir, "\n")
 source(file.path(root_dir, "utils", "r_plot_themes.r"))
 
 data_to_plot_file_path <- file.path(root_dir, "/1.EDA/results/correlation/3D_sc_correlation_pairs_sc_norm_agg_with_meta_and_viability.parquet")
 correlation_viability_df <- arrow::read_parquet(data_to_plot_file_path)
 figures_base_dir <- file.path(root_dir, "1.EDA", "figures")
 
+head(correlation_viability_df)
+
+
+
+high_correlation_cutoff <- 0.9
+low_correlation_cutoff <- 0.1
+similar_viability_difference_cutoff <- 0.1
+dissimilar_viability_difference_cutoff <- 0.9
+
 quadrant_palette <- c(
-  "top_left" = "#27d633",      # magenta (as labeled in your dict — keeping as-is)
-  "top_right" = "#c227d6",     # green
-  "bottom_left" = "#c227d6",   # green
-  "bottom_right" = "#27d633",  # magenta
-  "middle" = "#8b8b8b"         # gray
+  "top_left" = "#379400",
+  "top_right" = "#94764D",
+  "bottom_left" = "#005D94",
+  "bottom_right" = "#910094",
+  "middle" = "#8b8b8b"
 )
-# what each quadrant means, biologically: does correlation (morphology) and/or
-# viability distinguish the pair? Used as title tiles above each example
-# montage image below (not a legend), so the figure reads without a legend
-# key that just says "top_left" etc.
+# what each quadrant means, biologically: does correlation (morphology)
+# and/or viability distinguish the pair? Used as title tiles above each
+# example montage image below (not a legend), so the figure reads without
+# a legend key that just says "top_left" etc.
 quadrant_labels <- c(
   "top_left" = "Viability and morphology distinguishable",
   "top_right" = "Viability distinguishable",
@@ -58,10 +66,6 @@ quadrant_labels <- c(
   "bottom_right" = "Not distinguishable",
   "middle" = "Middle"
 )
-high_correlation_cutoff <- 0.9
-low_correlation_cutoff <- 0.1
-similar_viability_difference_cutoff <- 0.1
-dissimilar_viability_difference_cutoff <- 0.9
 
 # --- bivariate point color: correlation drives one hue axis (teal) and
 # viability difference drives another (magenta), blended bilinearly across
@@ -103,16 +107,12 @@ correlation_viability_plot <- ggplot(
   correlation_viability_df,
   aes(x = correlation, y = group1_group2_viability_diff)
 ) +
-  geom_point(aes(color = point_color), alpha = 0.5, size = 1.5) +
+  geom_point(aes(color = point_color), alpha = 0.05, size = 1.5) +
   scale_color_identity() +
-  geom_density_2d(color = "black", linewidth = 0.8, alpha = 0.6) +
-  geom_vline(xintercept = high_correlation_cutoff, color = "black", linetype = "dashed") +
-  geom_vline(xintercept = low_correlation_cutoff, color = "black", linetype = "dotted") +
-  geom_hline(yintercept = similar_viability_difference_cutoff, color = "black", linetype = "dotdash") +
-  geom_hline(yintercept = dissimilar_viability_difference_cutoff, color = "black", linetype = "longdash") +
+  geom_density_2d(color = "black", linewidth = 0.8, alpha = 0.35) +
   labs(
-    x = "Correlation",
-    y = "abs(Viability Difference)"
+    x = "Morphology profile correlation between two samples",
+    y = "abs(Viability Difference) between samples",
   ) +
   theme_minimal() +
   theme(
@@ -120,6 +120,7 @@ correlation_viability_plot <- ggplot(
     axis.title = element_text(size = 18),
     axis.text = element_text(size = 14)
   )
+
 
 height <- 8
 width <- 24
@@ -134,10 +135,10 @@ p_base <- correlation_viability_plot +
   )
 
 img_paths <- list(
-  top_left     = file.path(root_dir, "1.EDA/figures/montages/low_correlation_dissimilar_viability/NF0014_T2__C2__Staurosporine__10__NF0014_T1__E7__Cabozantinib__1.png"),
-  top_right    = file.path(root_dir, "1.EDA/figures/montages/high_correlation_dissimilar_viability/NF0037_T1__E8__Mirdametinib__1__NF0018_T6__G2__Staurosporine__10.png"),
-  bottom_left  = file.path(root_dir, "1.EDA/figures/montages/low_correlation_similar_viability/NF0055_T1__G8__Mirdametinib__10__NF0014_T2__D11__Selumetinib__1.png"),
-  bottom_right = file.path(root_dir, "1.EDA/figures/montages/high_correlation_similar_viability/NF0035_T1__G3__Linsitinib__1__NF0035_T1__F7__Binimetinib__1.png")
+  top_left     = file.path(root_dir, "1.EDA/figures/montages/low_correlation_dissimilar_viability/NF0014_T1__E7__Cabozantinib__1__NF0014_T2__G2__Staurosporine__10_corr-0-333_viabilitydiff1-000.png"),
+  top_right    = file.path(root_dir, "1.EDA/figures/montages/high_correlation_dissimilar_viability/NF0014_T1__G11__Staurosporine__10__NF0014_T1__G6__Ketotifen__1_corr0-847_viabilitydiff0-947.png"),
+  bottom_left  = file.path(root_dir, "1.EDA/figures/montages/low_correlation_similar_viability/NF0021_T1__F4__DMSO__1__NF0037_T1__G10__Selumetinib__1_corr-0-379_viabilitydiff0-047.png"),
+  bottom_right = file.path(root_dir, "1.EDA/figures/montages/high_correlation_similar_viability/NF0014_T2__G10__Selumetinib__1__NF0035_T1__F6__Nilotinib__1_corr0-945_viabilitydiff0-079.png")
 )
 
 # resize to fill the box, then add a colored border matching the quadrant
@@ -187,12 +188,14 @@ corr_range <- built_ranges$x.range
 viability_range <- built_ranges$y.range
 
 # Finds where the ggplot PANEL itself (excluding axis titles/tick labels,
-# which eat real space -- left/bottom margins are ~6-8% of the box, not 0%)
+# which eat real space -- left/bottom margins are ~5-8% of the box, not 0%)
 # sits within a box of the given physical size. Needed because
-# draw_plot(p_base, x=0.30, y=0, width=0.40, height=1) below places the
+# draw_plot(p_base, x=0.315, y=0, width=0.385, height=1) below places the
 # *whole* plot (panel + axis text/titles) into that box -- the data area
 # only fills part of it, so mapping data coordinates straight onto the box
 # (assuming the panel = the whole box) puts arrows in the wrong place.
+# Verified against known data points: a canvas position computed this way
+# lands exactly on top of the same point marked in-plot via annotate().
 get_panel_box_fraction <- function(plot, box_width_in, box_height_in) {
   g <- ggplotGrob(plot)
   panel_idx <- which(g$layout$name == "panel")
@@ -242,6 +245,9 @@ arrow_targets <- lapply(img_paths, function(p) {
   coord <- extract_coord_from_path(p)
   data_to_canvas(coord$correlation, coord$viability_diff)
 })
+
+p_base
+
 
 # image box geometry, reused below by both draw_image and the arrows so an
 # arrow always starts exactly on its box's edge, at that box's vertical
@@ -305,5 +311,3 @@ ggsave(
   bg = "white"
 )
 canvas
-
-

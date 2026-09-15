@@ -9,13 +9,13 @@ for (package in list_of_packages) {
 
 find_git_root <- function() {
     cwd <- getwd()
-    if (file.exists(file.path(cwd, ".git"))) {
+    if (dir.exists(file.path(cwd, ".git"))) {
         return(cwd)
     }
     current_path <- cwd
     while (dirname(current_path) != current_path) {
         parent_path <- dirname(current_path)
-        if (file.exists(file.path(parent_path, ".git"))) {
+        if (dir.exists(file.path(parent_path, ".git"))) {
             return(parent_path)
         }
         current_path <- parent_path
@@ -115,7 +115,7 @@ for (s in unique(intensity_3d$stat)) {
             # other panel in its row or column. facet_wrap frees each panel
             # independently; nrow pins the layout to one row per channel so
             # it still reads as a channel x patient grid.
-            + facet_wrap(~ facet_key, scales = "free", nrow = length(channel_order))
+            + facet_wrap(~ facet_key, scales = "free", nrow = length(channel_order), drop = FALSE)
             + labs(
                 title = paste0("3D (", cmp, "): ", s, ", MEK inhibitors vs. DMSO, by patient x channel"),
                 x = paste0(s, " (z-scored within patient)"), y = "Density",
@@ -127,5 +127,3 @@ for (s in unique(intensity_3d$stat)) {
     }
 }
 dev.off()
-
-cat("Wrote 1 PDF to", figures_dir, "\n")

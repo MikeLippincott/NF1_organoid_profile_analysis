@@ -41,51 +41,27 @@ if root_dir is None:
     raise FileNotFoundError("No Git root directory found.")
 
 
-# In[2]:
+# In[ ]:
 
 
 profile_dict = {
     "organoid_fs": {
         "input_profile_path": pathlib.Path(
-            root_dir, "data/all_patient_profiles/organoid_fs_profiles.parquet"
+            root_dir,
+            "data/profiles_3D/all_patients/1.feature_selected_profiles/organoid_norm_fs_profiles.parquet",
         ),
         "output_profile_path": pathlib.Path(
-            root_dir, "5.EDA/results/linear_modeling/organoid_fs.parquet"
+            root_dir, "2.2d_vs_3d_analysis/results/linear_modeling/organoid_fs.parquet"
         ),
-        "metadata_columns": [
-            "patient",
-            "object_id",
-            "unit",
-            "dose",
-            "treatment",
-            "Target",
-            "Class",
-            "image_set",
-            "Well",
-            "Therapeutic_Categories",
-            "single_cell_count",
-        ],
     },
     "single_cell_fs": {
         "input_profile_path": pathlib.Path(
-            root_dir, "data/all_patient_profiles/sc_fs_profiles.parquet"
+            root_dir,
+            "data/profiles_3D/all_patients/1.feature_selected_profiles/sc_norm_fs_profiles.parquet",
         ),
         "output_profile_path": pathlib.Path(
-            root_dir, "5.EDA/results/linear_modeling/sc_fs.parquet"
+            root_dir, "2.2d_vs_3d_analysis/results/linear_modeling/sc_fs.parquet"
         ),
-        "metadata_columns": [
-            "patient",
-            "object_id",
-            "unit",
-            "dose",
-            "treatment",
-            "Target",
-            "Class",
-            "image_set",
-            "Well",
-            "Therapeutic_Categories",
-            "parent_organoid",
-        ],
     },
 }
 
@@ -108,7 +84,7 @@ profile_dict = {
 # - **F-statistic**: Overall significance of the model.
 # - **Coefficients**: Effect size of each predictor.
 
-# In[3]:
+# In[ ]:
 
 
 for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
@@ -125,8 +101,24 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
         "coefficient": [],
         "intercept": [],
     }
-    metadata_columns = profile_dict[profile]["metadata_columns"]
     df = pd.read_parquet(profile_dict[profile]["input_profile_path"])
+    df = df.rename(
+        columns={
+            "Metadata_Biology_PatientTumor": "patient",
+            "Metadata_Experiment_Treatment": "treatment",
+        }
+    )
+    # combine treatment, dose, and unit into a single column so that
+    # different doses of the same treatment are modeled as distinct groups
+    df["Metadata_treatment_full"] = (
+        df["treatment"].astype(str)
+        + "_"
+        + df["Metadata_Experiment_Dose"].astype(str)
+        + df["Metadata_Experiment_Unit"].astype(str)
+    )
+    metadata_columns = ["patient", "treatment"] + [
+        col for col in df.columns if col.startswith("Metadata_")
+    ]
     # rename feature columns as the "." dod not play nice with the formula
     for col in df.columns:
         new_col = col.replace(
@@ -141,10 +133,14 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     ):
         df_patient = df.loc[df["patient"] == patient]
 
-        # Filter for specific treatments
-        df_patient_trt = df_patient.loc[df_patient["treatment"].isin(["DMSO"])]
+        # Filter for specific treatment/dose combinations
+        dmso_label = df_patient.loc[
+            df_patient["treatment"] == "DMSO", "Metadata_treatment_full"
+        ].unique()[0]
         combo_list = [
-            ("DMSO", i) for i in df_patient["treatment"].unique() if i != "DMSO"
+            (dmso_label, i)
+            for i in df_patient["Metadata_treatment_full"].unique()
+            if i != dmso_label
         ]
         for combo in tqdm(
             combo_list,
@@ -152,21 +148,25 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
             unit="combo",
             leave=False,
         ):
-            df_patient_trt = df_patient.loc[df_patient["treatment"].isin(combo)]
+            df_patient_trt = df_patient.loc[
+                df_patient["Metadata_treatment_full"].isin(combo)
+            ]
             # order the treatment column to ensure DMSO is first
-            df_patient_trt["treatment"] = pd.Categorical(
-                df_patient_trt["treatment"],
-                categories=["DMSO"]
+            df_patient_trt["Metadata_treatment_full"] = pd.Categorical(
+                df_patient_trt["Metadata_treatment_full"],
+                categories=[dmso_label]
                 + [
                     other_treatment
-                    for other_treatment in df_patient["treatment"].unique()
-                    if other_treatment != "DMSO"
+                    for other_treatment in df_patient[
+                        "Metadata_treatment_full"
+                    ].unique()
+                    if other_treatment != dmso_label
                 ],
             )
             for col in df_patient_trt.columns:
                 if col not in metadata_columns:
                     # Prepare the formula for the linear model
-                    formula = f"{col} ~ C(treatment)"
+                    formula = f"Q('{col}') ~ C(Metadata_treatment_full)"
                     # Import statsmodels and run the linear model
                     model = smf.ols(formula=formula, data=df_patient_trt)
                     results = model.fit()
@@ -180,20 +180,22 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
                     )
                     linear_modeling_results_dict["fvalue"].append(results.fvalue)
                     linear_modeling_results_dict["pvalue"].append(
-                        results.pvalues[f"C(treatment)[T.{combo[1]}]"]
+                        results.pvalues[f"C(Metadata_treatment_full)[T.{combo[1]}]"]
                     )
                     linear_modeling_results_dict["coefficient"].append(
-                        results.params[f"C(treatment)[T.{combo[1]}]"].item()
+                        results.params[
+                            f"C(Metadata_treatment_full)[T.{combo[1]}]"
+                        ].item()
                     )
                     linear_modeling_results_dict["intercept"].append(
                         results.params["Intercept"].item()
                     )
     linear_modeling_results_df = pd.DataFrame(linear_modeling_results_dict)
     # split the feature column into multiple columns
-    linear_modeling_results_df["feature"].str.split("_", expand=True)
+    # feature names follow the pattern: Compartment_Channel_Feature_type_Measurement
     linear_modeling_results_df[
-        ["Feature_type", "Compartment", "Channel", "Measurement", "Extra_info"]
-    ] = linear_modeling_results_df["feature"].str.split("_", expand=True)
+        ["Compartment", "Channel", "Feature_type", "Measurement"]
+    ] = linear_modeling_results_df["feature"].str.split("_", n=3, expand=True)
 
     # if feature type is area shape then make the measurement the channel and
     # set the channel to None
@@ -211,13 +213,10 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     ] = None
 
     # run FDR on the p-values
-    linear_modeling_results_df["pvalue_fdr"] = multipletests(
-        linear_modeling_results_df["pvalue"].values, method="fdr_bh"
-    )[1]
+    pvals = linear_modeling_results_df["pvalue"].values
+    _, pvals_fdr, _, _ = multipletests(pvals, method="fdr_bh")
+    linear_modeling_results_df["pvalue_fdr"] = pvals_fdr
     # Save the updated DataFrame with FDR p-values
-    linear_modeling_results_df.to_parquet(
-        profile_dict[profile]["output_profile_path"], index=False
-    )
     profile_dict[profile]["output_profile_path"].parent.mkdir(
         parents=True, exist_ok=True
     )

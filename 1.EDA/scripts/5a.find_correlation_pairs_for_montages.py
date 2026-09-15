@@ -22,7 +22,7 @@ from montage_utils.montage_utils import (
     make_multi_channel_image_array,
     retrieve_quadrant_info,
 )
-from notebook_init_utils import init_notebook
+from notebook_init_utils import bandicoot_check, init_notebook
 
 root_dir, in_notebook = init_notebook()
 
@@ -49,7 +49,7 @@ samples_df = pd.read_parquet(
     )
 )
 
-# sc_norm/agg matches this script's previous default input
+# sc_norm/agg matches this notebook's previous default input
 # (3D_2.aggregated_profiles_sc_norm_sc_agg_profiles.parquet)
 normalization_variant = "sc_norm"
 profile_type = "agg"
@@ -64,9 +64,13 @@ samples_df = samples_df.loc[
 
 figures_base_dir = pathlib.Path(f"{root_dir}/1.EDA/figures/").resolve()
 montage_figure_base_dir = pathlib.Path(f"{figures_base_dir}/montages/").resolve()
-image_base_dir = pathlib.Path(
-    f"{os.path.expanduser('~')}/mnt/bandicoot/NF1_organoid_data/data/"
-).resolve()
+image_base_dir = bandicoot_check(
+    pathlib.Path(
+        f"{os.path.expanduser('~')}/mnt/bandicoot/NF1_organoid_data/data/"
+    ).resolve(),
+    root_dir,
+)
+image_base_dir = image_base_dir / "data/"
 montage_figure_base_dir.mkdir(parents=True, exist_ok=True)
 
 
@@ -74,12 +78,12 @@ montage_figure_base_dir.mkdir(parents=True, exist_ok=True)
 
 
 # pairs_df is already long-format (one row per sample pair), unlike the old
-# wide correlation-matrix format this script used to read -- no melt
+# wide correlation-matrix format this notebook used to read -- no melt
 # needed, just rename to the group1/group2 convention montage_utils expects
 df_long = pairs_df.rename(columns={"sample_i": "group1", "sample_j": "group2"})
 
 
-# In[5]:
+# In[4]:
 
 
 metadata_cols = [c for c in samples_df.columns if c.startswith("Metadata_")]
@@ -108,7 +112,7 @@ df_long_with_meta = df_long_with_meta.merge(
 ).drop(columns=["sample_index"])
 
 
-# In[6]:
+# In[5]:
 
 
 # aggregate viability to one row per patient/treatment/dose
@@ -166,7 +170,7 @@ df_long_with_meta_and_viability = df_long_with_meta_and_viability.merge(
 )
 
 
-# In[7]:
+# In[6]:
 
 
 df_long_with_meta_and_viability.dropna(inplace=True)
@@ -176,7 +180,7 @@ df_long_with_meta_and_viability["group1_group2_viability_diff"] = abs(
 )
 
 
-# In[8]:
+# In[7]:
 
 
 df_long_with_meta_and_viability = filter_out_diagonal_correlations(
@@ -184,16 +188,16 @@ df_long_with_meta_and_viability = filter_out_diagonal_correlations(
 )
 
 
-# In[9]:
+# In[8]:
 
 
-high_correlation_cutoff = 0.9
-low_correlation_cutoff = 0.1
+high_correlation_cutoff = 0.8
+low_correlation_cutoff = -0.3
 similar_viability_difference_cutoff = 0.1
 dissimilar_viability_difference_cutoff = 0.9
 
 
-# In[10]:
+# In[9]:
 
 
 # --- assign each pair to a quadrant based on correlation and viability difference ---
@@ -235,7 +239,7 @@ df_long_with_meta_and_viability = filter_out_self_correlations(
 )
 
 
-# In[11]:
+# In[10]:
 
 
 # save the long df
@@ -246,7 +250,7 @@ df_long_with_meta_and_viability.to_parquet(
 )
 
 
-# In[12]:
+# In[ ]:
 
 
 threshold_definitions_dict = {  # bottom right
@@ -269,7 +273,7 @@ threshold_definitions_dict = {  # bottom right
 }
 
 
-# In[13]:
+# In[ ]:
 
 
 high_correlation_similar_viability_df = filter_out_self_correlations(  # bottom right
@@ -350,7 +354,7 @@ print(
 )
 
 
-# In[14]:
+# In[ ]:
 
 
 high_correlation_dissimilar_viability_list = retrieve_quadrant_info(
@@ -387,7 +391,7 @@ for _df in (
     )
 
 
-# In[15]:
+# In[ ]:
 
 
 number_of_choices = 5  # number of random choices to make from each quadrant list
@@ -412,7 +416,7 @@ dict_of_randomly_selected_images = {
 }
 
 
-# In[16]:
+# In[ ]:
 
 
 for quadrent_of_correlation_and_viability in tqdm.tqdm(
@@ -429,30 +433,37 @@ for quadrent_of_correlation_and_viability in tqdm.tqdm(
             dict_of_randomly_selected_images[quadrent_of_correlation_and_viability]
         ),
     ):
+        correlation_value, viability_diff_value = combination_to_values[
+            combination_string
+        ]
+        # "-" instead of "." for the decimal point: a "." anywhere but
+        # right before the real extension breaks tools that read the
+        # extension as everything after the first "." in the filename.
+        correlation_str = f"{correlation_value:.3f}".replace(".", "-")
+        viability_diff_str = f"{viability_diff_value:.3f}".replace(".", "-")
+        output_image_path = (
+            pathlib.Path(f"{montage_figure_base_dir}")
+            / f"{quadrent_of_correlation_and_viability}"
+            / f"{combination_string}_corr{correlation_str}_viabilitydiff{viability_diff_str}.png"
+        )
+        # if output_image_path.exists():
+        #     continue
+        output_image_path.parent.mkdir(parents=True, exist_ok=True)
         image_1_file_path, image_2_file_path = (
             generate_image_paths_from_combination_string(
                 image_base_dir=image_base_dir, combination_string=combination_string
             )
         )
-        image_label1 = "_".join(combination_string.split("__")[:4])
-        image_label1 = f"{'_'.join(image_label1.split('_')[:2])}_{'_'.join(image_label1.split('_')[3:5])}"
-        image_label2 = "_".join(combination_string.split("__")[-4:])
-        image_label2 = f"{'_'.join(image_label2.split('_')[:2])}_{'_'.join(image_label2.split('_')[3:5])}"
-        correlation_value, viability_diff_value = combination_to_values[
-            combination_string
-        ]
-        # "-" instead of "." for the decimal point: a "." anywhere but right
-        # before the real extension breaks tools that read the extension as
-        # everything after the first "." in the filename.
-        correlation_str = f"{correlation_value:.3f}".replace(".", "-")
-        viability_diff_str = f"{viability_diff_value:.3f}".replace(".", "-")
+        image_label1 = " ".join(combination_string.split("__")[:4])
+        image_label1 = f"{'_'.join(image_label1.split('_')[:2])} {' '.join(image_label1.split('_')[3:5])}"
+        image_label2 = " ".join(combination_string.split("__")[-4:])
+        image_label2 = f"{'_'.join(image_label2.split('_')[:2])} {' '.join(image_label2.split('_')[3:5])}"
         # disable stdout for the plots here, since they are being saved to disk and not displayed in the notebook
         create_and_save_two_image_panel(
             image_1_array=make_multi_channel_image_array(image_1_file_path),
             image_2_array=make_multi_channel_image_array(image_2_file_path),
             image_1_label=image_label1,
             image_2_label=image_label2,
-            output_path=pathlib.Path(f"{montage_figure_base_dir}")
-            / f"{quadrent_of_correlation_and_viability}"
-            / f"{combination_string}_corr{correlation_str}_viabilitydiff{viability_diff_str}.png",
+            output_path=output_image_path,
         )
+        plt.pyplot.close()
