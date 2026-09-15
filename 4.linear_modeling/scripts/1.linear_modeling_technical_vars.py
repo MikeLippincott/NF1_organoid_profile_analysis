@@ -58,7 +58,19 @@ manhattan_distance_df = pd.read_csv(
 
 # ## Linear Modeling
 #
-# We want to predict each feature using information about the organoid per patient. We use linear regression for this.
+# The goal here is not prediction but **inference**: for each morphology feature, we fit one
+# linear model per treatment/dose combination (vs. DMSO) and ask which terms
+# (treatment, patient, technical covariates) are significantly associated with that feature,
+# after accounting for the others.
+#
+# This produces many separate model fits -- one per (feature x drug/dose combo x patient) --
+# each contributing a p-value per term. Because a p-value's meaning depends on what hypothesis
+# family it belongs to, multiple-testing correction (FDR, Benjamini-Hochberg) is run
+# **separately per term** (e.g. all "treatment" p-values together, all "patient" p-values
+# together) but pooled **across all features, drug/dose combos, and patients** within that
+# term. This keeps each term's inference robust (correcting over its full family of tests)
+# without over-correcting by mixing unrelated hypotheses (e.g. treatment effects vs. technical
+# covariate effects) into a single correction.
 #
 # **General form:**
 #
@@ -292,7 +304,17 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
 
         # pool across all patients that have this treatment (plus DMSO) so that
         # patient and the treatment x patient interaction have variance to fit on
-        df_trt = df.loc[df["Metadata_Experiment_TreatmentFull"].isin(combo)]
+        df_trt = df.loc[df["Metadata_Experiment_TreatmentFull"].isin(combo)].copy()
+        # keep only patients that have observations for every treatment label
+        # in combo (e.g. both DMSO and the drug) -- a patient missing one
+        # level would otherwise contribute no variance to the interaction term
+        patients_per_treatment = df_trt.groupby("Metadata_Experiment_TreatmentFull")[
+            "Metadata_Biology_PatientTumor"
+        ].apply(set)
+        patients_with_all_treatments = set.intersection(*patients_per_treatment)
+        df_trt = df_trt.loc[
+            df_trt["Metadata_Biology_PatientTumor"].isin(patients_with_all_treatments)
+        ]
         # order the treatment column to ensure DMSO is first (reference level)
         df_trt = df_trt.copy()
         df_trt["Metadata_Experiment_TreatmentFull"] = pd.Categorical(

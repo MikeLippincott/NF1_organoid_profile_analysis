@@ -25,6 +25,7 @@ platemap_figure_path = pathlib.Path(
     root_dir,
     "4.linear_modeling/results/well_manhattan_distance/well_manhattan_distance_platemap.png",
 )
+output_path.parent.mkdir(parents=True, exist_ok=True)
 
 
 # In[2]:
@@ -104,8 +105,6 @@ plt.show()
 
 # In[5]:
 
-
-output_path.parent.mkdir(parents=True, exist_ok=True)
 
 wells_df.drop(
     columns=["well_row", "well_column", "row_index", "column_index"], inplace=True
