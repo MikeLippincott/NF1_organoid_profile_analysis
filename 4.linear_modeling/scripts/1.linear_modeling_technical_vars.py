@@ -326,6 +326,13 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
             df_trt["Metadata_Biology_PatientTumor"],
             categories=[reference_patient] + patients_in_combo[1:],
         )
+        # zero-center the continuous covariates (per combo) for numerical
+        # stability in the OLS fit -- a linear shift with no rescaling leaves
+        # the fit (and all coefficients except the intercept) unchanged, so
+        # this is purely a conditioning improvement, not a modeling choice
+        df_trt[numeric_covariates] = (
+            df_trt[numeric_covariates] - df_trt[numeric_covariates].mean()
+        )
 
         for col in tqdm(
             feature_columns, desc="Processing features", unit="feature", leave=False
