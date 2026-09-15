@@ -13,18 +13,13 @@
 
 # ## Imports, pathing, and constants
 
-# In[ ]:
+# In[1]:
 
 
 # MUST be first, before numpy/pandas/sklearn are imported.
-import os
-
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-
 import gc
 import logging
+import multiprocessing
 import pathlib
 import time
 import warnings
@@ -45,6 +40,11 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import LeaveOneGroupOut, train_test_split
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import StandardScaler
+
+# os.environ["OMP_NUM_THREADS"] = "1"
+# os.environ["MKL_NUM_THREADS"] = "1"
+# os.environ["OPENBLAS_NUM_THREADS"] = "1"
+
 
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
@@ -96,7 +96,9 @@ logging.info("Started viability prediction training run")
 logging.info(f"Logging to {LOG_DIR / year_month_day_hour_minute_log_name}")
 
 
-# In[ ]:
+# ## Functions and helpers
+
+# In[4]:
 
 
 """
@@ -146,11 +148,6 @@ in the previous revision:
     from that fold with a logged warning rather than silently reusing
     test information.
 
-Predicted viability is clipped to PREDICTION_BOUNDS = (0.0, 1.0) before
-it's scored or saved, since the target is a per-patient [0, 1]-scaled
-quantity (NOT a 0-100 percentage - that was a stale claim in the
-previous revision that was never actually implemented).
-
 Every saved artifact (metrics/predictions/importances/summary) carries
 Metadata_split_method, Metadata_shuffle_status, Metadata_profile_type,
 and Metadata_image_mode columns, so the combined files produced at the
@@ -166,7 +163,7 @@ noisy when individual folds have few or low-variance rows.
 # ---------------------------------------------------------------------
 
 RETRAIN_EXISTING_MODELS = (
-    True  # if False, will load existing models instead of retraining
+    False  # if False, will load existing models instead of retraining
 )
 
 PATIENT_COL = "Metadata_Biology_PatientTumor"  # column identifying each patient
@@ -181,7 +178,6 @@ VIABILITY_COL = "min_max_viability"  # fold-safe, per-patient min-max target col
 RANDOM_SPLIT_TEST_SIZE = 0.3  # fraction held out for the random_split test set
 RANDOM_SPLIT_SEED = 0  # fixed seed so the random split is reproducible
 
-PREDICTION_BOUNDS = (0.0, 1.0)  # min_max_viability is scaled to [0, 1] per patient,
 # NOT a 0-100 percentage. Predictions are clipped to this range before being
 # scored or saved, since the raw ElasticNet output is unconstrained.
 
@@ -191,8 +187,9 @@ TUNE_HYPERPARAMS_PER_FOLD = True  # Correct-but-slower default: tunes alpha/l1_r
 # once on fold 0's training data and freezing that for every fold, which is
 # faster but mildly leaky for every fold except fold 0.
 
-MAX_ITER = 5000
+MAX_ITER = 1000
 TOL = 1e-3
+N_WORKERS = multiprocessing.cpu_count() - 2  # for parallelized ElasticNetCV fits
 
 MODEL_OUTPUT = pathlib.Path("../trained_models")
 RESULTS_OUTPUT = pathlib.Path("../model_results")
@@ -348,10 +345,8 @@ def compute_metrics_from_arrays(y_true, y_pred) -> dict:
     return {"R2": r2, "MSE": mse, "MAE": mae, "RMSE": rmse}
 
 
-def compute_metrics(model, X, Y, clip: bool = True) -> dict:
+def compute_metrics(model, X, Y, clip: bool = False) -> dict:
     y_pred = model.predict(X)
-    if clip:
-        y_pred = np.clip(y_pred, *PREDICTION_BOUNDS)
     return compute_metrics_from_arrays(Y.values.ravel(), y_pred)
 
 
@@ -370,20 +365,20 @@ def tune_hyperparameters(X: pd.DataFrame, Y: pd.Series) -> tuple:
         StandardScaler(),
         ElasticNetCV(
             # Trimmed from [0.1, 0.2, 0.5, 0.7, 0.9, 0.95, 0.99, 1.0] and
-            # alphas=100/cv=5 (up to 4,000 sequential fits at n_jobs=1) down
+            # alphas=100/cv=5 (up to 4,000 sequential fits at n_jobs=N_WORKERS) down
             # to 4 x 20 x 3 = 240 fits. Full grid resolution isn't needed
             # just to locate a decent alpha/l1_ratio, and the cost matters a
             # lot more now that this can run once per fold (see
             # TUNE_HYPERPARAMS_PER_FOLD) on p>>n profiles (e.g. 2593
             # features, 318 samples) where each individual fit is already
             # slow.
-            l1_ratio=[0.1, 0.5, 0.9, 1.0],
+            l1_ratio=[0.1, 0.5, 0.9, 0.95, 0.99, 1.0],
             alphas=20,
             cv=3,
             random_state=0,
             max_iter=MAX_ITER,
             tol=TOL,
-            n_jobs=1,
+            n_jobs=N_WORKERS,
         ),
     )
     tuner.fit(X, Y.values.ravel())
@@ -419,13 +414,13 @@ def train_elastic_net(
         elastic_net_model = make_pipeline(
             StandardScaler(),
             ElasticNetCV(
-                l1_ratio=[0.1, 0.2, 0.5, 0.7, 0.9, 0.95, 0.99, 1.0],
-                alphas=100,  # int -> auto-generates 100 alphas along the path
-                cv=5,
+                l1_ratio=[0.1, 0.5, 0.9, 0.95, 0.99, 1.0],
+                alphas=20,
+                cv=3,
                 random_state=0,
                 max_iter=MAX_ITER,
                 tol=TOL,
-                n_jobs=1,
+                n_jobs=N_WORKERS,
             ),
         )
     elastic_net_model.fit(X_train, Y_train.values.ravel())
@@ -433,36 +428,10 @@ def train_elastic_net(
 
 
 # ---------------------------------------------------------------------
-# Shared output-path helper
-# ---------------------------------------------------------------------
-def get_run_output_paths(split_name: str, tag: str) -> dict:
-    """
-    Paths for the four artifact files a single run_group_cv /
-    run_random_split call produces, keyed by artifact type. Shared between
-    the "already ran this?" skip check and the actual save calls at the end
-    of each function, so the two can never drift apart.
-
-    Per-run (intermediate) artifacts are written under a subdirectory named
-    after the split method (e.g. RESULTS_OUTPUT/loto/), keeping RESULTS_OUTPUT
-    itself reserved for the combined_* files produced at the end of the run.
-    """
-    split_output_dir = RESULTS_OUTPUT / split_name
-    split_output_dir.mkdir(parents=True, exist_ok=True)
-    return {
-        "metrics": split_output_dir / f"{split_name}_model_performance__{tag}.parquet",
-        "predictions": split_output_dir
-        / f"{split_name}_predicted_viabilities__{tag}.parquet",
-        "importances": split_output_dir
-        / f"{split_name}_feature_importances__{tag}.parquet",
-        "summary": split_output_dir / f"{split_name}_summary_metrics__{tag}.parquet",
-    }
-
-
-# ---------------------------------------------------------------------
 # Strategy 1 & 2: grouped CV (LOPO / LOTO), reusing the same core logic
 # ---------------------------------------------------------------------
 def run_group_cv(
-    viabilities_df: pd.DataFrame,
+    consensus_df: pd.DataFrame,
     feature_cols: list,
     raw_viability_col: str,
     viability_col: str,
@@ -470,7 +439,7 @@ def run_group_cv(
     group_col: str,
     split_name: str,
     **kwargs,
-) -> pd.DataFrame:
+) -> pd.DataFrame | None:
     """
     Runs Leave-One-Group-Out CV (group_col = patient or treatment column).
     For each fold:
@@ -487,14 +456,12 @@ def run_group_cv(
          fold's held-out group, so those folds' hyperparameters are still
          mildly informed by their own test data). Only use the opt-out if
          per-fold tuning is too slow for your data size.
-      4. The model is refit and evaluated; predictions are clipped to
-         PREDICTION_BOUNDS before being scored or saved, since the target
-         is a [0, 1]-scaled quantity and the raw ElasticNet output is
-         unconstrained.
     Saves per-fold and aggregated artifacts under RESULTS_OUTPUT /
     MODEL_OUTPUT, including a pooled (out-of-fold) metric alongside the
     usual per-fold mean/std, since mean-of-folds can be noisy when
     individual folds have few or low-variance rows.
+
+    Returns None if all output files already exist (no need to recompute).
     """
     list_of_metadatas = []
     shuffle_status = kwargs.get("shuffle_status", "not_shuffled")
@@ -507,46 +474,36 @@ def run_group_cv(
         list_of_metadatas.append(image_mode)
     retrain = kwargs.get("retrain")
     tag = "__".join(list_of_metadatas) if list_of_metadatas else split_name
-    shuffled_yn = "Yes" if shuffle_status == "shuffled" else "No"
 
-    output_paths = get_run_output_paths(split_name, tag)
-    if not retrain and all(p.exists() for p in output_paths.values()):
-        logging.info(
-            f"All output files already exist for {split_name}/{shuffle_status}/"
-            f"{profile_type} (tag={tag}) - skipping this run and loading existing "
-            f"metrics from {output_paths['metrics']}."
-        )
-        return pd.read_parquet(output_paths["metrics"])
-
-    if viabilities_df.empty:
+    if consensus_df.empty:
         raise ValueError(
             f"Input dataframe is empty for split '{split_name}' (profile={profile_type}, shuffle={shuffle_status})."
         )
-    if group_col not in viabilities_df.columns:
+    if group_col not in consensus_df.columns:
         raise KeyError(f"Grouping column '{group_col}' not found in input dataframe.")
-    if patient_col not in viabilities_df.columns:
+    if patient_col not in consensus_df.columns:
         raise KeyError(f"Patient column '{patient_col}' not found in input dataframe.")
-    if raw_viability_col not in viabilities_df.columns:
+    if raw_viability_col not in consensus_df.columns:
         raise KeyError(
             f"Raw viability column '{raw_viability_col}' not found in input dataframe."
         )
 
-    log_feature_diagnostics(viabilities_df, feature_cols)
+    log_feature_diagnostics(consensus_df, feature_cols)
 
-    missing_group_mask = viabilities_df[group_col].isna()
+    missing_group_mask = consensus_df[group_col].isna()
     if missing_group_mask.any():
         dropped = int(missing_group_mask.sum())
         logging.warning(
             f"Dropping {dropped} row(s) with missing group labels in '{group_col}'."
         )
-        viabilities_df = viabilities_df.loc[~missing_group_mask].reset_index(drop=True)
+        consensus_df = consensus_df.loc[~missing_group_mask].reset_index(drop=True)
 
-    if viabilities_df.empty:
+    if consensus_df.empty:
         raise ValueError(
             f"No rows available after removing missing group labels for '{group_col}' (split={split_name})."
         )
 
-    groups = viabilities_df[group_col].values
+    groups = consensus_df[group_col].values
     unique_groups = np.unique(groups)
     if len(unique_groups) < 2:
         raise ValueError(
@@ -566,13 +523,39 @@ def run_group_cv(
         None,
         None,
     )  # only used when TUNE_HYPERPARAMS_PER_FOLD is False
-
+    split_output_dir = RESULTS_OUTPUT / split_name
+    split_output_dir.mkdir(parents=True, exist_ok=True)
+    summary_output_path = (
+        split_output_dir / f"{split_name}_summary_metrics__{tag}.parquet"
+    )
+    importances_output_path = (
+        split_output_dir / f"{split_name}_feature_importances__{tag}.parquet"
+    )
+    predictions_output_path = (
+        split_output_dir / f"{split_name}_predicted_viabilities__{tag}.parquet"
+    )
+    metrics_output_path = split_output_dir / f"{split_name}_fold_metrics__{tag}.parquet"
+    outputs_to_check_for = [
+        summary_output_path,
+        importances_output_path,
+        predictions_output_path,
+        metrics_output_path,
+    ]
+    if not retrain and all(path.exists() for path in outputs_to_check_for):
+        # All output files for this split/profile/shuffle combination
+        # already exist - skip the whole run. This must happen before the
+        # fold loop below, so fold_idx/test_idx are never referenced here.
+        logging.info(
+            f"All output files already exist for {split_name}/{shuffle_status}/"
+            f"{profile_type} (tag={tag}) - skipping this run."
+        )
+        return None
     for fold_idx, (train_idx, test_idx) in enumerate(
-        logo.split(viabilities_df, groups=groups)
+        logo.split(consensus_df, groups=groups)
     ):
         held_out = np.unique(groups[test_idx])[0]
-        train_df = viabilities_df.iloc[train_idx].copy()
-        test_df = viabilities_df.iloc[test_idx].copy()
+        train_df = consensus_df.iloc[train_idx].copy()
+        test_df = consensus_df.iloc[test_idx].copy()
 
         train_df, test_df = compute_fold_safe_target(
             train_df,
@@ -638,7 +621,6 @@ def run_group_cv(
                     "Metadata_n_samples": len(X_eval),
                     "Metadata_split_method": split_name,
                     "Metadata_shuffle_status": shuffle_status,
-                    "Metadata_shuffled": shuffled_yn,
                     "Metadata_profile_type": profile_type,
                     "Metadata_image_mode": image_mode,
                     "Metadata_alpha": fold_alpha,
@@ -656,14 +638,11 @@ def run_group_cv(
         # train-eval and test-eval passes above.
         fold_preds = test_df.copy()
         fold_preds["Actual_Viability"] = Y_test.values
-        fold_preds["Predicted_Viability"] = np.clip(
-            model.predict(X_test), *PREDICTION_BOUNDS
-        )
+        fold_preds["Predicted_Viability"] = model.predict(X_test)
         fold_preds["Metadata_fold"] = fold_idx
         fold_preds["Metadata_held_out_group"] = held_out
         fold_preds["Metadata_split_method"] = split_name
         fold_preds["Metadata_shuffle_status"] = shuffle_status
-        fold_preds["Metadata_shuffled"] = shuffled_yn
         fold_preds["Metadata_profile_type"] = profile_type
         fold_preds["Metadata_image_mode"] = image_mode
         all_predictions.append(fold_preds)
@@ -678,7 +657,6 @@ def run_group_cv(
                 "Metadata_held_out_group": held_out,
                 "Metadata_split_method": split_name,
                 "Metadata_shuffle_status": shuffle_status,
-                "Metadata_shuffled": shuffled_yn,
                 "Metadata_profile_type": profile_type,
                 "Metadata_image_mode": image_mode,
             }
@@ -699,7 +677,6 @@ def run_group_cv(
             "Metadata_n_samples",
             "Metadata_split_method",
             "Metadata_shuffle_status",
-            "Metadata_shuffled",
             "Metadata_profile_type",
             "Metadata_image_mode",
             "Metadata_alpha",
@@ -710,13 +687,18 @@ def run_group_cv(
             "RMSE",
         ]
     ]
-    metrics_df.to_parquet(output_paths["metrics"], index=False)
+
+    metrics_df.to_parquet(metrics_output_path, index=False)
 
     predictions_df = pd.concat(all_predictions, ignore_index=True)
-    predictions_df.to_parquet(output_paths["predictions"], index=False)
+
+    predictions_df.to_parquet(
+        predictions_output_path,
+        index=False,
+    )
 
     importances_df = pd.concat(all_importances, ignore_index=True)
-    importances_df.to_parquet(output_paths["importances"], index=False)
+    importances_df.to_parquet(importances_output_path, index=False)
 
     # Aggregate summary (mean/std across folds, test set only), plus a
     # pooled (out-of-fold) metric computed over every held-out prediction
@@ -730,13 +712,12 @@ def run_group_cv(
     summary.loc["pooled"] = pooled
     summary["Metadata_split_method"] = split_name
     summary["Metadata_shuffle_status"] = shuffle_status
-    summary["Metadata_shuffled"] = shuffled_yn
     summary["Metadata_profile_type"] = profile_type
     summary["Metadata_image_mode"] = image_mode
     logging.info(
         f"--- {split_name} summary (across {n_splits} folds, test set) ---\n{summary}"
     )
-    summary.to_parquet(output_paths["summary"])
+    summary.to_parquet(summary_output_path, index=False)
 
     return metrics_df
 
@@ -745,7 +726,7 @@ def run_group_cv(
 # Strategy 3: single random 70/30 train/test split (no grouping)
 # ---------------------------------------------------------------------
 def run_random_split(
-    viabilities_df: pd.DataFrame,
+    consensus_df: pd.DataFrame,
     feature_cols: list,
     raw_viability_col: str,
     viability_col: str,
@@ -754,7 +735,7 @@ def run_random_split(
     test_size: float = RANDOM_SPLIT_TEST_SIZE,
     random_state: int = RANDOM_SPLIT_SEED,
     **kwargs,
-) -> pd.DataFrame:
+) -> pd.DataFrame | None:
     """
     Trains once on a random (test_size fraction) held-out split rather than
     grouping by patient or treatment. Rows are shuffled and split
@@ -766,13 +747,14 @@ def run_random_split(
     train, rather than a genuine treatment-response relationship.
 
     Fold-safe target normalization and feature imputation are still fit on
-    the training partition only and applied to test (same as run_group_cv),
-    and predictions are clipped to PREDICTION_BOUNDS.
+    the training partition only and applied to test (same as run_group_cv).
 
     Saves the same artifact shapes (metrics/predictions/importances/model)
     as run_group_cv, using "Metadata_fold" = 0 and a fixed
     "Metadata_held_out_group" label, so results from both strategies can be
     concatenated and compared directly.
+
+    Returns None if all output files already exist (no need to recompute).
     """
     list_of_metadatas = []
     shuffle_status = kwargs.get("shuffle_status", "not_shuffled")
@@ -785,36 +767,50 @@ def run_random_split(
         list_of_metadatas.append(image_mode)
     retrain = kwargs.get("retrain")
     tag = "__".join(list_of_metadatas) if list_of_metadatas else split_name
-    shuffled_yn = "Yes" if shuffle_status == "shuffled" else "No"
 
-    output_paths = get_run_output_paths(split_name, tag)
-    if not retrain and all(p.exists() for p in output_paths.values()):
+    split_output_dir = RESULTS_OUTPUT / split_name
+    split_output_dir.mkdir(parents=True, exist_ok=True)
+    summary_output_path = (
+        split_output_dir / f"{split_name}_summary_metrics__{tag}.parquet"
+    )
+    metrics_output_path = split_output_dir / f"{split_name}_fold_metrics__{tag}.parquet"
+    fold_preds_output_path = (
+        split_output_dir / f"{split_name}_predicted_viabilities__{tag}.parquet"
+    )
+    fold_importance_output_path = (
+        split_output_dir / f"{split_name}_feature_importances__{tag}.parquet"
+    )
+    output_files = [
+        summary_output_path,
+        metrics_output_path,
+        fold_preds_output_path,
+        fold_importance_output_path,
+    ]
+    if not retrain and all(path.exists() for path in output_files):
         logging.info(
-            f"All output files already exist for {split_name}/{shuffle_status}/"
-            f"{profile_type} (tag={tag}) - skipping this run and loading existing "
-            f"metrics from {output_paths['metrics']}."
+            f"All output files already exist for {split_name} (profile={profile_type}, shuffle={shuffle_status}), skipping."
         )
-        return pd.read_parquet(output_paths["metrics"])
+        return None
 
-    if viabilities_df.empty:
+    if consensus_df.empty:
         raise ValueError(
             f"Input dataframe is empty for split '{split_name}' (profile={profile_type}, shuffle={shuffle_status})."
         )
-    if raw_viability_col not in viabilities_df.columns:
+    if raw_viability_col not in consensus_df.columns:
         raise KeyError(
             f"Raw viability column '{raw_viability_col}' not found in input dataframe."
         )
-    if len(viabilities_df) < 2:
+    if len(consensus_df) < 2:
         raise ValueError(
-            f"Need at least 2 rows for train/test split, found {len(viabilities_df)} (split={split_name})."
+            f"Need at least 2 rows for train/test split, found {len(consensus_df)} (split={split_name})."
         )
 
-    log_feature_diagnostics(viabilities_df, feature_cols)
+    log_feature_diagnostics(consensus_df, feature_cols)
 
     held_out_label = f"random_{int(round(test_size * 100))}pct_holdout"
 
     train_df, test_df = train_test_split(
-        viabilities_df, test_size=test_size, random_state=random_state
+        consensus_df, test_size=test_size, random_state=random_state
     )
     train_df, test_df = train_df.copy(), test_df.copy()
 
@@ -882,7 +878,6 @@ def run_random_split(
                 "Metadata_n_samples": len(X_eval),
                 "Metadata_split_method": split_name,
                 "Metadata_shuffle_status": shuffle_status,
-                "Metadata_shuffled": shuffled_yn,
                 "Metadata_profile_type": profile_type,
                 "Metadata_image_mode": image_mode,
                 "Metadata_alpha": tuned_alpha,
@@ -894,17 +889,13 @@ def run_random_split(
             f"  {eval_split} (n={len(X_eval)}): R2={m['R2']:.4f}, RMSE={m['RMSE']:.4f}"
         )
 
-    # Held-out predictions (clipped to PREDICTION_BOUNDS)
     fold_preds = test_df.copy()
     fold_preds["Actual_Viability"] = Y_test.values
-    fold_preds["Predicted_Viability"] = np.clip(
-        model.predict(X_test), *PREDICTION_BOUNDS
-    )
+    fold_preds["Predicted_Viability"] = model.predict(X_test)
     fold_preds["Metadata_fold"] = 0
     fold_preds["Metadata_held_out_group"] = held_out_label
     fold_preds["Metadata_split_method"] = split_name
     fold_preds["Metadata_shuffle_status"] = shuffle_status
-    fold_preds["Metadata_shuffled"] = shuffled_yn
     fold_preds["Metadata_profile_type"] = profile_type
     fold_preds["Metadata_image_mode"] = image_mode
 
@@ -918,7 +909,6 @@ def run_random_split(
             "Metadata_held_out_group": held_out_label,
             "Metadata_split_method": split_name,
             "Metadata_shuffle_status": shuffle_status,
-            "Metadata_shuffled": shuffled_yn,
             "Metadata_profile_type": profile_type,
             "Metadata_image_mode": image_mode,
         }
@@ -932,7 +922,6 @@ def run_random_split(
             "Metadata_n_samples",
             "Metadata_split_method",
             "Metadata_shuffle_status",
-            "Metadata_shuffled",
             "Metadata_profile_type",
             "Metadata_image_mode",
             "Metadata_alpha",
@@ -943,9 +932,13 @@ def run_random_split(
             "RMSE",
         ]
     ]
-    metrics_df.to_parquet(output_paths["metrics"], index=False)
-    fold_preds.to_parquet(output_paths["predictions"], index=False)
-    fold_importance.to_parquet(output_paths["importances"], index=False)
+
+    metrics_df.to_parquet(metrics_output_path, index=False)
+    fold_preds.to_parquet(
+        fold_preds_output_path,
+        index=False,
+    )
+    fold_importance.to_parquet(fold_importance_output_path, index=False)
 
     # Single-split summary, plus a "pooled" row for schema consistency with
     # run_group_cv - with only one split, pooled and mean are identical by
@@ -957,11 +950,10 @@ def run_random_split(
     )
     summary["Metadata_split_method"] = split_name
     summary["Metadata_shuffle_status"] = shuffle_status
-    summary["Metadata_shuffled"] = shuffled_yn
     summary["Metadata_profile_type"] = profile_type
     summary["Metadata_image_mode"] = image_mode
     logging.info(f"--- {split_name} summary (single split, test set) ---\n{summary}")
-    summary.to_parquet(output_paths["summary"])
+    summary.to_parquet(summary_output_path, index=False)
 
     return metrics_df
 
@@ -979,146 +971,30 @@ patient_ids = pd.read_csv(
 viabilities_path = pathlib.Path(f"{root_dir}/data/viabilities/").resolve(strict=True)
 
 
-# ## Combine the profiles, viabilities, and platemap information
+# ## Get all of the morphology profiles to work with
 
 # In[6]:
 
 
-platemap_df_list = []
-for patient in patient_ids:
-    platemap_file_path = pathlib.Path(
-        f"{root_dir}/config/platemaps/{patient}_platemap.csv"
-    ).resolve(strict=True)
-    tmp_df = pd.read_csv(platemap_file_path, index_col=0)
-    tmp_df["patient_id"] = patient
-    platemap_df_list.append(tmp_df)
-platemap_df = pd.concat(platemap_df_list, axis=0)
-
-
-# In[7]:
-
-
-viabilities_df_list = []
-for patient in patient_ids:
-    viabilities_file_path = pathlib.Path(
-        f"{root_dir}/data/viabilities/{patient}_Viabilities.csv"
-    ).resolve()
-    if not viabilities_file_path.exists():
-        continue
-    viabilities_df = pd.read_csv(viabilities_file_path)
-    # change DMSO dose to 1
-    viabilities_df.loc[viabilities_df["Drug"] == "DMSO", "Concentration_uM"] = 1
-    viabilities_df.loc[viabilities_df["Drug"] == "PD0325901", "Drug"] = "Mirdametinib"
-    viabilities_df["patient_id"] = patient
-
-    viabilities_df_list.append(viabilities_df)
-viabilities_df = pd.concat(viabilities_df_list, axis=0)
-
-
-# In[8]:
-
-
-# merge the viabilities with the platemap
-platemap_viability_df = pd.merge(
-    platemap_df,
-    viabilities_df,
-    how="left",
-    left_on=["Treatment", "Dose", "patient_id"],
-    right_on=["Drug", "Concentration_uM", "patient_id"],
+consensus_profiles_3D_paths = list(
+    pathlib.Path(f"{root_dir}/3.viability_prediction_models/data/processed_profiles_3D")
+    .resolve(strict=True)
+    .glob("*.parquet")
 )
-
-# Check (not just assume) that unmatched rows really are the expected
-# empty/control wells, rather than a silent Treatment/Dose/patient_id
-# naming mismatch that would disproportionately and invisibly drop real
-# data. Done BEFORE dropping WellCol/WellPosition so the breakdown below
-# can still see well position.
-nan_rows = platemap_viability_df[platemap_viability_df.isna().any(axis=1)]
-n_nan = len(nan_rows)
-if n_nan > 0:
-    breakdown = (
-        nan_rows.groupby(["patient_id", "Treatment", "Dose"], dropna=False)
-        .size()
-        .sort_values(ascending=False)
-    )
-    logging.warning(
-        f"{n_nan} of {len(platemap_viability_df)} row(s) "
-        f"({n_nan / len(platemap_viability_df):.1%}) failed to merge platemap <-> "
-        f"viability data and will be dropped. Breakdown by (patient_id, Treatment, Dose):\n"
-        f"{breakdown.head(20)}"
-    )
-    if "WellPosition" in nan_rows.columns:
-        non_b_well_nans = nan_rows[
-            ~nan_rows["WellPosition"].astype(str).str.startswith("B")
-        ]
-        if len(non_b_well_nans) > 0:
-            logging.warning(
-                f"{len(non_b_well_nans)} of the {n_nan} dropped row(s) are NOT from a 'B' "
-                f"well - this may indicate a real Treatment/Dose/patient_id naming "
-                f"mismatch rather than the expected empty control wells. Inspect "
-                f"`nan_rows` before trusting the drop below."
-            )
-        else:
-            logging.info(
-                "All dropped rows are from 'B' wells, matching the expected "
-                "empty-control assumption."
-            )
-
-# now safe to drop these columns and the unmatched rows
-platemap_viability_df = platemap_viability_df.drop(columns=["WellCol", "WellPosition"])
-platemap_viability_df = platemap_viability_df.dropna().reset_index(drop=True)
-platemap_viability_df.rename(
-    columns={"Viability_percentage": "Metadata_Viability_percentage"}, inplace=True
+consensus_profiles_2D_paths = list(
+    pathlib.Path(f"{root_dir}/3.viability_prediction_models/data/processed_profiles_2D")
+    .resolve(strict=True)
+    .glob("*.parquet")
 )
-# NOTE: this global, per-patient min-max column is kept here only for
-# backward-compatibility with other notebooks that read
-# combined_platemaps.parquet directly. The model-training pipeline further
-# below does NOT use this column - it recomputes a fold-safe version from
-# Metadata_Viability_percentage inside run_group_cv / run_random_split
-# (see compute_fold_safe_target), since this global version is safe to use
-# as-is for LOPO but leaks a held-out treatment's value into training
-# targets for LOTO / random_split.
-platemap_viability_df["min_max_viability"] = platemap_viability_df.groupby(
-    "patient_id"
-)["Metadata_Viability_percentage"].transform(
-    lambda x: (x - x.min()) / (x.max() - x.min())
-)
-# save the combined platemaps
-combined_platemaps_path = pathlib.Path(
-    f"{root_dir}/data/viabilities/combined_platemaps.parquet"
-).resolve()
-# save this for use in later notebooks where viability is needed - no need to recombine the platemaps and viabilities each time
-platemap_viability_df.to_parquet(combined_platemaps_path, index=False)
-
-
-# ## Get all of the morphology profiles to work with
-
-# In[9]:
-
-
-consensus_profiles_3D_path = pathlib.Path(
-    f"{root_dir}/data/profiles_3D/all_patients/3.consensus_profiles/"
-).resolve(strict=True)
-
-# Only fit on the "combined" (cross-patient normalized) consensus profiles -
-# one single-cell profile and one organoid profile - not the plain per-patient
-# consensus profiles (2D tree: organoid_consensus_profiles, sc_consensus_profiles)
-# or the DL embedding variants (sammed_*, nucleocentric_*) that also live under
-# this same 3D directory.
-COMBINED_PROFILE_STEMS = {
-    "organoid_norm_sc_consensus_profiles",
-    "sc_norm_sc_consensus_profiles",
+censensus_profiles_all_dict = {
+    "3D": consensus_profiles_3D_paths,
+    "2D": consensus_profiles_2D_paths,
 }
-
-censensus_profiles_all = [
-    x
-    for x in consensus_profiles_3D_path.glob("*.parquet")
-    if x.is_file() and x.suffix == ".parquet" and x.stem in COMBINED_PROFILE_STEMS
-]
 
 
 # ## Train the models:
 
-# In[10]:
+# In[7]:
 
 
 # Initialized ONCE, outside the per-profile loop, so results from every
@@ -1133,181 +1009,140 @@ results = {
 # Fixed seed so the "shuffled" permutation control is reproducible run-to-run.
 rng = np.random.default_rng(0)
 
-logging.info(f"Found {len(censensus_profiles_all)} consensus profile(s) to process")
+total_profiles = sum(len(paths) for paths in censensus_profiles_all_dict.values())
+logging.info(f"Found {total_profiles} consensus profile(s) to process")
 
-for consensus_path in tqdm.tqdm(
-    censensus_profiles_all,
-    total=len(censensus_profiles_all),
-    desc="Processing consensus profiles",
-    leave=True,
-):
-    consensus_profile_name = consensus_path.stem
-    logging.info(f"Processing and training model for {consensus_profile_name}...")
-    consensus_df = pd.read_parquet(consensus_path)
-    if "2D" in str(consensus_path):
-        image_mode = "2D"
-        # wrangle the metadata column names to match the 3D consensus profile format
-        consensus_df = consensus_df.rename(
-            columns={
-                "Metadata_patient_tumor": "Metadata_Biology_PatientTumor",
-                "Metadata_treatment": "Metadata_Experiment_Treatment",
-                "Metadata_dose": "Metadata_Experiment_Dose",
-            }
-        )
-    elif "3D" in str(consensus_path):
-        image_mode = "3D"
-    else:
-        raise ValueError(f"Unexpected consensus profile path: {consensus_path}")
-
-    viabilities_df = (
-        pd.merge(
-            consensus_df,
-            platemap_viability_df,
-            how="left",
-            left_on=[
-                "Metadata_Biology_PatientTumor",
-                "Metadata_Experiment_Treatment",
-                "Metadata_Experiment_Dose",
-            ],
-            right_on=["patient_id", "Treatment", "Dose"],
-        )
-        .drop(
-            columns=[
-                "Unit",
-                "patient_id",
-                "Drug",
-                "Concentration_uM",
-                "Treatment",
-                "Dose",
-            ]
-        )
-        .rename(
-            columns={
-                x: f"Metadata_{x}"
-                for x in platemap_viability_df.columns
-                if VIABILITY_COL not in x
-                # BUGFIX: columns that already start with "Metadata_" (e.g.
-                # Metadata_Viability_percentage, already prefixed back in the
-                # platemap/viability-merge cell) must NOT be re-prefixed, or
-                # they end up named "Metadata_Metadata_..." and become
-                # unreachable under their expected name.
-                and not x.startswith("Metadata_")
-                and x not in ["WellCol", "WellPosition", "Drug", "Concentration_uM"]
-            }
-        )
-    )
-
-    # The precomputed global min_max_viability column (if it rode along from
-    # platemap_viability_df) is intentionally dropped here - it's only safe
-    # to use as-is for LOPO and leaks for LOTO/random_split (see the
-    # revision notes in the training-functions cell above). Each split
-    # function below recomputes it fold-safely from RAW_VIABILITY_COL.
-    if VIABILITY_COL in viabilities_df.columns:
-        viabilities_df = viabilities_df.drop(columns=[VIABILITY_COL])
-
-    # drop rows with no raw viability measurement at all (patients/treatments
-    # that never matched during the platemap<->viability merge)
-    viabilities_df = viabilities_df.dropna(subset=[RAW_VIABILITY_COL]).reset_index(
-        drop=True
-    )
-    # combine the two stratification columns into a single key
-    viabilities_df["Metadata_Experiment_FullTreatment"] = (
-        viabilities_df["Metadata_Experiment_Treatment"].astype(str)
-        + "_"
-        + viabilities_df["Metadata_Experiment_Dose"].astype(str)
-    )
-    metadata_cols = [
-        col for col in viabilities_df.columns if col.startswith("Metadata_")
-    ]
-    feature_cols = [
-        col
-        for col in viabilities_df.columns
-        if col not in metadata_cols and col not in [VIABILITY_COL]
-    ]
-    logging.info(
-        f"  {consensus_profile_name}: {len(viabilities_df)} rows, "
-        f"{len(feature_cols)} feature columns"
-    )
-    viabilities_df[feature_cols] = viabilities_df[feature_cols].clip(
-        lower=-1e1, upper=1e1
-    )
-
-    for shuffle_status in tqdm.tqdm(
-        ["not_shuffled", "shuffled"], desc="Processing shuffle statuses", leave=False
+for image_mode, consensus_paths in censensus_profiles_all_dict.items():
+    for consensus_path in tqdm.tqdm(
+        consensus_paths,
+        total=len(consensus_paths),
+        desc=f"Processing {image_mode} consensus profiles",
+        leave=True,
     ):
-        if shuffle_status == "shuffled":
-            # permute the values in every column (fixed seed via rng, defined above)
-            viabilities_df[feature_cols] = viabilities_df[feature_cols].apply(
-                lambda col: rng.permutation(col.values)
+        consensus_profile_name = consensus_path.stem
+        logging.info(f"Processing and training model for {consensus_profile_name}...")
+        consensus_df = pd.read_parquet(consensus_path)
+        if image_mode == "2D":
+            # wrangle the metadata column names to match the 3D consensus profile format
+            consensus_df = consensus_df.rename(
+                columns={
+                    "Metadata_patient_tumor": "Metadata_Biology_PatientTumor",
+                    "Metadata_treatment": "Metadata_Experiment_Treatment",
+                    "Metadata_dose": "Metadata_Experiment_Dose",
+                }
             )
-        for split_method in tqdm.tqdm(
-            ["lopo", "loto", "random_split"],
-            desc="Processing split methods",
+
+        # The precomputed global min_max_viability column (if it rode along from
+        # platemap_viability_df) is intentionally dropped here - it's only safe
+        # to use as-is for LOPO and leaks for LOTO/random_split (see the
+        # revision notes in the training-functions cell above). Each split
+        # function below recomputes it fold-safely from RAW_VIABILITY_COL.
+
+        # drop rows with no raw viability measurement at all (patients/treatments
+        # that never matched during the platemap<->viability merge)
+        consensus_df = consensus_df.dropna(subset=[VIABILITY_COL]).reset_index(
+            drop=True
+        )
+        # combine the two stratification columns into a single key
+        consensus_df["Metadata_Experiment_FullTreatment"] = (
+            consensus_df["Metadata_Experiment_Treatment"].astype(str)
+            + "_"
+            + consensus_df["Metadata_Experiment_Dose"].astype(str)
+        )
+        metadata_cols = [
+            col for col in consensus_df.columns if col.startswith("Metadata_")
+        ]
+        feature_cols = [
+            col
+            for col in consensus_df.columns
+            if col not in metadata_cols and col not in [VIABILITY_COL]
+        ]
+        logging.info(
+            f"  {consensus_profile_name}: {len(consensus_df)} rows, "
+            f"{len(feature_cols)} feature columns"
+        )
+        consensus_df[feature_cols] = consensus_df[feature_cols].clip(
+            lower=-1e1, upper=1e1
+        )
+
+        for shuffle_status in tqdm.tqdm(
+            ["not_shuffled", "shuffled"],
+            desc="Processing shuffle statuses",
             leave=False,
         ):
-            logging.info(
-                f"Running split_method={split_method}, shuffle_status={shuffle_status}, "
-                f"profile={consensus_profile_name}"
-            )
-
-            if split_method == "lopo":
-                group_col = PATIENT_COL
-            elif split_method == "loto":
-                group_col = TREATMENT_COL
-            else:
-                group_col = None  # not used for "random_split"
-
-            if split_method == "random_split":
-                fold_result = run_random_split(
-                    viabilities_df,
-                    feature_cols,
-                    RAW_VIABILITY_COL,
-                    VIABILITY_COL,
-                    PATIENT_COL,
-                    split_name=split_method,
-                    test_size=RANDOM_SPLIT_TEST_SIZE,
-                    random_state=RANDOM_SPLIT_SEED,
-                    shuffle_status=shuffle_status,
-                    profile_type=consensus_profile_name,
-                    retrain=RETRAIN_EXISTING_MODELS,
-                    image_mode=image_mode,
+            if shuffle_status == "shuffled":
+                # permute the values in every column (fixed seed via rng, defined above)
+                consensus_df[feature_cols] = consensus_df[feature_cols].apply(
+                    lambda col: rng.permutation(col.values)
                 )
-            else:
-                fold_result = run_group_cv(
-                    viabilities_df,
-                    feature_cols,
-                    RAW_VIABILITY_COL,
-                    VIABILITY_COL,
-                    PATIENT_COL,
-                    group_col=group_col,
-                    split_name=split_method,
-                    shuffle_status=shuffle_status,
-                    profile_type=consensus_profile_name,
-                    retrain=RETRAIN_EXISTING_MODELS,
-                    image_mode=image_mode,
+            for split_method in tqdm.tqdm(
+                ["lopo", "loto", "random_split"],
+                desc="Processing split methods",
+                leave=False,
+            ):
+                logging.info(
+                    f"Running split_method={split_method}, shuffle_status={shuffle_status}, "
+                    f"profile={consensus_profile_name}"
                 )
 
-            results["results"].append(fold_result)
-            results["profile_type"].append(consensus_profile_name)
-            results["split_method"].append(split_method)
-            results["shuffle_status"].append(shuffle_status)
+                if split_method == "lopo":
+                    group_col = PATIENT_COL
+                elif split_method == "loto":
+                    group_col = TREATMENT_COL
+                else:
+                    group_col = None  # not used for "random_split"
 
-            logging.info(
-                f"Finished split_method={split_method}, shuffle_status={shuffle_status}, "
-                f"profile={consensus_profile_name}"
-            )
+                if split_method == "random_split":
+                    fold_result = run_random_split(
+                        consensus_df,
+                        feature_cols,
+                        RAW_VIABILITY_COL,
+                        VIABILITY_COL,
+                        PATIENT_COL,
+                        split_name=split_method,
+                        test_size=RANDOM_SPLIT_TEST_SIZE,
+                        random_state=RANDOM_SPLIT_SEED,
+                        shuffle_status=shuffle_status,
+                        profile_type=consensus_profile_name,
+                        retrain=RETRAIN_EXISTING_MODELS,
+                        image_mode=image_mode,
+                    )
+                else:
+                    fold_result = run_group_cv(
+                        consensus_df,
+                        feature_cols,
+                        RAW_VIABILITY_COL,
+                        VIABILITY_COL,
+                        PATIENT_COL,
+                        group_col=group_col,
+                        split_name=split_method,
+                        shuffle_status=shuffle_status,
+                        profile_type=consensus_profile_name,
+                        retrain=RETRAIN_EXISTING_MODELS,
+                        image_mode=image_mode,
+                    )
 
-    # Free the (potentially large, high-dimensional) per-profile dataframe
-    # before moving to the next consensus profile - helps avoid memory
-    # bloat across 12 profiles x 2 shuffle statuses x 3 split methods x N
-    # folds worth of accumulated artifacts.
-    del viabilities_df
-    gc.collect()
+                results["results"].append(fold_result)
+                results["profile_type"].append(consensus_profile_name)
+                results["split_method"].append(split_method)
+                results["shuffle_status"].append(shuffle_status)
 
-logging.info(f"Finished processing all {len(censensus_profiles_all)} profile(s)")
+                logging.info(
+                    f"Finished split_method={split_method}, shuffle_status={shuffle_status}, "
+                    f"profile={consensus_profile_name}"
+                )
+
+        # Free the (potentially large, high-dimensional) per-profile dataframe
+        # before moving to the next consensus profile - helps avoid memory
+        # bloat across profiles x 2 shuffle statuses x 3 split methods x N
+        # folds worth of accumulated artifacts.
+        del consensus_df
+        gc.collect()
+
+logging.info(f"Finished processing all {total_profiles} profile(s)")
 
 
-# In[11]:
+# In[8]:
 
 
 # ---------------------------------------------------------------------
@@ -1327,7 +1162,6 @@ METRIC_FILE_PATTERNS = {
 
 combined_paths = {}
 for metric_name, pattern in METRIC_FILE_PATTERNS.items():
-    # per-run artifacts live one level down, under RESULTS_OUTPUT/<split_name>/
     matching_files = sorted(RESULTS_OUTPUT.glob(f"*/{pattern}"))
     # exclude any combined file from a previous run of this cell
     matching_files = [f for f in matching_files if not f.stem.startswith("combined_")]
@@ -1364,7 +1198,7 @@ logging.info(
 combined_paths
 
 
-# In[12]:
+# In[9]:
 
 
 final_time = time.time()
