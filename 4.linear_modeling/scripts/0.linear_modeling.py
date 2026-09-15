@@ -29,7 +29,7 @@ profile_dict = {
     "organoid_fs": {
         "input_profile_path": pathlib.Path(
             root_dir,
-            "data/profiles_3D/all_patients/0.normalized_profiles/organoid_norm_fs_profiles.parquet",
+            "data/profiles_3D/all_patients/1.feature_selected_profiles/organoid_norm_fs_profiles.parquet",
         ),
         "output_profile_path": pathlib.Path(
             root_dir, "4.linear_modeling/results/linear_modeling/organoid_fs.parquet"
@@ -38,7 +38,7 @@ profile_dict = {
     "single_cell_fs": {
         "input_profile_path": pathlib.Path(
             root_dir,
-            "data/profiles_3D/all_patients/0.normalized_profiles/sc_norm_fs_profiles.parquet",
+            "data/profiles_3D/all_patients/1.feature_selected_profiles/sc_norm_fs_profiles.parquet",
         ),
         "output_profile_path": pathlib.Path(
             root_dir, "4.linear_modeling/results/linear_modeling/sc_fs.parquet"
@@ -49,7 +49,19 @@ profile_dict = {
 
 # ## Linear Modeling
 #
-# We want to predict each feature using information about the organoid per patient. We use linear regression for this.
+# The goal here is not prediction but **inference**: for each morphology feature, we fit one
+# linear model per treatment/dose combination (vs. DMSO) and ask which terms
+# (treatment, patient, count covariates) are significantly associated with that feature,
+# after accounting for the others.
+#
+# This produces many separate model fits -- one per (feature x drug/dose combo x patient) --
+# each contributing a p-value per term. Because a p-value's meaning depends on what hypothesis
+# family it belongs to, multiple-testing correction (FDR, Benjamini-Hochberg) is run
+# **separately per term** (e.g. all "treatment" p-values together, all "patient" p-values
+# together) but pooled **across all features, drug/dose combos, and patients** within that
+# term. This keeps each term's inference robust (correcting over its full family of tests)
+# without over-correcting by mixing unrelated hypotheses (e.g. treatment effects vs. count
+# covariate effects) into a single correction.
 #
 # **General form:**
 #
@@ -260,10 +272,21 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
         df_trt["patient"] = pd.Categorical(
             df_trt["patient"], categories=[reference_patient] + patients_in_combo[1:]
         )
+        # zero-center the continuous covariates (per combo) for numerical
+        # stability in the OLS fit -- a linear shift with no rescaling leaves
+        # the fit (and all coefficients except the intercept) unchanged, so
+        # this is purely a conditioning improvement, not a modeling choice
+        df_trt[count_columns] = df_trt[count_columns] - df_trt[count_columns].mean()
 
         for col in tqdm(
             feature_columns, desc="Processing features", unit="feature", leave=False
         ):
+            # skip features with no observed values in this combo (e.g. a channel
+            # that was not imaged/segmented for these patients/treatments) --
+            # an all-NaN outcome leaves an empty design matrix after patsy drops
+            # the missing rows, which smf.ols cannot fit
+            if df_trt[col].notna().sum() == 0:
+                continue
             # Prepare the formula for the linear model:
             # y ~ txt + patient + tumor_type + txt:patient + cell_count + organoid_count + cell/organoid_count
             formula = f"Q('{col}') ~ {lm_equation_terms}"
