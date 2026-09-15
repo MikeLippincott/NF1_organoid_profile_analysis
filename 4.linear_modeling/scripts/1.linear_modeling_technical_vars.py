@@ -29,29 +29,38 @@ profile_dict = {
     "organoid_fs": {
         "input_profile_path": pathlib.Path(
             root_dir,
-            "data/profiles_3D/all_patients/1.feature_selected_profiles/organoid_norm_fs_profiles.parquet",
-        ),
+            "data/profiles_3D/all_patients/0.normalized_profiles/organoid_norm_norm_profile.parquet",
+        ).resolve(strict=True),
         "output_profile_path": pathlib.Path(
-            root_dir, "4.linear_modeling/results/linear_modeling/organoid_fs.parquet"
+            root_dir,
+            "4.linear_modeling/results/linear_modeling/organoid_norm_technical_model.parquet",
         ),
     },
     "single_cell_fs": {
         "input_profile_path": pathlib.Path(
             root_dir,
-            "data/profiles_3D/all_patients/1.feature_selected_profiles/sc_norm_fs_profiles.parquet",
-        ),
+            "data/profiles_3D/all_patients/0.normalized_profiles/sc_norm_norm_profile.parquet",
+        ).resolve(strict=True),
         "output_profile_path": pathlib.Path(
-            root_dir, "4.linear_modeling/results/linear_modeling/sc_fs.parquet"
+            root_dir,
+            "4.linear_modeling/results/linear_modeling/sc_norm_technical_model.parquet",
         ),
     },
 }
+
+manhattan_distance_df = pd.read_csv(
+    pathlib.Path(
+        root_dir,
+        "4.linear_modeling/results/well_manhattan_distance/well_manhattan_distance.csv",
+    )
+)
 
 
 # ## Linear Modeling
 #
 # The goal here is not prediction but **inference**: for each morphology feature, we fit one
 # linear model per treatment/dose combination (vs. DMSO) and ask which terms
-# (treatment, patient, count covariates) are significantly associated with that feature,
+# (treatment, patient, technical covariates) are significantly associated with that feature,
 # after accounting for the others.
 #
 # This produces many separate model fits -- one per (feature x drug/dose combo x patient) --
@@ -60,7 +69,7 @@ profile_dict = {
 # **separately per term** (e.g. all "treatment" p-values together, all "patient" p-values
 # together) but pooled **across all features, drug/dose combos, and patients** within that
 # term. This keeps each term's inference robust (correcting over its full family of tests)
-# without over-correcting by mixing unrelated hypotheses (e.g. treatment effects vs. count
+# without over-correcting by mixing unrelated hypotheses (e.g. treatment effects vs. technical
 # covariate effects) into a single correction.
 #
 # **General form:**
@@ -69,9 +78,9 @@ profile_dict = {
 #
 # **Model specification:**
 #
-# $$y \sim \text{txt} + \text{patient tumor} + \text{txt} \times \text{patient tumor} + \text{cell count} + \text{organoid count} + \text{cell/organoid count}$$
+# $$y \sim \text{treatment} + \text{patient tumor} + \text{cell count} + \text{organoid count} + \text{cell/organoid count} + \text{well location on the plate} + \\ \text{cell Z-position} + \text{cell xy-position} + \text{depth of the cell spanning z} + \text{interaction between treatment and patient tumor}$$
 #
-# $$y = \beta_0 + X_1\beta_1 + X_2\beta_2 + X_3\beta_3 + X_4\beta_4 + X_5\beta_5 + (X_1 X_2)\beta_6 + \epsilon$$
+# $$y = \beta_0 + X_1\beta_1 + X_2\beta_2 + X_3\beta_3 + X_4\beta_4 + X_5\beta_5 + (X_6\beta_6) + (X_7\beta_7) + (X_8\beta_8) + (X_9\beta_9) + (X_1 X_2)\beta_{10} + \epsilon$$
 #
 # **Where:**
 #
@@ -83,7 +92,11 @@ profile_dict = {
 # | $X_3$ | $\beta_3$ | Cell count |
 # | $X_4$ | $\beta_4$ | Organoid count |
 # | $X_5$ | $\beta_5$ | Cell/organoid count |
-# | $X_1 X_2$ | $\beta_6$ | Interaction between treatment and patient tumor (product of $X_1$ and $X_2$) |
+# | $X_6$ | $\beta_6$ | Well location on the plate (Manhattan distance from the center of the plate) |
+# | $X_7$ | $\beta_7$ | Cell Z-position (Z-center coordinate of the cell) |
+# | $X_8$ | $\beta_8$ | Cell xy-position (xy-center coordinate of the cell) |
+# | $X_9$ | $\beta_9$ | Depth of the cell spanning z (Bounding box max - bounding box min in z) |
+# | $X_1 X_2$ | $\beta_{10}$ | Interaction between treatment and patient tumor (product of $X_1$ and $X_2$) |
 #
 # $y$ = feature to predict, $\epsilon$ = error term
 #
@@ -98,9 +111,11 @@ profile_dict = {
 
 
 lm_equation_terms = (
-    "C(Metadata_treatment_full) + C(patient) "
+    "C(Metadata_Experiment_TreatmentFull) + C(Metadata_Biology_PatientTumor) "
     "+ cell_count + organoid_count + cell_per_organoid_count "
-    "+ C(Metadata_treatment_full):C(patient)"
+    "+ manhattan_distance_from_center "
+    "+ cell_x_position + cell_y_position + cell_z_position + cell_z_depth "
+    "+ C(Metadata_Experiment_TreatmentFull):C(Metadata_Biology_PatientTumor)"
 )
 
 
@@ -123,7 +138,7 @@ tumor_type_dict = {
 }
 
 
-# In[ ]:
+# In[5]:
 
 
 for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
@@ -131,14 +146,14 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     # per profile. Results are stored long-form: one row per
     # (combo, feature, term), where "term" identifies which piece of
     # the model specification the coefficient/pvalue belongs to
-    # (treatment, patient, cell_count, organoid_count, cell_per_organoid_count).
+    # (treatment, patient, and each entry in numeric_covariates).
     if profile_dict[profile]["output_profile_path"].exists():
         continue  # skip if the output already exists
 
     linear_modeling_results_dict = {
         "term": [],
-        "patient": [],
-        "treatment": [],
+        "Metadata_Biology_PatientTumor": [],
+        "Metadata_Experiment_Treatment": [],
         "drug": [],
         "therapeutic_category": [],
         "feature": [],
@@ -150,20 +165,21 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
         "intercept": [],
     }
     df = pd.read_parquet(profile_dict[profile]["input_profile_path"])
-    df = df.rename(
-        columns={
-            "Metadata_Biology_PatientTumor": "patient",
-            "Metadata_Experiment_Treatment": "treatment",
-        }
+    df = pd.merge(
+        left=df,
+        right=manhattan_distance_df,
+        how="left",
+        on=["Metadata_Experiment_Well"],
     )
+    # manhattan_distance_df
     # drop the NF0037_T1_CQ1 patient
-    df = df.loc[df["patient"] != "NF0037_T1_CQ1"]
+    df = df.loc[df["Metadata_Biology_PatientTumor"] != "NF0037_T1_CQ1"]
     # map each patient to its tumor type via the manually defined lookup
-    df["tumor_type"] = df["patient"].map(tumor_type_dict)
+    df["tumor_type"] = df["Metadata_Biology_PatientTumor"].map(tumor_type_dict)
     # combine treatment, dose, and unit into a single column so that
     # different doses of the same treatment are modeled as distinct groups
-    df["Metadata_treatment_full"] = (
-        df["treatment"].astype(str)
+    df["Metadata_Experiment_TreatmentFull"] = (
+        df["Metadata_Experiment_Treatment"].astype(str)
         + "_"
         + df["Metadata_Experiment_Dose"].astype(str)
         + df["Metadata_Experiment_Unit"].astype(str)
@@ -174,13 +190,13 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     treatment_meta = (
         df[
             [
-                "Metadata_treatment_full",
-                "treatment",
+                "Metadata_Experiment_TreatmentFull",
+                "Metadata_Experiment_Treatment",
                 "Metadata_Experiment_TherapeuticCategories",
             ]
         ]
         .drop_duplicates()
-        .set_index("Metadata_treatment_full")
+        .set_index("Metadata_Experiment_TreatmentFull")
     )
 
     # build the count covariates used in the model specification:
@@ -197,10 +213,12 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
             ],
         ).drop_duplicates()
         organoid_counts_df = organoid_counts_df.rename(
-            columns={"Metadata_Biology_PatientTumor": "patient"}
+            columns={"Metadata_Biology_PatientTumor": "Metadata_Biology_PatientTumor"}
         )
         df = df.merge(
-            organoid_counts_df, on=["patient", "Metadata_Experiment_Well"], how="left"
+            organoid_counts_df,
+            on=["Metadata_Biology_PatientTumor", "Metadata_Experiment_Well"],
+            how="left",
         )
         # drop rows whose (patient, well) has no matching organoid-level data
         df = df.dropna(subset=["Metadata_WellOrganoidCount"])
@@ -211,10 +229,34 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
         df["organoid_count"] = df["Metadata_WellOrganoidCount"]
     df["cell_per_organoid_count"] = df["cell_count"] / df["organoid_count"]
 
-    count_columns = ["cell_count", "organoid_count", "cell_per_organoid_count"]
+    # build the spatial covariates used in the model specification:
+    # xy/z center position and z-depth of the segmented object (cell or organoid)
+    location_object = "Cell" if profile == "single_cell_fs" else "Organoid"
+    df["cell_x_position"] = df[f"Metadata_Location_{location_object}_CenterX"]
+    df["cell_y_position"] = df[f"Metadata_Location_{location_object}_CenterY"]
+    df["cell_z_position"] = df[f"Metadata_Location_{location_object}_CenterZ"]
+    df["cell_z_depth"] = (
+        df[f"Metadata_Location_{location_object}_MaxZ"]
+        - df[f"Metadata_Location_{location_object}_MinZ"]
+    )
+
+    numeric_covariates = [
+        "cell_count",
+        "organoid_count",
+        "cell_per_organoid_count",
+        "manhattan_distance_from_center",
+        "cell_x_position",
+        "cell_y_position",
+        "cell_z_position",
+        "cell_z_depth",
+    ]
+    # cast to plain float64: pandas nullable extension dtypes (e.g. Float64/Int64)
+    # carry pd.NA instead of np.nan, which patsy's formula NA-handling can't
+    # evaluate (raises "boolean value of NA is ambiguous")
+    df[numeric_covariates] = df[numeric_covariates].astype("float64")
     metadata_columns = (
-        ["patient", "treatment", "tumor_type"]
-        + count_columns
+        ["Metadata_Biology_PatientTumor", "Metadata_Experiment_Treatment", "tumor_type"]
+        + numeric_covariates
         + [col for col in df.columns if col.startswith("Metadata_")]
     )
     # TODO: temporarily drop texture features
@@ -240,12 +282,13 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
 
     # Filter for specific treatment/dose combinations
     # DMSO's combined label is consistent across all patients
-    dmso_label = df.loc[df["treatment"] == "DMSO", "Metadata_treatment_full"].unique()[
-        0
-    ]
+    dmso_label = df.loc[
+        df["Metadata_Experiment_Treatment"] == "DMSO",
+        "Metadata_Experiment_TreatmentFull",
+    ].unique()[0]
     combo_list = [
         (dmso_label, i)
-        for i in df["Metadata_treatment_full"].unique()
+        for i in df["Metadata_Experiment_TreatmentFull"].unique()
         if i != dmso_label
     ]
     for combo in tqdm(
@@ -254,29 +297,42 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
         unit="combo",
         leave=False,
     ):
-        drug_name = treatment_meta.loc[combo[1], "treatment"]
+        drug_name = treatment_meta.loc[combo[1], "Metadata_Experiment_Treatment"]
         therapeutic_category = treatment_meta.loc[
             combo[1], "Metadata_Experiment_TherapeuticCategories"
         ]
 
         # pool across all patients that have this treatment (plus DMSO) so that
         # patient and the treatment x patient interaction have variance to fit on
-        df_trt = df.loc[df["Metadata_treatment_full"].isin(combo)]
+        df_trt = df.loc[df["Metadata_Experiment_TreatmentFull"].isin(combo)].copy()
+        # keep only patients that have observations for every treatment label
+        # in combo (e.g. both DMSO and the drug) -- a patient missing one
+        # level would otherwise contribute no variance to the interaction term
+        patients_per_treatment = df_trt.groupby("Metadata_Experiment_TreatmentFull")[
+            "Metadata_Biology_PatientTumor"
+        ].apply(set)
+        patients_with_all_treatments = set.intersection(*patients_per_treatment)
+        df_trt = df_trt.loc[
+            df_trt["Metadata_Biology_PatientTumor"].isin(patients_with_all_treatments)
+        ]
         # order the treatment column to ensure DMSO is first (reference level)
         df_trt = df_trt.copy()
-        df_trt["Metadata_treatment_full"] = pd.Categorical(
-            df_trt["Metadata_treatment_full"], categories=[combo[0], combo[1]]
+        df_trt["Metadata_Experiment_TreatmentFull"] = pd.Categorical(
+            df_trt["Metadata_Experiment_TreatmentFull"], categories=[combo[0], combo[1]]
         )
-        patients_in_combo = sorted(df_trt["patient"].unique())
+        patients_in_combo = sorted(df_trt["Metadata_Biology_PatientTumor"].unique())
         reference_patient = patients_in_combo[0]
-        df_trt["patient"] = pd.Categorical(
-            df_trt["patient"], categories=[reference_patient] + patients_in_combo[1:]
+        df_trt["Metadata_Biology_PatientTumor"] = pd.Categorical(
+            df_trt["Metadata_Biology_PatientTumor"],
+            categories=[reference_patient] + patients_in_combo[1:],
         )
         # zero-center the continuous covariates (per combo) for numerical
         # stability in the OLS fit -- a linear shift with no rescaling leaves
         # the fit (and all coefficients except the intercept) unchanged, so
         # this is purely a conditioning improvement, not a modeling choice
-        df_trt[count_columns] = df_trt[count_columns] - df_trt[count_columns].mean()
+        df_trt[numeric_covariates] = (
+            df_trt[numeric_covariates] - df_trt[numeric_covariates].mean()
+        )
 
         for col in tqdm(
             feature_columns, desc="Processing features", unit="feature", leave=False
@@ -295,8 +351,12 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
 
             def add_row(term, patient, coefficient, pvalue):
                 linear_modeling_results_dict["term"].append(term)
-                linear_modeling_results_dict["patient"].append(patient)
-                linear_modeling_results_dict["treatment"].append(combo[1])
+                linear_modeling_results_dict["Metadata_Biology_PatientTumor"].append(
+                    patient
+                )
+                linear_modeling_results_dict["Metadata_Experiment_Treatment"].append(
+                    combo[1]
+                )
                 linear_modeling_results_dict["drug"].append(drug_name)
                 linear_modeling_results_dict["therapeutic_category"].append(
                     therapeutic_category
@@ -315,34 +375,34 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
 
             # term: treatment effect, resolved per patient (main effect for the
             # reference patient, main effect + interaction contrast for the rest)
-            treatment_term = f"C(Metadata_treatment_full)[T.{combo[1]}]"
+            treatment_term = f"C(Metadata_Experiment_TreatmentFull)[T.{combo[1]}]"
             for patient in patients_in_combo:
                 if patient == reference_patient:
                     coefficient = results.params[treatment_term].item()
                     pvalue = results.pvalues[treatment_term].item()
                 else:
-                    interaction_term = f"{treatment_term}:C(patient)[T.{patient}]"
+                    interaction_term = f"{treatment_term}:C(Metadata_Biology_PatientTumor)[T.{patient}]"
                     contrast = f"{treatment_term} + {interaction_term} = 0"
                     contrast_test = results.t_test(contrast)
                     coefficient = contrast_test.effect.item()
                     pvalue = contrast_test.pvalue.item()
-                add_row("treatment", patient, coefficient, pvalue)
+                add_row("Metadata_Experiment_Treatment", patient, coefficient, pvalue)
 
             # term: patient main effect (baseline shift vs. the reference
             # patient, independent of treatment)
             for patient in patients_in_combo:
                 if patient == reference_patient:
                     continue
-                patient_term = f"C(patient)[T.{patient}]"
+                patient_term = f"C(Metadata_Biology_PatientTumor)[T.{patient}]"
                 add_row(
-                    "patient",
+                    "Metadata_Biology_PatientTumor",
                     patient,
                     results.params[patient_term].item(),
                     results.pvalues[patient_term].item(),
                 )
 
-            # terms: the count covariates (not patient-specific)
-            for covariate in count_columns:
+            # terms: the numeric covariates (not patient-specific)
+            for covariate in numeric_covariates:
                 add_row(
                     covariate,
                     None,
