@@ -1154,7 +1154,7 @@ logging.info(
 )
 
 METRIC_FILE_PATTERNS = {
-    "model_performance": "*_model_performance__*.parquet",
+    "fold_metrics": "*_fold_metrics__*.parquet",
     "predicted_viabilities": "*_predicted_viabilities__*.parquet",
     "feature_importances": "*_feature_importances__*.parquet",
     "summary_metrics": "*_summary_metrics__*.parquet",
