@@ -26,22 +26,22 @@ else:
 
 
 profile_dict = {
-    "organoid_fs": {
+    "organoid_norm": {
         "input_profile_path": pathlib.Path(
             root_dir,
-            "data/profiles_3D/all_patients/1.feature_selected_profiles/organoid_norm_fs_profiles.parquet",
+            "data/profiles_3D/all_patients/0.normalized_profiles/organoid_norm_norm_profile.parquet",
         ),
         "output_profile_path": pathlib.Path(
-            root_dir, "4.linear_modeling/results/linear_modeling/organoid_fs.parquet"
+            root_dir, "4.linear_modeling/results/linear_modeling/organoid_norm.parquet"
         ),
     },
-    "single_cell_fs": {
+    "single_cell_norm": {
         "input_profile_path": pathlib.Path(
             root_dir,
-            "data/profiles_3D/all_patients/1.feature_selected_profiles/sc_norm_fs_profiles.parquet",
+            "data/profiles_3D/all_patients/0.normalized_profiles/sc_norm_norm_profile.parquet",
         ),
         "output_profile_path": pathlib.Path(
-            root_dir, "4.linear_modeling/results/linear_modeling/sc_fs.parquet"
+            root_dir, "4.linear_modeling/results/linear_modeling/sc_norm.parquet"
         ),
     },
 }
@@ -49,41 +49,38 @@ profile_dict = {
 
 # ## Linear Modeling
 #
-# The goal here is not prediction but **inference**: for each morphology feature, we fit one
-# linear model per treatment/dose combination (vs. DMSO) and ask which terms
-# (treatment, patient, count covariates) are significantly associated with that feature,
+# The goal here is not prediction but **inference**: for each patient and morphology feature, we
+# fit one linear model per treatment/dose combination (vs. DMSO), within that patient only, and
+# ask which terms (treatment, count covariates) are significantly associated with that feature,
 # after accounting for the others.
 #
 # This produces many separate model fits -- one per (feature x drug/dose combo x patient) --
 # each contributing a p-value per term. Because a p-value's meaning depends on what hypothesis
 # family it belongs to, multiple-testing correction (FDR, Benjamini-Hochberg) is run
-# **separately per term** (e.g. all "treatment" p-values together, all "patient" p-values
-# together) but pooled **across all features, drug/dose combos, and patients** within that
-# term. This keeps each term's inference robust (correcting over its full family of tests)
-# without over-correcting by mixing unrelated hypotheses (e.g. treatment effects vs. count
-# covariate effects) into a single correction.
+# **separately per term** (e.g. all "treatment" p-values together) but pooled **across all
+# features, drug/dose combos, and patients** within that term. This keeps each term's inference
+# robust (correcting over its full family of tests) without over-correcting by mixing unrelated
+# hypotheses (e.g. treatment effects vs. count covariate effects) into a single correction.
 #
 # **General form:**
 #
-# $$y = \beta_0 + X_1\beta_1 + X_2\beta_2 + \dots + X_n\beta_n + \epsilon$$
+# $$y = \beta_0 + x_1\beta_1 + x_2\beta_2 + \dots + x_n\beta_n + \epsilon$$
 #
 # **Model specification:**
 #
-# $$y \sim \text{txt} + \text{patient tumor} + \text{txt} \times \text{patient tumor} + \text{cell count} + \text{organoid count} + \text{cell/organoid count}$$
+# $$y \sim \text{txt} + \text{cell count} + \text{organoid count} + \text{cell/organoid count}$$
 #
-# $$y = \beta_0 + X_1\beta_1 + X_2\beta_2 + X_3\beta_3 + X_4\beta_4 + X_5\beta_5 + (X_1 X_2)\beta_6 + \epsilon$$
+# $$y = \beta_0 + x_1\beta_1 + x_2\beta_2 + x_3\beta_3 + x_4\beta_4 + \epsilon$$
 #
 # **Where:**
 #
-# | $X$ | $\beta$ | Description |
+# | $x$ | $\beta$ | Description |
 # |-----|---------|--------------|
 # | — | $\beta_0$ | Intercept |
-# | $X_1$ | $\beta_1$ | Treatment (e.g., control, drug + dosage) |
-# | $X_2$ | $\beta_2$ | Patient tumor |
-# | $X_3$ | $\beta_3$ | Cell count |
-# | $X_4$ | $\beta_4$ | Organoid count |
-# | $X_5$ | $\beta_5$ | Cell/organoid count |
-# | $X_1 X_2$ | $\beta_6$ | Interaction between treatment and patient tumor (product of $X_1$ and $X_2$) |
+# | $x_1$ | $\beta_1$ | Treatment (e.g., control, drug + dosage), fit within a single patient |
+# | $x_2$ | $\beta_2$ | Cell count |
+# | $x_3$ | $\beta_3$ | Organoid count |
+# | $x_4$ | $\beta_4$ | Cell/organoid count |
 #
 # $y$ = feature to predict, $\epsilon$ = error term
 #
@@ -98,9 +95,7 @@ profile_dict = {
 
 
 lm_equation_terms = (
-    "C(Metadata_treatment_full) + C(patient) "
-    "+ cell_count + organoid_count + cell_per_organoid_count "
-    "+ C(Metadata_treatment_full):C(patient)"
+    "C(Metadata_treatment_full) + cell_count + organoid_count + cell_per_organoid_count"
 )
 
 
@@ -123,7 +118,7 @@ tumor_type_dict = {
 }
 
 
-# In[ ]:
+# In[5]:
 
 
 for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
@@ -131,7 +126,7 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     # per profile. Results are stored long-form: one row per
     # (combo, feature, term), where "term" identifies which piece of
     # the model specification the coefficient/pvalue belongs to
-    # (treatment, patient, cell_count, organoid_count, cell_per_organoid_count).
+    # (treatment, cell_count, organoid_count, cell_per_organoid_count).
     if profile_dict[profile]["output_profile_path"].exists():
         continue  # skip if the output already exists
 
@@ -185,11 +180,11 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
 
     # build the count covariates used in the model specification:
     # cell count, organoid count, and cell/organoid count
-    if profile == "single_cell_fs":
+    if profile == "single_cell_norm":
         # the single-cell profile has no organoid count of its own,
         # so pull it in from the organoid-level profile via patient + well
         organoid_counts_df = pd.read_parquet(
-            profile_dict["organoid_fs"]["input_profile_path"],
+            profile_dict["organoid_norm"]["input_profile_path"],
             columns=[
                 "Metadata_Biology_PatientTumor",
                 "Metadata_Experiment_Well",
@@ -243,112 +238,92 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     dmso_label = df.loc[df["treatment"] == "DMSO", "Metadata_treatment_full"].unique()[
         0
     ]
-    combo_list = [
-        (dmso_label, i)
-        for i in df["Metadata_treatment_full"].unique()
-        if i != dmso_label
-    ]
-    for combo in tqdm(
-        combo_list,
-        desc="Processing treatment combinations",
-        unit="combo",
-        leave=False,
-    ):
-        drug_name = treatment_meta.loc[combo[1], "treatment"]
-        therapeutic_category = treatment_meta.loc[
-            combo[1], "Metadata_Experiment_TherapeuticCategories"
+    patients = sorted(df["patient"].unique())
+    for patient in tqdm(patients, desc="Processing patients", unit="patient"):
+        df_pat = df.loc[df["patient"] == patient]
+        # each model is fit within this single patient, so there is nothing
+        # to compare against if the patient has no DMSO rows
+        if dmso_label not in df_pat["Metadata_treatment_full"].unique():
+            continue
+        combo_list = [
+            (dmso_label, i)
+            for i in df_pat["Metadata_treatment_full"].unique()
+            if i != dmso_label
         ]
-
-        # pool across all patients that have this treatment (plus DMSO) so that
-        # patient and the treatment x patient interaction have variance to fit on
-        df_trt = df.loc[df["Metadata_treatment_full"].isin(combo)]
-        # order the treatment column to ensure DMSO is first (reference level)
-        df_trt = df_trt.copy()
-        df_trt["Metadata_treatment_full"] = pd.Categorical(
-            df_trt["Metadata_treatment_full"], categories=[combo[0], combo[1]]
-        )
-        patients_in_combo = sorted(df_trt["patient"].unique())
-        reference_patient = patients_in_combo[0]
-        df_trt["patient"] = pd.Categorical(
-            df_trt["patient"], categories=[reference_patient] + patients_in_combo[1:]
-        )
-        # zero-center the continuous covariates (per combo) for numerical
-        # stability in the OLS fit -- a linear shift with no rescaling leaves
-        # the fit (and all coefficients except the intercept) unchanged, so
-        # this is purely a conditioning improvement, not a modeling choice
-        df_trt[count_columns] = df_trt[count_columns] - df_trt[count_columns].mean()
-
-        for col in tqdm(
-            feature_columns, desc="Processing features", unit="feature", leave=False
+        for combo in tqdm(
+            combo_list,
+            desc="Processing treatment combinations",
+            unit="combo",
+            leave=False,
         ):
-            # skip features with no observed values in this combo (e.g. a channel
-            # that was not imaged/segmented for these patients/treatments) --
-            # an all-NaN outcome leaves an empty design matrix after patsy drops
-            # the missing rows, which smf.ols cannot fit
-            if df_trt[col].notna().sum() == 0:
-                continue
-            # Prepare the formula for the linear model:
-            # y ~ txt + patient + tumor_type + txt:patient + cell_count + organoid_count + cell/organoid_count
-            formula = f"Q('{col}') ~ {lm_equation_terms}"
-            model = smf.ols(formula=formula, data=df_trt)
-            results = model.fit()
+            drug_name = treatment_meta.loc[combo[1], "treatment"]
+            therapeutic_category = treatment_meta.loc[
+                combo[1], "Metadata_Experiment_TherapeuticCategories"
+            ]
 
-            def add_row(term, patient, coefficient, pvalue):
-                linear_modeling_results_dict["term"].append(term)
-                linear_modeling_results_dict["patient"].append(patient)
-                linear_modeling_results_dict["treatment"].append(combo[1])
-                linear_modeling_results_dict["drug"].append(drug_name)
-                linear_modeling_results_dict["therapeutic_category"].append(
-                    therapeutic_category
-                )
-                linear_modeling_results_dict["feature"].append(col)
-                linear_modeling_results_dict["rsquared"].append(results.rsquared)
-                linear_modeling_results_dict["rsquared_adj"].append(
-                    results.rsquared_adj
-                )
-                linear_modeling_results_dict["fvalue"].append(results.fvalue)
-                linear_modeling_results_dict["pvalue"].append(pvalue)
-                linear_modeling_results_dict["coefficient"].append(coefficient)
-                linear_modeling_results_dict["intercept"].append(
-                    results.params["Intercept"].item()
-                )
+            df_trt = df_pat.loc[df_pat["Metadata_treatment_full"].isin(combo)]
+            # order the treatment column to ensure DMSO is first (reference level)
+            df_trt = df_trt.copy()
+            df_trt["Metadata_treatment_full"] = pd.Categorical(
+                df_trt["Metadata_treatment_full"], categories=[combo[0], combo[1]]
+            )
+            # zero-center the continuous covariates (per patient, per combo) for
+            # numerical stability in the OLS fit -- a linear shift with no
+            # rescaling leaves the fit (and all coefficients except the
+            # intercept) unchanged, so this is purely a conditioning
+            # improvement, not a modeling choice
+            df_trt[count_columns] = df_trt[count_columns] - df_trt[count_columns].mean()
 
-            # term: treatment effect, resolved per patient (main effect for the
-            # reference patient, main effect + interaction contrast for the rest)
-            treatment_term = f"C(Metadata_treatment_full)[T.{combo[1]}]"
-            for patient in patients_in_combo:
-                if patient == reference_patient:
-                    coefficient = results.params[treatment_term].item()
-                    pvalue = results.pvalues[treatment_term].item()
-                else:
-                    interaction_term = f"{treatment_term}:C(patient)[T.{patient}]"
-                    contrast = f"{treatment_term} + {interaction_term} = 0"
-                    contrast_test = results.t_test(contrast)
-                    coefficient = contrast_test.effect.item()
-                    pvalue = contrast_test.pvalue.item()
-                add_row("treatment", patient, coefficient, pvalue)
-
-            # term: patient main effect (baseline shift vs. the reference
-            # patient, independent of treatment)
-            for patient in patients_in_combo:
-                if patient == reference_patient:
+            for col in tqdm(
+                feature_columns, desc="Processing features", unit="feature", leave=False
+            ):
+                # skip features with no observed values in this combo (e.g. a channel
+                # that was not imaged/segmented for this patient/treatment) --
+                # an all-NaN outcome leaves an empty design matrix after patsy drops
+                # the missing rows, which smf.ols cannot fit
+                if df_trt[col].notna().sum() == 0:
                     continue
-                patient_term = f"C(patient)[T.{patient}]"
+                # Prepare the formula for the linear model:
+                # y ~ txt + cell_count + organoid_count + cell/organoid_count
+                formula = f"Q('{col}') ~ {lm_equation_terms}"
+                model = smf.ols(formula=formula, data=df_trt)
+                results = model.fit()
+
+                def add_row(term, coefficient, pvalue):
+                    linear_modeling_results_dict["term"].append(term)
+                    linear_modeling_results_dict["patient"].append(patient)
+                    linear_modeling_results_dict["treatment"].append(combo[1])
+                    linear_modeling_results_dict["drug"].append(drug_name)
+                    linear_modeling_results_dict["therapeutic_category"].append(
+                        therapeutic_category
+                    )
+                    linear_modeling_results_dict["feature"].append(col)
+                    linear_modeling_results_dict["rsquared"].append(results.rsquared)
+                    linear_modeling_results_dict["rsquared_adj"].append(
+                        results.rsquared_adj
+                    )
+                    linear_modeling_results_dict["fvalue"].append(results.fvalue)
+                    linear_modeling_results_dict["pvalue"].append(pvalue)
+                    linear_modeling_results_dict["coefficient"].append(coefficient)
+                    linear_modeling_results_dict["intercept"].append(
+                        results.params["Intercept"].item()
+                    )
+
+                # term: treatment effect within this patient
+                treatment_term = f"C(Metadata_treatment_full)[T.{combo[1]}]"
                 add_row(
-                    "patient",
-                    patient,
-                    results.params[patient_term].item(),
-                    results.pvalues[patient_term].item(),
+                    "treatment",
+                    results.params[treatment_term].item(),
+                    results.pvalues[treatment_term].item(),
                 )
 
-            # terms: the count covariates (not patient-specific)
-            for covariate in count_columns:
-                add_row(
-                    covariate,
-                    None,
-                    results.params[covariate].item(),
-                    results.pvalues[covariate].item(),
-                )
+                # terms: the count covariates
+                for covariate in count_columns:
+                    add_row(
+                        covariate,
+                        results.params[covariate].item(),
+                        results.pvalues[covariate].item(),
+                    )
     linear_modeling_results_df = pd.DataFrame(linear_modeling_results_dict)
     # map the sanitized feature names back to their original (pre-".": removal)
     # names so downstream consumers loading this parquet in any other

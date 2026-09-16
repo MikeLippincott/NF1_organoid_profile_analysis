@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[ ]:
 
 
 import pathlib
@@ -103,7 +103,7 @@ fig.savefig(platemap_figure_path, dpi=600)
 plt.show()
 
 
-# In[5]:
+# In[ ]:
 
 
 wells_df.drop(
