@@ -1,0 +1,16 @@
+[project]
+name = "NF1_organoid_profile_analysis"
+
+[dependencies]
+IRkernel = "*"
+arrow = "*"
+circlize = "*"
+dplyr = "*"
+ggVennDiagram = "*"
+ggplot2 = "*"
+ggrastr = "*"
+ggrepel = "*"
+ggupset = "*"
+patchwork = "*"
+pheatmap = "*"
+tidyr = "*"

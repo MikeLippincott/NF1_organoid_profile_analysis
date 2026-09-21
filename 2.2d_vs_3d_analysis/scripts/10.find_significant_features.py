@@ -46,7 +46,7 @@ if root_dir is None:
 profile_dict = {
     "organoid_fs": {
         "input_profile_path": pathlib.Path(
-            root_dir, "5.EDA/results/linear_modeling/organoid_fs.parquet"
+            root_dir, "4.linear_modeling/results/linear_modeling/organoid_fs.parquet"
         ),
         "metadata_columns": [
             "patient",
@@ -64,7 +64,7 @@ profile_dict = {
     },
     "single_cell_fs": {
         "input_profile_path": pathlib.Path(
-            root_dir, "5.EDA/results/linear_modeling/sc_fs.parquet"
+            root_dir, "4.linear_modeling/results/linear_modeling/sc_fs.parquet"
         ),
         "metadata_columns": [
             "patient",

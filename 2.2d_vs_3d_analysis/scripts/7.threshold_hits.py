@@ -35,31 +35,31 @@ paths_to_process_dict = {
     "organoid_fs": {
         "mAP": {
             "inter_patient_input": pathlib.Path(
-                f"{root_dir}/5.EDA/results/mAP/organoid_fs_inter_patient_mAP.parquet"
+                f"{root_dir}/4.linear_modeling/results/mAP/organoid_fs_inter_patient_mAP.parquet"
             ).resolve(strict=True),
             "intra_patient_input": pathlib.Path(
-                f"{root_dir}/5.EDA/results/mAP/organoid_fs_intra_patient_mAP.parquet"
+                f"{root_dir}/4.linear_modeling/results/mAP/organoid_fs_intra_patient_mAP.parquet"
             ).resolve(strict=True),
         },
         "distance_metrics": {
             "inter_patient_input": pathlib.Path(
-                f"{root_dir}/5.EDA/results/distance_metrics/organoid_fs_inter_patient_distance_metrics.parquet"
+                f"{root_dir}/4.linear_modeling/results/distance_metrics/organoid_fs_inter_patient_distance_metrics.parquet"
             ).resolve(strict=True),
             "intra_patient_input": pathlib.Path(
-                f"{root_dir}/5.EDA/results/distance_metrics/organoid_fs_intra_patient_distance_metrics.parquet"
+                f"{root_dir}/4.linear_modeling/results/distance_metrics/organoid_fs_intra_patient_distance_metrics.parquet"
             ).resolve(strict=True),
         },
         "inter_patient_output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/drug_hit_merged_metrics/organoid_fs_inter_patient_drug_hit_merged_metrics.parquet"
+            f"{root_dir}/4.linear_modeling/results/drug_hit_merged_metrics/organoid_fs_inter_patient_drug_hit_merged_metrics.parquet"
         ).resolve(),
         "intra_patient_output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/drug_hit_merged_metrics/organoid_fs_intra_patient_drug_hit_merged_metrics.parquet"
+            f"{root_dir}/4.linear_modeling/results/drug_hit_merged_metrics/organoid_fs_intra_patient_drug_hit_merged_metrics.parquet"
         ).resolve(),
         "inter_drug_hit_list_output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/drug_hit_lists/organoid_fs_inter_patient_drug_hit_list.parquet"
+            f"{root_dir}/4.linear_modeling/results/drug_hit_lists/organoid_fs_inter_patient_drug_hit_list.parquet"
         ).resolve(),
         "intra_drug_hit_list_output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/drug_hit_lists/organoid_fs_intra_patient_drug_hit_list.parquet"
+            f"{root_dir}/4.linear_modeling/results/drug_hit_lists/organoid_fs_intra_patient_drug_hit_list.parquet"
         ).resolve(),
         "metadata_columns": [
             "patient",
@@ -79,31 +79,31 @@ paths_to_process_dict = {
     "single_cell_fs": {
         "mAP": {
             "inter_patient_input": pathlib.Path(
-                f"{root_dir}/5.EDA/results/mAP/sc_fs_inter_patient_mAP.parquet"
+                f"{root_dir}/4.linear_modeling/results/mAP/sc_fs_inter_patient_mAP.parquet"
             ).resolve(strict=True),
             "intra_patient_input": pathlib.Path(
-                f"{root_dir}/5.EDA/results/mAP/sc_fs_intra_patient_mAP.parquet"
+                f"{root_dir}/4.linear_modeling/results/mAP/sc_fs_intra_patient_mAP.parquet"
             ).resolve(strict=True),
         },
         "distance_metrics": {
             "inter_patient_input": pathlib.Path(
-                f"{root_dir}/5.EDA/results/distance_metrics/sc_fs_inter_patient_distance_metrics.parquet"
+                f"{root_dir}/4.linear_modeling/results/distance_metrics/sc_fs_inter_patient_distance_metrics.parquet"
             ).resolve(strict=True),
             "intra_patient_input": pathlib.Path(
-                f"{root_dir}/5.EDA/results/distance_metrics/sc_fs_intra_patient_distance_metrics.parquet"
+                f"{root_dir}/4.linear_modeling/results/distance_metrics/sc_fs_intra_patient_distance_metrics.parquet"
             ).resolve(strict=True),
         },
         "inter_patient_output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/drug_hit_merged_metrics/sc_fs_inter_patient_drug_hit_merged_metrics.parquet"
+            f"{root_dir}/4.linear_modeling/results/drug_hit_merged_metrics/sc_fs_inter_patient_drug_hit_merged_metrics.parquet"
         ).resolve(),
         "intra_patient_output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/drug_hit_merged_metrics/sc_fs_intra_patient_drug_hit_merged_metrics.parquet"
+            f"{root_dir}/4.linear_modeling/results/drug_hit_merged_metrics/sc_fs_intra_patient_drug_hit_merged_metrics.parquet"
         ).resolve(),
         "inter_drug_hit_list_output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/drug_hit_lists/sc_fs_inter_patient_drug_hit_list.parquet"
+            f"{root_dir}/4.linear_modeling/results/drug_hit_lists/sc_fs_inter_patient_drug_hit_list.parquet"
         ).resolve(),
         "intra_drug_hit_list_output": pathlib.Path(
-            f"{root_dir}/5.EDA/results/drug_hit_lists/sc_fs_intra_patient_drug_hit_list.parquet"
+            f"{root_dir}/4.linear_modeling/results/drug_hit_lists/sc_fs_intra_patient_drug_hit_list.parquet"
         ).resolve(),
         "metadata_columns": [
             "patient",

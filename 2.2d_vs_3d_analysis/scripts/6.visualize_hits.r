@@ -53,19 +53,19 @@ cat("Git root directory:", root_dir, "\n")
 
 organoid_fs_inter_patient_drug_list_path <- file.path(
     root_dir,
-    "5.EDA/results/drug_hit_lists/organoid_fs_inter_patient_drug_hit_list.parquet"
+    "4.linear_modeling/results/drug_hit_lists/organoid_fs_inter_patient_drug_hit_list.parquet"
 )
 organoid_fs_intra_patient_drug_list_path <- file.path(
     root_dir,
-    "5.EDA/results/drug_hit_lists/organoid_fs_intra_patient_drug_hit_list.parquet"
+    "4.linear_modeling/results/drug_hit_lists/organoid_fs_intra_patient_drug_hit_list.parquet"
 )
 sc_fs_inter_patient_drug_list_path <- file.path(
     root_dir,
-    "5.EDA/results/drug_hit_lists/sc_fs_inter_patient_drug_hit_list.parquet"
+    "4.linear_modeling/results/drug_hit_lists/sc_fs_inter_patient_drug_hit_list.parquet"
 )
 sc_fs_intra_patient_drug_list_path <- file.path(
     root_dir,
-    "5.EDA/results/drug_hit_lists/sc_fs_intra_patient_drug_hit_list.parquet"
+    "4.linear_modeling/results/drug_hit_lists/sc_fs_intra_patient_drug_hit_list.parquet"
 )
 organoid_fs_inter_patient_drugs_df <- arrow::read_parquet(
     organoid_fs_inter_patient_drug_list_path
@@ -130,7 +130,7 @@ venn_plot <- ggvenn(
 png(
     filename = file.path(
         root_dir,
-        "5.EDA/figures/venn_diagram_organoid_sc_drug_hits.png"
+        "4.linear_modeling/figures/venn_diagram_organoid_sc_drug_hits.png"
     ),
     width = width,
     height = height,

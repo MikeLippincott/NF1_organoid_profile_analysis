@@ -8,11 +8,15 @@ import pathlib
 import warnings
 
 import pandas as pd
+import statsmodels.api as sm
 import statsmodels.formula.api as smf
+from joblib import Parallel, delayed
 from notebook_init_utils import init_notebook
 from statsmodels.stats.multitest import multipletests
 
 root_dir, in_notebook = init_notebook()
+# number of models fit concurrently (-1 = all cores)
+N_JOBS = -1
 warnings.filterwarnings("ignore")  # Ignore all warnings
 warnings.simplefilter("ignore")  # Additional suppression method
 
@@ -42,6 +46,25 @@ profile_dict = {
         ),
         "output_profile_path": pathlib.Path(
             root_dir, "4.linear_modeling/results/linear_modeling/sc_norm.parquet"
+        ),
+    },
+    "organoid_agg": {
+        "input_profile_path": pathlib.Path(
+            root_dir,
+            "4.linear_modeling/data/organoid_norm_aggregated_profile.parquet",
+        ),
+        "output_profile_path": pathlib.Path(
+            root_dir, "4.linear_modeling/results/linear_modeling/organoid_agg.parquet"
+        ),
+    },
+    "single_cell_agg": {
+        "input_profile_path": pathlib.Path(
+            root_dir,
+            "4.linear_modeling/data/sc_norm_aggregated_profile.parquet",
+        ),
+        "output_profile_path": pathlib.Path(
+            root_dir,
+            "4.linear_modeling/results/linear_modeling/single_cell_agg.parquet",
         ),
     },
 }
@@ -95,7 +118,7 @@ profile_dict = {
 
 
 lm_equation_terms = (
-    "C(Metadata_treatment_full) + cell_count + organoid_count + cell_per_organoid_count"
+    "C(Metadata_treatment_full) + object_count + cell_per_organoid_count"
 )
 
 
@@ -121,6 +144,90 @@ tumor_type_dict = {
 # In[5]:
 
 
+def fit_combo(
+    patient,
+    combo,
+    df_trt,
+    feature_columns,
+    count_columns,
+    drug_name,
+    therapeutic_category,
+):
+    """Fit one OLS model per feature for a single (patient, treatment combo).
+
+    Runs in a worker process, so it takes and returns plain picklable objects.
+    Returns a list of long-form result rows (one per feature x term).
+    """
+    warnings.filterwarnings("ignore")
+    rows = []
+    for col in feature_columns:
+        # skip features with no observed values in this combo (e.g. a channel
+        # that was not imaged/segmented for this patient/treatment) --
+        # an all-NaN outcome leaves an empty design matrix after patsy drops
+        # the missing rows, which smf.ols cannot fit
+        if df_trt[col].notna().sum() == 0:
+            continue
+        # Prepare the formula for the linear model:
+        # y ~ txt + object_count + cell/organoid_count
+        lm_equation_terms = " + ".join(
+            ["C(Metadata_treatment_full)"] + [f"Q('{c}')" for c in count_columns]
+        )
+        formula = f"Q('{col}') ~ {lm_equation_terms}"
+        results = smf.ols(formula=formula, data=df_trt).fit()
+        # total (SST), model-explained (SSE) and residual (SSR) sums of
+        # squares, plus a type II ANOVA for each term's share of SST
+        sst = results.centered_tss
+        sse = results.ess
+        anova_table = sm.stats.anova_lm(results, typ=2)
+        anova_table["pct_of_total_var"] = anova_table["sum_sq"] / sst * 100
+
+        # (output term name, anova key, coefficient name in the fit)
+        # treatment effect within this patient, then the count covariates
+        term_specs = [
+            (
+                "treatment",
+                "C(Metadata_treatment_full)",
+                f"C(Metadata_treatment_full)[T.{combo[1]}]",
+            )
+        ] + [
+            (covariate, f"Q('{covariate}')", f"Q('{covariate}')")
+            for covariate in count_columns
+        ]
+        for term, anova_key, param_name in term_specs:
+            rows.append(
+                {
+                    "term": term,
+                    "patient": patient,
+                    "treatment": combo[1],
+                    "drug": drug_name,
+                    "therapeutic_category": therapeutic_category,
+                    "feature": col,
+                    "rsquared": results.rsquared,
+                    "rsquared_adj": results.rsquared_adj,
+                    "fvalue": results.fvalue,
+                    # residual of the fit: sum of squares, variance (mean
+                    # squared error, df-adjusted) and share of total variance
+                    "residual_ss": results.ssr,
+                    "residual_variance": results.mse_resid,
+                    "residual_pct": results.ssr / sst * 100,
+                    "sst": sst,
+                    "sse": sse,
+                    "explained_pct": sse / sst * 100,
+                    "term_sum_sq": anova_table.loc[anova_key, "sum_sq"],
+                    "term_pct_of_total_var": anova_table.loc[
+                        anova_key, "pct_of_total_var"
+                    ],
+                    "pvalue": results.pvalues[param_name].item(),
+                    "coefficient": results.params[param_name].item(),
+                    "intercept": results.params["Intercept"].item(),
+                }
+            )
+    return rows
+
+
+# In[6]:
+
+
 for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     # set the output dictionary for linear modeling results
     # per profile. Results are stored long-form: one row per
@@ -130,21 +237,11 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     if profile_dict[profile]["output_profile_path"].exists():
         continue  # skip if the output already exists
 
-    linear_modeling_results_dict = {
-        "term": [],
-        "patient": [],
-        "treatment": [],
-        "drug": [],
-        "therapeutic_category": [],
-        "feature": [],
-        "rsquared": [],
-        "rsquared_adj": [],
-        "fvalue": [],
-        "pvalue": [],
-        "coefficient": [],
-        "intercept": [],
-    }
     df = pd.read_parquet(profile_dict[profile]["input_profile_path"])
+    # if the column contains CMI then drop the column since
+    # it is a postitional marker and not a feature
+    cmi_columns = [col for col in df.columns if "CMI" in col]
+    df = df.drop(columns=cmi_columns)
     df = df.rename(
         columns={
             "Metadata_Biology_PatientTumor": "patient",
@@ -201,9 +298,48 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
         df = df.dropna(subset=["Metadata_WellOrganoidCount"])
         df["cell_count"] = df["Metadata_Object_WellSingleCellCount"]
         df["organoid_count"] = df["Metadata_WellOrganoidCount"]
+    elif profile == "single_cell_agg":
+        # the aggregated single-cell profile (one row per patient + well) carries
+        # no count columns, so pull the well-level organoid count from the
+        # organoid profile and the well-level cell count from the single-cell
+        # profile; both are constant within a (patient, well)
+        organoid_counts_df = (
+            pd.read_parquet(
+                profile_dict["organoid_norm"]["input_profile_path"],
+                columns=[
+                    "Metadata_Biology_PatientTumor",
+                    "Metadata_Experiment_Well",
+                    "Metadata_WellOrganoidCount",
+                ],
+            )
+            .drop_duplicates()
+            .rename(columns={"Metadata_Biology_PatientTumor": "patient"})
+        )
+        cell_counts_df = (
+            pd.read_parquet(
+                profile_dict["single_cell_norm"]["input_profile_path"],
+                columns=[
+                    "Metadata_Biology_PatientTumor",
+                    "Metadata_Experiment_Well",
+                    "Metadata_Object_WellSingleCellCount",
+                ],
+            )
+            .drop_duplicates()
+            .rename(columns={"Metadata_Biology_PatientTumor": "patient"})
+        )
+        df = df.merge(
+            organoid_counts_df, on=["patient", "Metadata_Experiment_Well"], how="left"
+        ).merge(cell_counts_df, on=["patient", "Metadata_Experiment_Well"], how="left")
+        # drop rows whose (patient, well) has no matching well-level counts
+        df = df.dropna(
+            subset=["Metadata_WellOrganoidCount", "Metadata_Object_WellSingleCellCount"]
+        )
+        df["cell_count"] = df["Metadata_Object_WellSingleCellCount"]
+        df["organoid_count"] = df["Metadata_WellOrganoidCount"]
     else:
         df["cell_count"] = df["Metadata_Object_OrganoidSingleCellCount"]
         df["organoid_count"] = df["Metadata_WellOrganoidCount"]
+
     df["cell_per_organoid_count"] = df["cell_count"] / df["organoid_count"]
 
     count_columns = ["cell_count", "organoid_count", "cell_per_organoid_count"]
@@ -226,7 +362,7 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     sanitized_to_original_col_map = {}
     for col in df.columns:
         new_col = col.replace(
-            ".", ""
+            ".", "__"
         )  # Replace . with empty string for compatibility in formula
         sanitized_to_original_col_map[new_col] = col
         df.rename(columns={col: new_col}, inplace=True)
@@ -238,8 +374,10 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     dmso_label = df.loc[df["treatment"] == "DMSO", "Metadata_treatment_full"].unique()[
         0
     ]
-    patients = sorted(df["patient"].unique())
-    for patient in tqdm(patients, desc="Processing patients", unit="patient"):
+    # build one independent task per (patient, treatment combo); each task
+    # fits every feature for that combo, and tasks run in parallel
+    tasks = []
+    for patient in sorted(df["patient"].unique()):
         df_pat = df.loc[df["patient"] == patient]
         # each model is fit within this single patient, so there is nothing
         # to compare against if the patient has no DMSO rows
@@ -250,12 +388,7 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
             for i in df_pat["Metadata_treatment_full"].unique()
             if i != dmso_label
         ]
-        for combo in tqdm(
-            combo_list,
-            desc="Processing treatment combinations",
-            unit="combo",
-            leave=False,
-        ):
+        for combo in combo_list:
             drug_name = treatment_meta.loc[combo[1], "treatment"]
             therapeutic_category = treatment_meta.loc[
                 combo[1], "Metadata_Experiment_TherapeuticCategories"
@@ -273,58 +406,33 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
             # intercept) unchanged, so this is purely a conditioning
             # improvement, not a modeling choice
             df_trt[count_columns] = df_trt[count_columns] - df_trt[count_columns].mean()
-
-            for col in tqdm(
-                feature_columns, desc="Processing features", unit="feature", leave=False
-            ):
-                # skip features with no observed values in this combo (e.g. a channel
-                # that was not imaged/segmented for this patient/treatment) --
-                # an all-NaN outcome leaves an empty design matrix after patsy drops
-                # the missing rows, which smf.ols cannot fit
-                if df_trt[col].notna().sum() == 0:
-                    continue
-                # Prepare the formula for the linear model:
-                # y ~ txt + cell_count + organoid_count + cell/organoid_count
-                formula = f"Q('{col}') ~ {lm_equation_terms}"
-                model = smf.ols(formula=formula, data=df_trt)
-                results = model.fit()
-
-                def add_row(term, coefficient, pvalue):
-                    linear_modeling_results_dict["term"].append(term)
-                    linear_modeling_results_dict["patient"].append(patient)
-                    linear_modeling_results_dict["treatment"].append(combo[1])
-                    linear_modeling_results_dict["drug"].append(drug_name)
-                    linear_modeling_results_dict["therapeutic_category"].append(
-                        therapeutic_category
-                    )
-                    linear_modeling_results_dict["feature"].append(col)
-                    linear_modeling_results_dict["rsquared"].append(results.rsquared)
-                    linear_modeling_results_dict["rsquared_adj"].append(
-                        results.rsquared_adj
-                    )
-                    linear_modeling_results_dict["fvalue"].append(results.fvalue)
-                    linear_modeling_results_dict["pvalue"].append(pvalue)
-                    linear_modeling_results_dict["coefficient"].append(coefficient)
-                    linear_modeling_results_dict["intercept"].append(
-                        results.params["Intercept"].item()
-                    )
-
-                # term: treatment effect within this patient
-                treatment_term = f"C(Metadata_treatment_full)[T.{combo[1]}]"
-                add_row(
-                    "treatment",
-                    results.params[treatment_term].item(),
-                    results.pvalues[treatment_term].item(),
+            # only ship the columns the models need to the workers
+            df_trt = df_trt[
+                ["Metadata_treatment_full"] + count_columns + feature_columns
+            ]
+            tasks.append(
+                (
+                    patient,
+                    combo,
+                    df_trt,
+                    feature_columns,
+                    count_columns,
+                    drug_name,
+                    therapeutic_category,
                 )
+            )
 
-                # terms: the count covariates
-                for covariate in count_columns:
-                    add_row(
-                        covariate,
-                        results.params[covariate].item(),
-                        results.pvalues[covariate].item(),
-                    )
-    linear_modeling_results_df = pd.DataFrame(linear_modeling_results_dict)
+    # run the models in parallel across all available cores; results come
+    # back in task order so the output is identical to a serial run
+    task_results = Parallel(n_jobs=N_JOBS, return_as="generator")(
+        delayed(fit_combo)(*task) for task in tasks
+    )
+    linear_modeling_results_rows = []
+    for rows in tqdm(
+        task_results, total=len(tasks), desc="Fitting models", unit="combo"
+    ):
+        linear_modeling_results_rows.extend(rows)
+    linear_modeling_results_df = pd.DataFrame(linear_modeling_results_rows)
     # map the sanitized feature names back to their original (pre-".": removal)
     # names so downstream consumers loading this parquet in any other
     # env/notebook can recover the native column name without needing access
@@ -357,9 +465,25 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     # own hypothesis-testing family (different scale/behavior of p-values)
     linear_modeling_results_df["pvalue_fdr"] = float("nan")
     for term, group_index in linear_modeling_results_df.groupby("term").groups.items():
-        pvals = linear_modeling_results_df.loc[group_index, "pvalue"].values
+        # a handful of models are degenerate (e.g. a constant feature for one
+        # patient/combo) and produce a NaN p-value; multipletests propagates a
+        # single NaN to every p-value in the array, so those rows must be
+        # excluded from the correction rather than passed through -- they stay
+        # pvalue_fdr=NaN (never significant) rather than corrupting every
+        # other row's FDR value in this term
+        valid_index = (
+            linear_modeling_results_df.loc[group_index].dropna(subset=["pvalue"]).index
+        )
+        pvals = linear_modeling_results_df.loc[valid_index, "pvalue"].values
         _, pvals_fdr, _, _ = multipletests(pvals, method="fdr_bh")
-        linear_modeling_results_df.loc[group_index, "pvalue_fdr"] = pvals_fdr
+        linear_modeling_results_df.loc[valid_index, "pvalue_fdr"] = pvals_fdr
+
+    # map the features back to their original names inplace such that the
+    # original feature names are preserved in the output parquet and can be used
+    # for downstream grouping/merging without needing to re-run the sanitization
+    linear_modeling_results_df["feature"] = linear_modeling_results_df[
+        "feature"
+    ].replace("__", ".", regex=True)
     # Save the updated DataFrame with FDR p-values
     profile_dict[profile]["output_profile_path"].parent.mkdir(
         parents=True, exist_ok=True
@@ -367,16 +491,3 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     linear_modeling_results_df.to_parquet(
         profile_dict[profile]["output_profile_path"], index=False
     )
-    # persist the sanitized -> original feature name mapping on its own so it
-    # can be loaded independently of the results file in any other env/notebook
-    feature_name_mapping_df = pd.DataFrame(
-        {
-            "feature": list(sanitized_to_original_col_map.keys()),
-            "feature_original": list(sanitized_to_original_col_map.values()),
-        }
-    )
-    feature_name_mapping_path = (
-        profile_dict[profile]["output_profile_path"].parent
-        / f"{profile}_feature_name_mapping.parquet"
-    )
-    feature_name_mapping_df.to_parquet(feature_name_mapping_path, index=False)

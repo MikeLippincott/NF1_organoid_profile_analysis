@@ -51,7 +51,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-
+settings.json
+.Rprofile
 # Translations
 *.mo
 *.pot
@@ -125,6 +126,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.uvr
 env/
 venv/
 ENV/
@@ -183,3 +185,5 @@ shippable_dir.zip
 3.viability_prediction_models/model_results/
 3.viability_prediction_models/trained_models/
 3.viability_prediction_models/data/
+4.linear_modeling/data/
+4.linear_modeling/figures/

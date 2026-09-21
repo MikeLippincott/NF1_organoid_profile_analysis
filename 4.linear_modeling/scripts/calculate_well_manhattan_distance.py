@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
+# In[1]:
 
 
 import pathlib
@@ -11,7 +11,7 @@ import warnings
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from notebook_init_utils import init_notebook
+from notebook_init_utils import FigurePDFs, init_notebook
 
 root_dir, in_notebook = init_notebook()
 warnings.filterwarnings("ignore")  # Ignore all warnings
@@ -23,7 +23,7 @@ output_path = pathlib.Path(
 )
 platemap_figure_path = pathlib.Path(
     root_dir,
-    "4.linear_modeling/results/well_manhattan_distance/well_manhattan_distance_platemap.png",
+    "4.linear_modeling/results/well_manhattan_distance/well_manhattan_distance_platemap.pdf",
 )
 output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -99,11 +99,13 @@ for i in range(len(plate_rows)):
 
 fig.colorbar(im, ax=ax, label="Manhattan distance from center")
 fig.tight_layout()
-fig.savefig(platemap_figure_path, dpi=600)
+pdfs = FigurePDFs(dpi=600)
+pdfs.savefig(fig, platemap_figure_path)
+pdfs.close()
 plt.show()
 
 
-# In[ ]:
+# In[5]:
 
 
 wells_df.drop(
