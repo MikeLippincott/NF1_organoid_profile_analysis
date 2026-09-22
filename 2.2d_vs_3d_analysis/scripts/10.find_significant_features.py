@@ -87,6 +87,7 @@ profile_dict = {
 # pvalue threshold is set to 0.05 - statistically significant features
 # rsquared threshold is set to 0.5 - the explained variance is at least 50% of the total variance
 # rsquared adjusted threshold is set to positive values - the model performs better than the mean
+# coefficient threshold is set to 1 - minimum effect size of 1
 #
 
 # ### Single Cell

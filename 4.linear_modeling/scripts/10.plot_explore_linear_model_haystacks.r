@@ -69,12 +69,12 @@ p_volcano <- (
     + labs(x = "treatment coefficient", y = "-log10 FDR")
     + theme_manuscript(base_size = 24)
     + theme(legend.key.height = grid::unit(2.2, "cm"))
-    + guides(colour = guide_colourbar(override.aes = list(alpha = 1)))
+    + guides(colour = guide_colourbar())
 )
 add_page(p_volcano, 18, 14)
 
 # 5. variance partitioning: where does the variance go?
-# variates in the order they are described in the model of 1.linear_modeling_technical_vars, then what is left
+# variates in the order they are described in the model of 3.linear_modeling_technical_vars, then what is left
 variate_levels <- c(
     "treatment", "cell_count", "organoid_count", "cell_per_organoid_count",
     "manhattan_distance_from_center", "cell_x_position", "cell_y_position",

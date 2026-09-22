@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+# # Well distance from the plate center
+#
+# Computes the Manhattan distance of every well of a 96-well plate (rows A-H, columns 1-12) from the plate center (between rows D/E and columns 6/7) and draws it as a platemap. The distance is the `manhattan_distance_from_center` covariate of `3.linear_modeling_technical_vars`.
+
 # In[1]:
 
 
@@ -19,7 +23,7 @@ warnings.simplefilter("ignore")  # Additional suppression method
 
 output_path = pathlib.Path(
     root_dir,
-    "4.linear_modeling/results/well_manhattan_distance/well_manhattan_distance.csv",
+    "4.linear_modeling/results/well_manhattan_distance/well_manhattan_distance.parquet",
 )
 platemap_figure_path = pathlib.Path(
     root_dir,
@@ -111,5 +115,5 @@ plt.show()
 wells_df.drop(
     columns=["well_row", "well_column", "row_index", "column_index"], inplace=True
 )
-wells_df.to_csv(output_path, index=False)
+wells_df.to_parquet(output_path, index=False)
 wells_df.head()

@@ -7,7 +7,8 @@
 #
 # `feature ~ treatment + cell_count + organoid_count + cell_per_organoid_count`
 #
-# (step 1 adds spatial "technical" covariates). That is hundreds of thousands
+# (step 3 adds the spatial "technical" covariates; this notebook uses the step 3
+# `*_technical_model.parquet` fits). That is hundreds of thousands
 # of models -- the **haystack**. The **needles** are the treatment effects that
 # are statistically real, large, reproducible across patients and doses,
 # not explained away by counts or plate position, and that agree between
@@ -17,9 +18,6 @@
 #
 # | # | Theme | Question |
 # |---|-------|----------|
-# | 1 | Inventory | How big is the haystack? Is coverage balanced? |
-# | 2 | Model quality | Are the models any good (R2, adj. R2, residual)? |
-# | 3 | p-value calibration | Is there signal beyond chance? How many hits survive FDR? |
 # | 4 | Effect sizes | How big are the treatment effects? Volcano views. |
 # | 5 | Variance partitioning | Does treatment or a covariate explain the variance? |
 # | 6 | Hit landscape | Which patients / drugs / MOAs / tumor types hit most? |
@@ -29,7 +27,7 @@
 # | 10 | Treatment similarity | Do drugs of the same MOA look alike? Patient vs drug effect? |
 # | 11 | Organoid vs single cell | Do the two scales tell the same story? |
 # | 12 | Aggregated vs not | Are the results robust to profile aggregation? |
-# | 13 | Technical covariates | Do hits survive position / distance covariates? |
+# | 13 | Technical covariates | Which technical covariate terms explain variance and reach significance? |
 # | 14 | Count confounding | Are hits really just changes in organoid/cell number? |
 # | 15 | Threshold sensitivity | How fragile is the "hit" definition? |
 # | 16 | Tumor type | Are there tumor-type-specific responses? |
@@ -40,6 +38,7 @@
 # | 21 | Four kinds of "interesting" | Replicated / tumor-type-specific / dose-dependent / MOA-consistent + readout shortlist |
 # | 22 | MOA consistency test | Do drugs of one MOA correlate more than chance? |
 # | 23 | 30 questions | A direct, numeric answer to 30 concrete questions the models can answer |
+# | 24 | Every technical variate | Each covariate term explored like treatment |
 
 # In[ ]:
 
@@ -94,7 +93,7 @@ profiles = list(profile_files)
 # the two "full resolution" profiles carry most of the narrative
 main_profiles = ["organoid", "sc"]
 
-# the same tumor-type lookup used in 0.linear_modeling
+# the same tumor-type lookup used in 2.linear_modeling
 tumor_type_dict = {
     "NF0014_T1": "cNF",
     "NF0014_T2": "pNF",
@@ -200,7 +199,9 @@ all_patients = sorted(trt["organoid"]["patient"].unique())
 all_treatments = sorted(trt["organoid"]["treatment"].unique())
 
 
-# ## Volcano plots with significance on the y-axis and effect size on the x-axis, colored by r squared
+# ## 4. Effect sizes
+#
+# *Volcano plots with significance on the y-axis and effect size on the x-axis, colored by R2.*
 
 # In[ ]:
 
@@ -220,8 +221,8 @@ save_plot_data("4_volcano_by_profile", volcano=volcano)
 
 # ## 5. Variance partitioning
 #
-# *For each model the variance is split into treatment, the three count
-# covariates, a shared/unattributed part (collinear covariates -- type II SS
+# *For each model the variance is split into treatment, every covariate term
+# (counts and technical), a shared/unattributed part (collinear covariates -- type II SS
 # do not add up to the explained variance) and the residual. Which piece
 # dominates?*
 
@@ -1124,8 +1125,7 @@ save_plot_data(
 #
 # Each hit row is scored on independent lines of evidence:
 #
-# * **technical-robust** -- still a hit when spatial covariates are added
-# * **count-safe** -- treatment explains more variance than any count term
+# * **covariate-safe** -- treatment explains more variance than any covariate term
 #   (reported, but *not* in the score: counts may be part of the phenotype, see 19)
 # * **agg-supported** -- significant, same sign in the aggregated profile
 # * **dose-consistent** -- same sign at another dose of the same drug
@@ -1134,7 +1134,7 @@ save_plot_data(
 #
 # `needle_score = n_patients_hit * sign_concordance * mean_robustness * mean_|coef|`
 #
-# (robustness = mean of technical-robust, agg-supported, dose-consistent). This score
+# (robustness = mean of agg-supported and dose-consistent). This score
 # favours *replicated* effects; sections 20-21 rank the other kinds of interesting.
 
 # In[ ]:
@@ -1387,8 +1387,8 @@ summary.T
 # ## 19. Counts, both ways
 #
 # Whether a count change is a nuisance or a phenotype is undecided, so both
-# views are shown. **Adjusted view**: hits where treatment beats every count
-# covariate (`covariate_safe`). **Count-linked view**: hits where a count term
+# views are shown. **Adjusted view**: hits where treatment beats every covariate
+# term (`covariate_safe`). **Count-linked view**: hits where a covariate term
 # explains as much or more variance. A treatment that kills organoids will
 # show up in the second group and may be biologically the most interesting.
 # (The effect of treatment *on* the counts is not in the saved results; that

@@ -14,6 +14,8 @@
 #   features with exactly that patient combination; dot matrix below), drawn in `8.plot_variate_class_upsets_and_clustermap` (R / ggplot2) from the saved combination table.
 # * **Task B**: a clustermap of all patient x treatment rows by their per-class feature counts
 #   (log1p, column min-max scaled, Ward), and a second version on per-row fractions.
+# * **Task C**: which features are treatment-only (class `T`) and how often they recur across patients and treatments.
+# * **Task D**: the treatment coefficients of the top shared treatment-only features across every (patient, treatment) model.
 #
 # **Input schema.** `results/linear_modeling/{sc,organoid}_norm_technical_model.parquet`: long format, one row per
 # (patient, treatment, feature, term) with `coefficient` and `pvalue_fdr`. The covariates' SDs are
@@ -28,7 +30,7 @@
 # `results/variate_class_plots/<tag>/`
 # (`upset_top_combinations.parquet`, `class_count_matrix.parquet`, the clustermap row / column orders and the Task C / D tables).
 #
-# Run as a script with `python 24.variate_class_upsets_and_clustermap.py --help`.
+# Run as a script with `python scripts/7.calculate_variate_class_upsets_and_clustermap.py --help`.
 
 # In[ ]:
 
@@ -107,10 +109,10 @@ lm_path = pathlib.Path(
 profile_dir = pathlib.Path(
     root_dir, "data/profiles_3D/all_patients/0.normalized_profiles"
 )
-manhattan_df = pd.read_csv(
+manhattan_df = pd.read_parquet(
     pathlib.Path(
         root_dir,
-        "4.linear_modeling/results/well_manhattan_distance/well_manhattan_distance.csv",
+        "4.linear_modeling/results/well_manhattan_distance/well_manhattan_distance.parquet",
     )
 )
 results_path = pathlib.Path(
@@ -522,11 +524,12 @@ col_order_f.to_parquet(
 
 
 # ## Task C: which features are treatment-only (class `T`)?
-# Every (patient, treatment, feature) in class `T` is a feature that is a hit for the treatment term and for none of the count covariates. Feature names follow `compartment_channel_featuretype_measurement` (`AreaSizeShape` features have no channel). Outputs:
+# Every (patient, treatment, feature) in class `T` is a feature that is a hit for the treatment term and for none of the covariates in the run's variate groups. Feature names follow `compartment_channel_featuretype_measurement` (`AreaSizeShape` features have no channel). Outputs:
 # * `treatment_only_hits.parquet`: one row per (patient, treatment, feature) with the parsed name parts.
 # * `treatment_only_feature_recurrence.parquet`: one row per feature with the number of patients, treatments and patient x treatment pairs in which it is treatment-only.
-# * `treatment_only_top_features` (plot): the most recurrent features (coloured by feature type) and a channel x feature-type heatmap of distinct treatment-only features.
-# * `treatment_only_feature_by_treatment` (plot): for the top features, the number of patients in which each is treatment-only, per treatment.
+# * `treatment_only_feature_by_treatment.parquet`: for the `--top-features` most recurrent features, the number of patients in which each is treatment-only, per treatment.
+#
+# `8.plot_variate_class_upsets_and_clustermap` plots the most recurrent features (the rows of `treatment_only_feature_by_treatment.parquet`), a channel x feature-type heatmap of distinct treatment-only features and the per-treatment heatmap.
 
 # In[ ]:
 

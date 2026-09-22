@@ -109,18 +109,11 @@ profile_dict = {
 #
 # **For each model (feature), we compute the following statistics:**
 #
-# - **R-squared**: Proportion of variance explained by the model.
-# - **p-value**: Significance of the model.
+# - **R-squared** / **adjusted R-squared**: Proportion of variance explained by the model.
 # - **F-statistic**: Overall significance of the model.
 # - **Coefficients**: Effect size of each predictor.
-
-# In[3]:
-
-
-lm_equation_terms = (
-    "C(Metadata_treatment_full) + object_count + cell_per_organoid_count"
-)
-
+# - **p-value** / **FDR**: Significance of each term (`pvalue`), Benjamini-Hochberg corrected per term (`pvalue_fdr`).
+# - **Variance shares**: each term's type II sum of squares as a % of the total variance (`term_pct_of_total_var`), and the residual share (`residual_pct`).
 
 # In[4]:
 
@@ -482,8 +475,8 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     # original feature names are preserved in the output parquet and can be used
     # for downstream grouping/merging without needing to re-run the sanitization
     linear_modeling_results_df["feature"] = linear_modeling_results_df[
-        "feature"
-    ].replace("__", ".", regex=True)
+        "feature_original"
+    ]
     # Save the updated DataFrame with FDR p-values
     profile_dict[profile]["output_profile_path"].parent.mkdir(
         parents=True, exist_ok=True

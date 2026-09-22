@@ -1,12 +1,12 @@
-# 1. Exploratory Data Analysis (EDA)
+# 2. 2D vs. 3D analysis
 
-This module contains exploratory analyses of image-based morphological profiles from NF1 organoids imaged in 2D (max projection) and 3D.
+This module compares image-based morphological profiles from NF1 organoids imaged in 2D (max projection) and 3D.
 All analyses are run across four profile types: 2D organoid, 2D single-cell, 3D organoid, and 3D single-cell, each with normal, feature selected (fs), aggregate (agg), and consensus data.
 
 Some notebooks have not yet been utilized specifically for 2D vs. 3D organoid analysis.
 
 
-## Shannon Entropy (Notebooks 12–13)
+## Shannon Entropy (Notebooks 11–12)
 
 ### Why compute it?
 Not all morphological features carry meaningful variation as some are effectively constant across the dataset.

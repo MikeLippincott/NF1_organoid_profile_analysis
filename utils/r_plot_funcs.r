@@ -480,6 +480,13 @@ heat_col_fun <- function(values = NULL, palette = "Mako", rev = TRUE, limits = r
     #' Continuous colour function for a Heatmap: an hcl.colors palette
     #' stretched over `limits` (default: the range of `values`). The default
     #' (Mako, light -> dark) matches viridis option "F" with direction = -1.
+    #' Degenerate limits (non-finite or equal) become a unit range centred on
+    #' the finite value, or on zero, so the breaks stay strictly increasing.
+    if (!all(is.finite(limits)) || limits[1] == limits[2]) {
+        centre <- limits[is.finite(limits)]
+        centre <- if (length(centre) > 0) centre[1] else 0
+        limits <- c(centre - 0.5, centre + 0.5)
+    }
     circlize::colorRamp2(seq(limits[1], limits[2], length.out = 9), hcl.colors(9, palette, rev = rev))
 }
 
@@ -488,7 +495,10 @@ long_to_matrix <- function(df, row, col, value, row_levels = NULL, col_levels = 
     if (is.null(row_levels)) row_levels <- unique(as.character(df[[row]]))
     if (is.null(col_levels)) col_levels <- unique(as.character(df[[col]]))
     mat <- matrix(NA_real_, nrow = length(row_levels), ncol = length(col_levels), dimnames = list(row_levels, col_levels))
-    mat[cbind(match(as.character(df[[row]]), row_levels), match(as.character(df[[col]]), col_levels))] <- df[[value]]
+    row_idx <- match(as.character(df[[row]]), row_levels)
+    col_idx <- match(as.character(df[[col]]), col_levels)
+    keep <- !is.na(row_idx) & !is.na(col_idx)
+    mat[cbind(row_idx[keep], col_idx[keep])] <- df[[value]][keep]
     mat
 }
 

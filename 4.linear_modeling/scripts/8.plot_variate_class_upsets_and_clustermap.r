@@ -23,8 +23,6 @@ source(file.path(root_dir, "utils/r_plot_funcs.r"))
 # run tag of the tables made by 7.calculate_variate_class_upsets_and_clustermap (profile + variate groups)
 cli_args <- commandArgs(trailingOnly = TRUE)
 tag <- if (length(cli_args) >= 1) cli_args[1] else "sc_T-O-C-N-M-X-Y-Z-D"
-TOP_FEATURES <- 40  # features shown in the treatment-only plots
-N_SHARED <- 10      # shared treatment-only features in task D
 
 results_path <- file.path(root_dir, "4.linear_modeling/results/variate_class_plots", tag)
 figures_path <- file.path(root_dir, "4.linear_modeling/figures/variate_class_plots", tag)
@@ -183,7 +181,9 @@ add_page(
 # Task C: which features are treatment-only (class T)?
 recurrence <- read_result("treatment_only_feature_recurrence.parquet") |>
     mutate(channel = ifelse(is.na(channel), "none", channel))
-top <- head(recurrence, TOP_FEATURES)
+# the top features are the ones 7.calculate_variate_class_upsets_and_clustermap kept (its --top_features)
+per_treatment_wide <- read_result("treatment_only_feature_by_treatment.parquet")
+top <- recurrence |> filter(feature %in% per_treatment_wide$feature)
 top_features <- top$feature
 top$feature <- factor(top$feature, levels = rev(top$feature))
 p_bar <- (
@@ -208,7 +208,7 @@ add_page(
     9, 7
 )
 
-per_treatment <- read_result("treatment_only_feature_by_treatment.parquet") |>
+per_treatment <- per_treatment_wide |>
     pivot_longer(-feature, names_to = "treatment", values_to = "n_patients")
 per_treatment_mat <- long_to_matrix(per_treatment, "feature", "treatment", "n_patients", row_levels = top_features)
 add_page(
@@ -221,7 +221,7 @@ add_page(
 
 # Task D: distribution of the top shared treatment-only features
 shared <- read_result("top_shared_features_coefficients.parquet")
-top_shared <- head(recurrence$feature, N_SHARED)
+top_shared <- intersect(recurrence$feature, unique(as.character(shared$feature)))
 shared <- shared |> mutate(feature = factor(feature, levels = rev(top_shared)))
 sig_pal <- c("TRUE" = "#d62728", "FALSE" = "#7f7f7f")
 p_box <- (

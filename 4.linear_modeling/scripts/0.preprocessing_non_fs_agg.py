@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+# # Aggregate the normalized profiles to the well level
+#
+# Aggregates the normalized (not feature-selected) 3D organoid and single-cell profiles to one row per well (`pycytominer.aggregate`, median) over the metadata strata below. For the organoid profile the per-organoid single-cell count and the well organoid count are aggregated with the features so the count covariates are kept. The well-level profiles are saved to `4.linear_modeling/data/*_norm_aggregated_profile.parquet` and modelled as the `*_agg` profiles in `2.linear_modeling` and `3.linear_modeling_technical_vars`.
+
 # In[1]:
 
 

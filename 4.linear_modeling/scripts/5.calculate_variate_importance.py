@@ -64,6 +64,10 @@ feature_term_hit_counts = feature_term_hit_counts.sort_values(
 feature_term_hit_counts
 
 
+# # Variate importance
+#
+# Counts the hits of every model term in `sc_norm.parquet` (`pvalue_fdr < 0.05` and `coefficient > 0.1`) and builds the Venn / UpSet tables plotted in `6.plot_variate_importance`.
+#
 # ### Venn and UpSet tables: which features belong to which variate group?
 #
 # A feature belongs to a variate group (a model term) when it is a hit for that term (`pvalue_fdr < 0.05` and `coefficient > 0.1`, so increases only). The residual (epsilon) is not shown because every feature has one. Membership is not exclusive; overlaps are features that respond to more than one variate.

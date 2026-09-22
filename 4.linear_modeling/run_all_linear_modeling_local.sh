@@ -45,7 +45,7 @@ uv run python "$module_dir/scripts/4.variance_decomposition.py"
 
 # variate importance
 uv run python "$module_dir/scripts/5.calculate_variate_importance.py"
-uvr run "$module_dir/scripts/6.plot_variate_importance.r"  # panel C of 11 depends on this script's treatment_only_cooccurrence.pdf
+uvr run "$module_dir/scripts/6.plot_variate_importance.r"  # panels C and D of 11 use this script's title-free headline_panels PNGs
 
 # variate class membership / clustermap
 uv run python "$module_dir/scripts/7.calculate_variate_class_upsets_and_clustermap.py"
@@ -55,7 +55,7 @@ uvr run "$module_dir/scripts/8.plot_variate_class_upsets_and_clustermap.r"
 uv run python "$module_dir/scripts/9.explore_linear_model_haystacks.py"
 uvr run "$module_dir/scripts/10.plot_explore_linear_model_haystacks.r"
 
-# 11: headline multi-panel summary figure (patchwork), built from the tables saved by 5, 7 and 9
+# 11: headline multi-panel summary figure (patchwork), built from the outputs of 6 and 9
 uvr run "$module_dir/scripts/11.headline_results_figure.r"
 
 

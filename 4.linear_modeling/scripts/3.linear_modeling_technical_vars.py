@@ -70,10 +70,10 @@ profile_dict = {
     },
 }
 
-manhattan_distance_df = pd.read_csv(
+manhattan_distance_df = pd.read_parquet(
     pathlib.Path(
         root_dir,
-        "4.linear_modeling/results/well_manhattan_distance/well_manhattan_distance.csv",
+        "4.linear_modeling/results/well_manhattan_distance/well_manhattan_distance.parquet",
     )
 )
 
@@ -99,9 +99,9 @@ manhattan_distance_df = pd.read_csv(
 #
 # **Model specification:**
 #
-# $$y \sim \text{treatment} + \text{cell count} + \text{organoid count} + \text{cell/organoid count} + \text{well location on the plate} + \\ \text{cell Z-position} + \text{cell xy-position} + \text{depth of the cell spanning z}$$
+# $$y \sim \text{treatment} + \text{cell count} + \text{organoid count} + \text{cell/organoid count} + \text{well location on the plate} + \\ \text{cell x-position} + \text{cell y-position} + \text{cell Z-position} + \text{depth of the cell spanning z}$$
 #
-# $$y = \beta_0 + x_1\beta_1 + x_2\beta_2 + x_3\beta_3 + x_4\beta_4 + x_5\beta_5 + x_6\beta_6 + x_7\beta_7 + x_8\beta_8 + \epsilon$$
+# $$y = \beta_0 + x_1\beta_1 + x_2\beta_2 + x_3\beta_3 + x_4\beta_4 + x_5\beta_5 + x_6\beta_6 + x_7\beta_7 + x_8\beta_8 + x_9\beta_9 + \epsilon$$
 #
 # **Where:**
 #
@@ -113,18 +113,20 @@ manhattan_distance_df = pd.read_csv(
 # | $x_3$ | $\beta_3$ | int | Organoid count |
 # | $x_4$ | $\beta_4$ | float | Cell/organoid count |
 # | $x_5$ | $\beta_5$ | float | Well location on the plate (Manhattan distance from the center of the plate) |
-# | $x_6$ | $\beta_6$ | float | Cell Z-position (Z-center coordinate of the cell) |
-# | $x_7$ | $\beta_7$ | float | Cell xy-position (xy-center coordinate of the cell) |
-# | $x_8$ | $\beta_8$ | float | Depth of the cell spanning z (Bounding box max - bounding box min in z) |
+# | $x_6$ | $\beta_6$ | float | Cell x-position (x-center coordinate of the cell) |
+# | $x_7$ | $\beta_7$ | float | Cell y-position (y-center coordinate of the cell) |
+# | $x_8$ | $\beta_8$ | float | Cell Z-position (Z-center coordinate of the cell) |
+# | $x_9$ | $\beta_9$ | float | Depth of the cell spanning z (Bounding box max - bounding box min in z) |
 #
 # $y$ = feature to predict, $\epsilon$ = error term
 #
 # **For each model (feature), we compute the following statistics:**
 #
-# - **R-squared**: Proportion of variance explained by the model.
-# - **p-value**: Significance of the model.
+# - **R-squared** / **adjusted R-squared**: Proportion of variance explained by the model.
 # - **F-statistic**: Overall significance of the model.
 # - **Coefficients**: Effect size of each predictor.
+# - **p-value** / **FDR**: Significance of each term (`pvalue`), Benjamini-Hochberg corrected per term (`pvalue_fdr`).
+# - **Variance shares**: each term's type II sum of squares as a % of the total variance (`term_pct_of_total_var`), and the residual share (`residual_pct`).
 
 # In[3]:
 
@@ -564,8 +566,8 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     # original feature names are preserved in the output parquet and can be used
     # for downstream grouping/merging without needing to re-run the sanitization
     linear_modeling_results_df["feature"] = linear_modeling_results_df[
-        "feature"
-    ].replace("__", ".", regex=True)
+        "feature_original"
+    ]
     # Save the updated DataFrame with FDR p-values
     profile_dict[profile]["output_profile_path"].parent.mkdir(
         parents=True, exist_ok=True

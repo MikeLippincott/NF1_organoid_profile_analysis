@@ -1,16 +1,22 @@
 [project]
 name = "NF1_organoid_profile_analysis"
+r_version = ">=4.3.0"
 
 [dependencies]
 IRkernel = "*"
+VennDiagram = "*"
 arrow = "*"
 circlize = "*"
+devtools = "*"
 dplyr = "*"
 ggVennDiagram = "*"
 ggplot2 = "*"
 ggrastr = "*"
 ggrepel = "*"
 ggupset = "*"
+ggvenn = "*"
+hrbrthemes = "*"
 patchwork = "*"
 pheatmap = "*"
 tidyr = "*"
+tm = "*"
