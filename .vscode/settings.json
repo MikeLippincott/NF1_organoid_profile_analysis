@@ -1,0 +1,12 @@
+{
+  "positron.r.customBinaries": [
+    "/usr/bin/R",
+    "/home/lippincm/.uvr/r-versions/4.3.0/bin/R"
+  ],
+  "positron.r.customRootFolders": [
+    "/home/lippincm/.uvr/r-versions"
+  ],
+  "positron.r.interpreters.default": "/home/lippincm/.uvr/r-versions/4.3.0/bin/R",
+  "r.rpath.linux": "/home/lippincm/.uvr/r-versions/4.3.0/bin/R",
+  "r.rterm.linux": "/home/lippincm/.uvr/r-versions/4.3.0/bin/R"
+}

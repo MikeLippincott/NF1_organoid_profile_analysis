@@ -1,0 +1,10 @@
+[project]
+name = "NF1_organoid_profile_analysis"
+
+[dependencies]
+IRkernel = "*"
+arrow = "*"
+dplyr = "*"
+ggplot2 = "*"
+patchwork = "*"
+tidyr = "*"
