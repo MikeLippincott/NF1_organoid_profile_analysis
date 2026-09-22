@@ -3,7 +3,7 @@
 
 # # Finding the needles: an exhaustive look at the linear models
 #
-# Steps 0 and 1 fit one OLS model per **(patient, treatment/dose, feature)**:
+# Steps 2 and 3 fit one OLS model per **(patient, treatment/dose, feature)**:
 #
 # `feature ~ treatment + cell_count + organoid_count + cell_per_organoid_count`
 #
@@ -47,11 +47,9 @@
 import pathlib
 import warnings
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
-from notebook_init_utils import FigurePDFs, init_notebook
+from notebook_init_utils import init_notebook
 from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.stats import fisher_exact, kruskal, spearmanr
 from statsmodels.stats.multitest import multipletests
@@ -59,12 +57,6 @@ from statsmodels.stats.multitest import multipletests
 warnings.filterwarnings("ignore")
 root_dir, in_notebook = init_notebook()
 
-try:
-    get_ipython().run_line_magic("matplotlib", "inline")
-except NameError:
-    pass
-
-sns.set_theme(style="whitegrid", context="notebook")
 pd.set_option("display.max_columns", 50)
 pd.set_option("display.width", 200)
 RNG = np.random.default_rng(0)
@@ -76,17 +68,13 @@ RNG = np.random.default_rng(0)
 # paths (all relative to the git root)
 lm_results_path = pathlib.Path(root_dir, "4.linear_modeling/results/linear_modeling")
 results_path = pathlib.Path(root_dir, "4.linear_modeling/results/explore_linear_models")
-figures_path = pathlib.Path(root_dir, "4.linear_modeling/figures/explore_linear_models")
 results_path.mkdir(parents=True, exist_ok=True)
-figures_path.mkdir(parents=True, exist_ok=True)
-# figures not yet drawn in R are pages of one pdf
-pdfs = FigurePDFs(dpi=600)
 plot_data_path = results_path / "plot_data"
 plot_data_path.mkdir(parents=True, exist_ok=True)
 
 
 def save_plot_data(name, **frames):
-    """Save the tables a figure is drawn from; the R plot step (7.plot_explore_linear_model_haystacks)
+    """Save the tables a figure is drawn from; the R plot step (10.plot_explore_linear_model_haystacks)
     reads `plot_data/<name>__<key>.parquet`."""
     for key, frame in frames.items():
         unnamed = all(level is None for level in frame.index.names)
@@ -152,18 +140,6 @@ keep_cols = [
 ]
 
 
-def savefig(fig, name):
-    """Append a figure as a page of the pdf (600 dpi) and show it; `name` labels the figure."""
-    fig.set_label(name)
-    pdfs.savefig(
-        fig,
-        figures_path / "explore_linear_models_not_yet_in_R.pdf",
-        bbox_inches="tight",
-    )
-    plt.show()
-    plt.close(fig)
-
-
 def load_results(file_name):
     """Load a linear modeling parquet and harmonize base/technical schemas."""
     df = pd.read_parquet(lm_results_path / file_name)
@@ -218,16 +194,10 @@ covariate_terms = list(
     )
 )
 
-# palettes
-profile_palette = dict(zip(profiles, sns.color_palette("Set2", len(profiles))))
+# term order (used throughout to keep plots/tables consistent) and the full patient/treatment lists
 term_order = ["treatment"] + covariate_terms
 all_patients = sorted(trt["organoid"]["patient"].unique())
 all_treatments = sorted(trt["organoid"]["treatment"].unique())
-moa_levels = sorted(trt["organoid"]["therapeutic_category"].dropna().unique())
-moa_palette = dict(zip(moa_levels, sns.color_palette("tab10", len(moa_levels))))
-tumor_palette = dict(
-    zip(["cNF", "pNF", "MPNST", "Other"], sns.color_palette("colorblind", 4))
-)
 
 
 # ## Volcano plots with significance on the y-axis and effect size on the x-axis, colored by r squared
@@ -235,43 +205,17 @@ tumor_palette = dict(
 # In[ ]:
 
 
-# volcano plots with the top hits per profile labeled
-fig, axes = plt.subplots(2, 2, figsize=(18, 14))
-for ax, p in zip(axes.flat, profiles):
-    d = trt[p].copy()
-    d["neglog_fdr"] = -np.log10(d["pvalue_fdr"].clip(lower=1e-300))
-    non_hit = d.loc[~d["hit"]]
-    non_hit = non_hit.sample(min(len(non_hit), 60000), random_state=0)
-    ax.scatter(
-        non_hit["coefficient"],
-        non_hit["neglog_fdr"],
-        s=2,
-        c="lightgrey",
-        rasterized=True,
-    )
-    hits = d.loc[d["hit"]]
-    sc = ax.scatter(
-        hits["coefficient"],
-        hits["neglog_fdr"],
-        s=4,
-        c=hits["rsquared"],
-        cmap="magma",
-        rasterized=True,
-    )
-    top = hits.nlargest(8, "term_pct_of_total_var")
-    for _, r in top.iterrows():
-        ax.annotate(
-            f"{r['drug']}|{r['patient']}\n{r['feature']}",
-            (r["coefficient"], r["neglog_fdr"]),
-            fontsize=5,
-        )
-    ax.axhline(-np.log10(FDR_MAX), color="k", ls="--", lw=0.6)
-    ax.set_xlim(-5, 5)
-    ax.set_title(f"{p} (colour = R2 of hits)")
-    ax.set_xlabel("treatment coefficient")
-    ax.set_ylabel("-log10 FDR")
-plt.colorbar(sc, ax=axes, label="R2", shrink=0.5)
-savefig(fig, "4_volcano_by_profile")
+volcano = pd.concat(
+    [
+        trt[p].assign(
+            neglog_fdr=lambda d: -np.log10(d["pvalue_fdr"].clip(lower=1e-300)),
+            profile=p,
+        )[["profile", "coefficient", "neglog_fdr", "rsquared"]]
+        for p in profiles
+    ],
+    ignore_index=True,
+)
+save_plot_data("4_volcano_by_profile", volcano=volcano)
 
 
 # ## 5. Variance partitioning
@@ -321,20 +265,6 @@ save_plot_data(
         ]
     ),
 )
-# same plot but max instead of median
-fig, axes = plt.subplots(1, 2, figsize=(22, 7))
-for ax, p in zip(axes, main_profiles):
-    m = (
-        trt[p]
-        .groupby(["patient", "treatment"])["term_pct_of_total_var"]
-        .median()
-        .unstack("treatment")
-        .reindex(index=all_patients, columns=all_treatments)
-    )
-    sns.heatmap(m, ax=ax, cmap="rocket_r", cbar_kws={"label": "median treatment % var"})
-    ax.set_title(f"{p}: how much does treatment explain?")
-plt.tight_layout()
-savefig(fig, "5_treatment_variance_share_heatmap")
 
 
 # In[ ]:
@@ -370,75 +300,50 @@ for p in profiles:
         landscape.append(r.rename(columns={by: "group"}))
 landscape = pd.concat(landscape)
 landscape.to_parquet(results_path / "hit_rate_landscape.parquet", index=False)
-
-fig, axes = plt.subplots(2, 3, figsize=(22, 11))
-for ax, by in zip(
-    axes.flat,
-    ["patient", "treatment", "drug", "therapeutic_category", "tumor_type", "dose"],
-):
-    sub = landscape.loc[landscape["level"] == by]
-    order = (
-        sub.loc[sub["profile"] == "organoid"]
-        .sort_values("hit_rate", ascending=False)["group"]
-        .tolist()
-    )
-    order += [g for g in sub["group"].unique() if g not in order]
-    sns.barplot(
-        data=sub,
-        y="group",
-        x="hit_rate",
-        hue="profile",
-        order=order,
-        palette=profile_palette,
-        ax=ax,
-    )
-    ax.set_title(f"Hit rate by {by}")
-    if by != "patient":
-        ax.legend_.remove()
-plt.tight_layout()
-savefig(fig, "6_hit_rate_by_group")
+save_plot_data("6_hit_rate_by_group", landscape=landscape)
 
 
 # In[ ]:
 
 
-fig, axes = plt.subplots(1, 2, figsize=(22, 7))
-for ax, p in zip(axes, main_profiles):
-    m = (
+hit_rate_pt = pd.concat(
+    [
         trt[p]
         .groupby(["patient", "treatment"])["hit"]
         .mean()
-        .unstack("treatment")
-        .reindex(index=all_patients, columns=all_treatments)
-    )
-    sns.heatmap(m, ax=ax, cmap="rocket_r", cbar_kws={"label": "hit rate"})
-    ax.set_title(f"{p}: hit rate, patient x treatment")
-plt.tight_layout()
-savefig(fig, "6_hit_rate_patient_by_treatment")
+        .reindex(
+            pd.MultiIndex.from_product(
+                [all_patients, all_treatments], names=["patient", "treatment"]
+            )
+        )
+        .rename("hit_rate")
+        .reset_index()
+        .assign(profile=p)
+        for p in main_profiles
+    ],
+    ignore_index=True,
+)
+save_plot_data("6_hit_rate_patient_by_treatment", hit_rate=hit_rate_pt)
 
 
 # In[ ]:
 
 
 # direction of hits: is a drug mostly increasing or decreasing features?
-fig, axes = plt.subplots(1, 2, figsize=(20, 7), sharey=True)
-for ax, p in zip(axes, main_profiles):
+direction_frames = []
+for p in main_profiles:
     h = trt[p].loc[trt[p]["hit"]]
-    direction = (
+    d = (
         h.assign(direction=np.where(h["coefficient"] > 0, "up", "down"))
         .groupby(["treatment", "direction"])
         .size()
         .unstack(fill_value=0)
-        .reindex(all_treatments, fill_value=0)
+        .reindex(index=all_treatments, columns=["down", "up"], fill_value=0)
     )
-    direction["down"] = -direction.get("down", 0)
-    direction[["down", "up"]].plot.barh(
-        stacked=True, ax=ax, color=["#4575b4", "#d73027"]
-    )
-    ax.set_title(f"{p}: hits up vs down vs DMSO")
-    ax.axvline(0, color="k", lw=0.5)
-plt.tight_layout()
-savefig(fig, "6_hit_direction_by_treatment")
+    d["down"] = -d["down"]
+    direction_frames.append(d.reset_index().assign(profile=p))
+direction = pd.concat(direction_frames, ignore_index=True)
+save_plot_data("6_hit_direction_by_treatment", direction=direction)
 
 
 # ## 7. Feature space enrichment
@@ -484,72 +389,44 @@ enr = pd.concat(
     ]
 )
 enr.to_parquet(results_path / "feature_family_enrichment.parquet", index=False)
-
-fig, axes = plt.subplots(2, 3, figsize=(22, 12))
-for i, p in enumerate(main_profiles):
-    for j, fam in enumerate(["compartment_label", "channel_label", "Feature_type"]):
-        sub = enr.loc[(enr["profile"] == p) & (enr["family"] == fam)].sort_values(
-            "log2_or"
-        )
-        colors = np.where(
-            sub["fdr"] < 0.05,
-            np.where(sub["log2_or"] > 0, "#d73027", "#4575b4"),
-            "grey",
-        )
-        axes[i, j].barh(sub["level"], sub["log2_or"], color=colors)
-        axes[i, j].axvline(0, color="k", lw=0.5)
-        axes[i, j].set_title(f"{p}: {fam} (coloured = FDR<0.05)")
-        axes[i, j].set_xlabel("log2 odds ratio of being a hit")
-plt.tight_layout()
-savefig(fig, "7_feature_family_enrichment")
+save_plot_data("7_feature_family_enrichment", enrichment=enr)
 
 
 # In[ ]:
 
 
-fig, axes = plt.subplots(2, 2, figsize=(20, 12))
-for i, p in enumerate(main_profiles):
-    m = trt[p].pivot_table(
-        index="channel_label", columns="Feature_type", values="hit", aggfunc="mean"
-    )
-    sns.heatmap(
-        m,
-        ax=axes[i, 0],
-        cmap="rocket_r",
-        annot=True,
-        fmt=".3f",
-        cbar_kws={"label": "hit rate"},
-    )
-    axes[i, 0].set_title(f"{p}: channel x feature type")
-    m = trt[p].pivot_table(
-        index="channel_label", columns="compartment_label", values="hit", aggfunc="mean"
-    )
-    sns.heatmap(
-        m,
-        ax=axes[i, 1],
-        cmap="rocket_r",
-        annot=True,
-        fmt=".3f",
-        cbar_kws={"label": "hit rate"},
-    )
-    axes[i, 1].set_title(f"{p}: channel x compartment")
-plt.tight_layout()
-savefig(fig, "7_channel_by_feature_type_heatmaps")
+channel_frames = []
+for p in main_profiles:
+    for kind, col in [
+        ("feature_type", "Feature_type"),
+        ("compartment", "compartment_label"),
+    ]:
+        m = trt[p].pivot_table(
+            index="channel_label", columns=col, values="hit", aggfunc="mean"
+        )
+        long = m.stack().rename("hit_rate").reset_index()
+        long = long.rename(columns={"channel_label": "channel", col: "column"})
+        long["profile"] = p
+        long["kind"] = kind
+        channel_frames.append(long)
+channel_heat = pd.concat(channel_frames, ignore_index=True)
+save_plot_data("7_channel_by_feature_type_heatmaps", heatmap=channel_heat)
 
 
 # In[ ]:
 
 
 # which drugs "own" which channels? MOA x channel hit rate
-fig, axes = plt.subplots(1, 2, figsize=(22, 8))
-for ax, p in zip(axes, main_profiles):
+drug_channel_frames = []
+for p in main_profiles:
     m = trt[p].pivot_table(
         index="drug", columns="channel_label", values="hit", aggfunc="mean"
     )
-    sns.heatmap(m, ax=ax, cmap="rocket_r", cbar_kws={"label": "hit rate"})
-    ax.set_title(f"{p}: drug x channel")
-plt.tight_layout()
-savefig(fig, "7_drug_by_channel_hit_rate")
+    long = m.stack().rename("hit_rate").reset_index()
+    long["profile"] = p
+    drug_channel_frames.append(long)
+drug_channel = pd.concat(drug_channel_frames, ignore_index=True)
+save_plot_data("7_drug_by_channel_hit_rate", heatmap=drug_channel)
 
 
 # ## 8. Dose response
@@ -597,47 +474,41 @@ dose_pairs
 # In[ ]:
 
 
-fig, ax = plt.subplots(figsize=(10, 5))
-sns.barplot(
-    data=dose_pairs,
-    x="drug",
-    y="spearman",
-    hue="profile",
-    palette=profile_palette,
-    ax=ax,
-)
-ax.set_title("Coefficient concordance between two doses of the same drug")
-ax.tick_params(axis="x", rotation=45)
-savefig(fig, "8_dose_concordance")
-
-
-# In[ ]:
-
-
 # scatter of low vs high dose for each multi-dose drug (organoid)
 p = "organoid"
 d = trt[p]
 multi = d.groupby("drug")["dose"].nunique()
 multi = list(multi[multi > 1].index)
-fig, axes = plt.subplots(
-    1, max(len(multi), 1), figsize=(5 * max(len(multi), 1), 5), squeeze=False
-)
-for ax, drug in zip(axes[0], multi):
+dose_scatter_rows = []
+for drug in multi:
     sub = (
         d.loc[d["drug"] == drug]
         .pivot_table(index=["patient", "feature"], columns="dose", values="coefficient")
         .dropna()
     )
     a, b = sub.columns[0], sub.columns[-1]
-    ax.hexbin(
-        sub[a].clip(-3, 3), sub[b].clip(-3, 3), gridsize=50, bins="log", cmap="viridis"
+    dose_scatter_rows.append(
+        sub[[a, b]]
+        .rename(columns={a: "coef_low", b: "coef_high"})
+        .reset_index()
+        .assign(drug=drug, dose_low=a, dose_high=b)
     )
-    ax.plot([-3, 3], [-3, 3], "r--", lw=0.6)
-    ax.set_xlabel(f"coef @ {a}")
-    ax.set_ylabel(f"coef @ {b}")
-    ax.set_title(drug)
-plt.tight_layout()
-savefig(fig, "8_dose_scatter_organoid")
+dose_scatter = (
+    pd.concat(dose_scatter_rows, ignore_index=True)
+    if dose_scatter_rows
+    else pd.DataFrame(
+        columns=[
+            "patient",
+            "feature",
+            "coef_low",
+            "coef_high",
+            "drug",
+            "dose_low",
+            "dose_high",
+        ]
+    )
+)
+save_plot_data("8_dose_scatter_organoid", scatter=dose_scatter)
 
 
 # In[ ]:
@@ -717,33 +588,40 @@ def consensus_table(df):
 
 
 consensus = {p: consensus_table(trt[p]) for p in profiles}
-fig, axes = plt.subplots(1, 2, figsize=(16, 5))
-for p in profiles:
-    c = consensus[p]
-    counts = c["n_patients_hit"].value_counts(normalize=True).sort_index()
-    axes[0].plot(
-        counts.index, counts.values, marker="o", label=p, color=profile_palette[p]
-    )
-    conc = c.loc[c["n_patients_hit"] >= 2, "sign_concordance"]
-    sns.ecdfplot(conc, ax=axes[1], label=p, color=profile_palette[p])
-axes[0].set_yscale("log")
-axes[0].set_xlabel("# patients where (treatment, feature) is a hit")
-axes[0].set_ylabel("fraction of (treatment, feature) pairs")
-axes[0].set_title("How reproducible are hits?")
-axes[1].set_xlabel("sign concordance among hit patients (>=2 hits)")
-axes[1].set_title("Do replicated hits agree in direction? (chance = 0.5)")
-axes[0].legend()
-plt.tight_layout()
-savefig(fig, "9_patients_per_hit_and_concordance")
+patients_per_hit = pd.concat(
+    [
+        consensus[p]["n_patients_hit"]
+        .value_counts(normalize=True)
+        .rename("fraction")
+        .rename_axis("n_patients_hit")
+        .reset_index()
+        .assign(profile=p)
+        for p in profiles
+    ],
+    ignore_index=True,
+)
+concordance = pd.concat(
+    [
+        consensus[p]
+        .loc[consensus[p]["n_patients_hit"] >= 2, ["sign_concordance"]]
+        .assign(profile=p)
+        for p in profiles
+    ],
+    ignore_index=True,
+)
+save_plot_data(
+    "9_patients_per_hit_and_concordance",
+    counts=patients_per_hit,
+    concordance=concordance,
+)
 
 
 # In[ ]:
 
 
 # consensus hits per treatment: >=3 patients, >=80% same sign
-fig, axes = plt.subplots(1, 2, figsize=(20, 6), sharey=True)
 consensus_counts = []
-for ax, p in zip(axes, main_profiles):
+for p in main_profiles:
     c = consensus[p]
     cons = c.loc[(c["n_patients_hit"] >= 3) & (c["sign_concordance"] >= 0.8)]
     cnt = (
@@ -752,22 +630,18 @@ for ax, p in zip(axes, main_profiles):
         .reindex(all_treatments, fill_value=0)
         .sort_values()
     )
-    cnt.plot.barh(ax=ax, color=profile_palette[p])
-    ax.set_title(f"{p}: consensus hits (>=3 patients, >=80% concordant)")
     consensus_counts.append(cnt.rename(p))
 pd.concat(consensus_counts, axis=1).reset_index().to_parquet(
     results_path / "consensus_hit_counts.parquet", index=False
 )
-plt.tight_layout()
-savefig(fig, "9_consensus_hits_per_treatment")
 
 
 # In[ ]:
 
 
 # patient x patient agreement of the full treatment signature
-fig, axes = plt.subplots(1, 2, figsize=(18, 7))
-for ax, p in zip(axes, main_profiles):
+patient_agreement_frames = []
+for p in main_profiles:
     mats = []
     for trtm, g in trt[p].groupby("treatment"):
         w = g.pivot(index="feature", columns="patient", values="coefficient").reindex(
@@ -775,18 +649,14 @@ for ax, p in zip(axes, main_profiles):
         )
         mats.append(w.corr(method="spearman"))
     mean_corr = sum(m.fillna(0) for m in mats) / len(mats)
-    sns.heatmap(
-        mean_corr,
-        ax=ax,
-        cmap="vlag",
-        center=0,
-        annot=True,
-        fmt=".2f",
-        annot_kws={"size": 6},
+    patient_agreement_frames.append(
+        mean_corr.rename_axis("patient_a")
+        .reset_index()
+        .melt(id_vars="patient_a", var_name="patient_b", value_name="spearman")
+        .assign(profile=p)
     )
-    ax.set_title(f"{p}: mean per-treatment Spearman of coefficients between patients")
-plt.tight_layout()
-savefig(fig, "9_patient_patient_agreement")
+patient_agreement = pd.concat(patient_agreement_frames, ignore_index=True)
+save_plot_data("9_patient_patient_agreement", agreement=patient_agreement)
 
 
 # ## 10. Treatment similarity
@@ -803,8 +673,9 @@ for p in main_profiles:
         index="feature", columns=["patient", "treatment"], values="coefficient"
     )
 
-fig, axes = plt.subplots(1, 2, figsize=(22, 9))
-for ax, p in zip(axes, main_profiles):
+signature_corr_frames = []
+signature_moa_frames = []
+for p in main_profiles:
     mean_sig = trt[p].pivot_table(
         index="feature", columns="treatment", values="coefficient", aggfunc="mean"
     )
@@ -815,19 +686,23 @@ for ax, p in zip(axes, main_profiles):
         .set_index("treatment")["therapeutic_category"]
         .reindex(corr.index)
     )
-    cg = sns.clustermap(
-        corr,
-        cmap="vlag",
-        center=0,
-        figsize=(10, 10),
-        row_colors=moa.map(moa_palette),
-        col_colors=moa.map(moa_palette),
+    signature_corr_frames.append(
+        corr.rename_axis("treatment_a")
+        .reset_index()
+        .melt(id_vars="treatment_a", var_name="treatment_b", value_name="correlation")
+        .assign(profile=p)
     )
-    cg.fig.suptitle(
-        f"{p}: treatment signature correlation (mean over patients)", y=1.02
+    signature_moa_frames.append(
+        moa.rename("therapeutic_category")
+        .rename_axis("treatment")
+        .reset_index()
+        .assign(profile=p)
     )
-    savefig(cg.figure, f"10_treatment_signature_clustermap_{p}")
-plt.close(fig)
+signature_corr = pd.concat(signature_corr_frames, ignore_index=True)
+signature_moa = pd.concat(signature_moa_frames, ignore_index=True)
+save_plot_data(
+    "10_treatment_signature_clustermap", correlation=signature_corr, moa=signature_moa
+)
 
 
 # In[ ]:
@@ -862,26 +737,14 @@ for p in main_profiles:
     pair_rows.append(pd.DataFrame({"profile": p, "category": cat, "correlation": c}))
 pairs = pd.concat(pair_rows)
 pairs.to_parquet(results_path / "signature_pair_correlations.parquet", index=False)
-fig, ax = plt.subplots(figsize=(12, 5))
-sns.boxplot(
-    data=pairs,
-    x="category",
-    y="correlation",
-    hue="profile",
-    palette=profile_palette,
-    ax=ax,
-    fliersize=1,
-)
-ax.set_title("Is the signature driven by the patient or by the drug?")
-savefig(fig, "10_patient_vs_drug_signature")
+save_plot_data("10_patient_vs_drug_signature", pairs=pairs)
 
 
 # In[ ]:
 
 
 # PCA (SVD) of all patient x treatment signatures
-fig, axes = plt.subplots(2, 2, figsize=(18, 14))
-for i, p in enumerate(main_profiles):
+for p in main_profiles:
     m = sig_matrix[p].fillna(0).T
     x = m.values - m.values.mean(axis=0)
     u, s, vt = np.linalg.svd(x, full_matrices=False)
@@ -891,24 +754,10 @@ for i, p in enumerate(main_profiles):
     meta["drug"] = meta["treatment"].str.rsplit("_", n=1).str[0]
     meta["tumor_type"] = meta["patient"].map(tumor_type_dict)
     meta["PC1"], meta["PC2"] = pcs[:, 0], pcs[:, 1]
+    meta["PC1_var_pct"], meta["PC2_var_pct"] = var[0], var[1]
     meta.assign(profile=p).to_parquet(
         results_path / f"signature_pca_{p}.parquet", index=False
     )
-    sns.scatterplot(
-        data=meta, x="PC1", y="PC2", hue="patient", ax=axes[i, 0], s=40, palette="tab20"
-    )
-    axes[i, 0].set_title(f"{p}: coloured by patient")
-    axes[i, 0].legend(fontsize=6, ncol=2)
-    sns.scatterplot(
-        data=meta, x="PC1", y="PC2", hue="drug", ax=axes[i, 1], s=40, palette="tab20"
-    )
-    axes[i, 1].set_title(f"{p}: coloured by drug")
-    axes[i, 1].legend(fontsize=6, ncol=2)
-    for ax in axes[i]:
-        ax.set_xlabel(f"PC1 ({var[0]:.1f}%)")
-        ax.set_ylabel(f"PC2 ({var[1]:.1f}%)")
-plt.tight_layout()
-savefig(fig, "10_signature_pca")
 
 
 # ## 11. Organoid vs single cell
@@ -945,36 +794,18 @@ sc_c = (
 os_merge = org_c.merge(sc_c, on=shared, how="inner")
 print(f"{len(os_merge):,} shared (patient, treatment, feature) tuples")
 
-fig, axes = plt.subplots(1, 3, figsize=(22, 6))
-axes[0].hexbin(
-    os_merge["coef_org"].clip(-3, 3),
-    os_merge["coef_sc"].clip(-3, 3),
-    gridsize=60,
-    bins="log",
-    cmap="viridis",
-)
-axes[0].plot([-3, 3], [-3, 3], "r--", lw=0.6)
-rho = spearmanr(os_merge["coef_org"], os_merge["coef_sc"])[0]
-axes[0].set_title(f"coefficient agreement (Spearman {rho:.2f})")
-axes[0].set_xlabel("organoid coef")
-axes[0].set_ylabel("single-cell coef (mean over compartments)")
 per_trt = (
     os_merge.groupby("treatment")
     .apply(lambda g: spearmanr(g["coef_org"], g["coef_sc"])[0])
     .sort_values()
 )
-per_trt.plot.barh(ax=axes[1], color="steelblue")
-axes[1].set_title("Spearman per treatment")
-cont = pd.crosstab(os_merge["hit_org"], os_merge["hit_sc"])
-sns.heatmap(cont, annot=True, fmt="d", cmap="Blues", ax=axes[2])
-odds = fisher_exact(cont.values)[0] if cont.shape == (2, 2) else np.nan
-axes[2].set_title(f"hit overlap (OR={odds:.1f})")
-axes[2].set_ylabel("organoid hit")
-axes[2].set_xlabel("single-cell hit")
-plt.tight_layout()
-savefig(fig, "11_organoid_vs_sc_agreement")
 per_trt.rename("spearman").reset_index().to_parquet(
     results_path / "organoid_vs_sc_per_treatment.parquet", index=False
+)
+save_plot_data(
+    "11_organoid_vs_sc_agreement",
+    merged=os_merge,
+    per_treatment=per_trt.rename("spearman").reset_index(),
 )
 
 
@@ -994,14 +825,7 @@ rate = (
     )
     .reset_index()
 )
-fig, ax = plt.subplots(figsize=(7, 7))
-sns.scatterplot(
-    data=rate, x="organoid", y="sc", hue="patient", ax=ax, palette="tab20", s=25
-)
-r = spearmanr(rate["organoid"], rate["sc"])[0]
-ax.set_title(f"Hit rate per patient x treatment (Spearman {r:.2f})")
-ax.legend(fontsize=6, ncol=2)
-savefig(fig, "11_hit_rate_organoid_vs_sc")
+save_plot_data("11_hit_rate_organoid_vs_sc", rate=rate)
 
 
 # ## 12. Aggregated vs non-aggregated profiles
@@ -1014,25 +838,14 @@ savefig(fig, "11_hit_rate_organoid_vs_sc")
 
 agg_pairs = [("organoid", "organoid_agg"), ("sc", "sc_agg")]
 agg_rows = []
-fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-for ax, (a, b) in zip(axes, agg_pairs):
+agg_scatter_frames = []
+for a, b in agg_pairs:
     m = trt[a][model_keys + ["coefficient", "hit", "sig", "rsquared"]].merge(
         trt[b][model_keys + ["coefficient", "hit", "sig", "rsquared"]],
         on=model_keys,
         suffixes=("_full", "_agg"),
     )
-    ax.hexbin(
-        m["coefficient_full"].clip(-3, 3),
-        m["coefficient_agg"].clip(-3, 3),
-        gridsize=60,
-        bins="log",
-        cmap="viridis",
-    )
-    ax.plot([-3, 3], [-3, 3], "r--", lw=0.6)
     rho = spearmanr(m["coefficient_full"], m["coefficient_agg"])[0]
-    ax.set_title(f"{a} vs {b} (Spearman {rho:.2f})")
-    ax.set_xlabel("full-resolution coef")
-    ax.set_ylabel("aggregated coef")
     both = (m["hit_full"] & m["hit_agg"]).sum()
     agg_rows.append(
         {
@@ -1049,11 +862,15 @@ for ax, (a, b) in zip(axes, agg_pairs):
             ).mean(),
         }
     )
-plt.tight_layout()
-savefig(fig, "12_full_vs_agg_coefficients")
+    agg_scatter_frames.append(m.assign(pair=f"{a} vs {b}"))
 agg_concordance = pd.DataFrame(agg_rows)
 agg_concordance.to_parquet(
     results_path / "full_vs_agg_concordance.parquet", index=False
+)
+save_plot_data(
+    "12_full_vs_agg_coefficients",
+    scatter=pd.concat(agg_scatter_frames, ignore_index=True),
+    summary=agg_concordance,
 )
 agg_concordance
 
@@ -1067,40 +884,45 @@ agg_concordance
 # In[ ]:
 
 
-fig, axes = plt.subplots(len(main_profiles), 2, figsize=(18, 5 * len(main_profiles)))
-for i, p in enumerate(main_profiles):
+technical_covariates_frames = []
+for p in main_profiles:
     d = lm[p].loc[lm[p]["term"] != "treatment"]
-    fr = d.groupby("term")["sig"].mean().reindex(covariate_terms).sort_values()
-    fr.plot.barh(ax=axes[i, 0], color=profile_palette[p])
-    axes[i, 0].set_title(f"{p}: fraction FDR<0.05 per covariate")
-    sns.violinplot(
-        data=d,
-        y="term",
-        x="term_pct_of_total_var",
-        order=covariate_terms,
-        ax=axes[i, 1],
-        cut=0,
-        color=profile_palette[p],
+    fr = (
+        d.groupby("term")["sig"]
+        .mean()
+        .reindex(covariate_terms)
+        .rename("frac_sig")
+        .reset_index()
     )
-    axes[i, 1].set_title(f"{p}: variance share per covariate")
-plt.tight_layout()
-savefig(fig, "13_technical_covariates")
+    fr["profile"] = p
+    technical_covariates_frames.append(fr)
+technical_covariates_sig = pd.concat(technical_covariates_frames, ignore_index=True)
+technical_covariates_var = pd.concat(
+    [
+        lm[p]
+        .loc[lm[p]["term"].isin(covariate_terms), ["term", "term_pct_of_total_var"]]
+        .assign(profile=p)
+        for p in main_profiles
+    ],
+    ignore_index=True,
+)
+save_plot_data(
+    "13_technical_covariates",
+    frac_sig=technical_covariates_sig,
+    variance_share=technical_covariates_var,
+)
 
 
 # In[ ]:
 
 
 # mean variance share of every term (treatment + covariates)
-fig, ax = plt.subplots(figsize=(11, 5))
 tv = pd.concat(
     [lm[p].groupby("term")["term_pct_of_total_var"].mean().rename(p) for p in profiles],
     axis=1,
 ).reindex(term_order)
 tv.reset_index().to_parquet(results_path / "term_variance_share.parquet", index=False)
-tv.plot.bar(ax=ax, color=[profile_palette[p] for p in profiles])
-ax.set_ylabel("mean % of total variance")
-ax.set_title("Which model terms explain variance?")
-savefig(fig, "13_technical_term_variance")
+save_plot_data("13_technical_term_variance", term_variance=tv.reset_index())
 
 
 # ## 14. Are hits just a change in a covariate?
@@ -1125,22 +947,20 @@ for p in profiles:
     )
 count_df = pd.DataFrame(count_rows)
 count_df.to_parquet(results_path / "count_confounding.parquet", index=False)
-fig, axes = plt.subplots(1, 2, figsize=(20, 6))
-count_df.set_index("profile")[
-    ["frac_hits_treatment_dominant", "frac_all_treatment_dominant"]
-].plot.bar(ax=axes[0])
-axes[0].set_title("Fraction of models where treatment beats every count covariate")
-m = (
+organoid_dominant_by_treatment = (
     trt["organoid"]
     .loc[trt["organoid"]["hit"]]
     .groupby("treatment")["covariate_safe"]
     .mean()
     .sort_values()
+    .rename("frac_treatment_dominant")
+    .reset_index()
 )
-m.plot.barh(ax=axes[1], color="steelblue")
-axes[1].set_title("organoid hits: treatment-dominant fraction by treatment")
-plt.tight_layout()
-savefig(fig, "14_count_confounding")
+save_plot_data(
+    "14_count_confounding",
+    summary=count_df,
+    organoid_by_treatment=organoid_dominant_by_treatment,
+)
 count_df
 
 
@@ -1148,22 +968,16 @@ count_df
 
 
 # how much variance do the covariate terms themselves explain?
-fig, axes = plt.subplots(1, 2, figsize=(22, 6), sharey=True)
-for ax, p in zip(axes, main_profiles):
-    d = lm[p].loc[lm[p]["term"].isin(covariate_terms)]
-    sns.violinplot(
-        data=d,
-        x="term",
-        y="term_pct_of_total_var",
-        order=covariate_terms,
-        ax=ax,
-        cut=0,
-        color=profile_palette[p],
-    )
-    ax.tick_params(axis="x", rotation=90)
-    ax.set_title(f"{p}: variance share of covariates")
-plt.tight_layout()
-savefig(fig, "14_count_covariate_variance_share")
+covariate_variance = pd.concat(
+    [
+        lm[p]
+        .loc[lm[p]["term"].isin(covariate_terms), ["term", "term_pct_of_total_var"]]
+        .assign(profile=p)
+        for p in main_profiles
+    ],
+    ignore_index=True,
+)
+save_plot_data("14_count_covariate_variance_share", variance=covariate_variance)
 
 
 # ## 15. Sensitivity of the hit definition
@@ -1176,9 +990,9 @@ savefig(fig, "14_count_covariate_variance_share")
 fdrs = [0.001, 0.01, 0.05, 0.1]
 r2s = [0.0, 0.3, 0.5, 0.7]
 coefs = [0.0, 0.01, 0.1, 0.25, 0.5, 1.0]
-fig, axes = plt.subplots(2, 2, figsize=(18, 12))
 sens_rows = []
-for i, p in enumerate(main_profiles):
+grid_frames = []
+for p in main_profiles:
     d = trt[p]
     grid = pd.DataFrame(
         [
@@ -1196,8 +1010,12 @@ for i, p in enumerate(main_profiles):
         index=fdrs,
         columns=r2s,
     )
-    sns.heatmap(grid, annot=True, fmt="d", cmap="mako_r", ax=axes[i, 0])
-    axes[i, 0].set_title(f"{p}: # hits, FDR (rows) x R2 min (cols)")
+    grid_frames.append(
+        grid.rename_axis("fdr")
+        .reset_index()
+        .melt(id_vars="fdr", var_name="r2_min", value_name="n_hits")
+        .assign(profile=p)
+    )
     curve = [
         (
             (d["pvalue_fdr"] < FDR_MAX)
@@ -1207,17 +1025,14 @@ for i, p in enumerate(main_profiles):
         ).sum()
         for c in coefs
     ]
-    axes[i, 1].plot(coefs, curve, marker="o", color=profile_palette[p])
-    axes[i, 1].set_yscale("log")
-    axes[i, 1].set_xlabel("|coefficient| minimum")
-    axes[i, 1].set_ylabel("# hits")
-    axes[i, 1].set_title(f"{p}: hits vs effect-size threshold")
     for c, n in zip(coefs, curve):
         sens_rows.append({"profile": p, "coef_min": c, "n_hits": int(n)})
-plt.tight_layout()
-savefig(fig, "15_threshold_sensitivity")
-pd.DataFrame(sens_rows).to_parquet(
-    results_path / "threshold_sensitivity_coef.parquet", index=False
+sens_df = pd.DataFrame(sens_rows)
+sens_df.to_parquet(results_path / "threshold_sensitivity_coef.parquet", index=False)
+save_plot_data(
+    "15_threshold_sensitivity",
+    grid=pd.concat(grid_frames, ignore_index=True),
+    coef_curve=sens_df,
 )
 
 
@@ -1229,15 +1044,21 @@ pd.DataFrame(sens_rows).to_parquet(
 # In[ ]:
 
 
-fig, axes = plt.subplots(1, 2, figsize=(20, 6))
-for ax, p in zip(axes, main_profiles):
-    m = trt[p].pivot_table(
-        index="tumor_type", columns="treatment", values="hit", aggfunc="mean"
-    )
-    sns.heatmap(m, ax=ax, cmap="rocket_r", cbar_kws={"label": "hit rate"})
-    ax.set_title(f"{p}: tumor type x treatment")
-plt.tight_layout()
-savefig(fig, "16_tumor_type_by_treatment")
+tumor_type_by_treatment = pd.concat(
+    [
+        trt[p]
+        .pivot_table(
+            index="tumor_type", columns="treatment", values="hit", aggfunc="mean"
+        )
+        .rename_axis("tumor_type")
+        .reset_index()
+        .melt(id_vars="tumor_type", var_name="treatment", value_name="hit_rate")
+        .assign(profile=p)
+        for p in main_profiles
+    ],
+    ignore_index=True,
+)
+save_plot_data("16_tumor_type_by_treatment", heatmap=tumor_type_by_treatment)
 
 
 # In[ ]:
@@ -1245,25 +1066,13 @@ savefig(fig, "16_tumor_type_by_treatment")
 
 # features that discriminate tumor types: hit rate per tumor type, keep the most variable
 tt_rows = []
-fig, axes = plt.subplots(1, 2, figsize=(22, 10))
-for ax, p in zip(axes, main_profiles):
+for p in main_profiles:
     m = trt[p].pivot_table(
         index="feature", columns="tumor_type", values="hit", aggfunc="mean"
     )
     m["range"] = m.max(axis=1) - m.min(axis=1)
     top = m.sort_values("range", ascending=False).head(40)
     tt_rows.append(top.assign(profile=p).reset_index())
-    sns.heatmap(
-        top.drop(columns="range"),
-        ax=ax,
-        cmap="rocket_r",
-        cbar_kws={"label": "hit rate"},
-        yticklabels=True,
-    )
-    ax.tick_params(axis="y", labelsize=6)
-    ax.set_title(f"{p}: features with the largest tumor-type difference in hit rate")
-plt.tight_layout()
-savefig(fig, "16_tumor_type_discriminating_features")
 pd.concat(tt_rows).to_parquet(
     results_path / "tumor_type_discriminating_features.parquet", index=False
 )
@@ -1279,6 +1088,7 @@ pd.concat(tt_rows).to_parquet(
 
 
 module_tables = []
+module_corr_frames = []
 for p in main_profiles:
     hit_feats = trt[p].loc[trt[p]["hit"]].groupby("feature").size().nlargest(60).index
     m = (
@@ -1295,22 +1105,18 @@ for p in main_profiles:
     module_tables.append(
         pd.DataFrame({"profile": p, "feature": m.index, "module": clusters})
     )
-    cg = sns.clustermap(
-        corr,
-        cmap="vlag",
-        center=0,
-        figsize=(14, 14),
-        xticklabels=True,
-        yticklabels=True,
+    module_corr_frames.append(
+        corr.rename_axis("feature_a")
+        .reset_index()
+        .melt(id_vars="feature_a", var_name="feature_b", value_name="correlation")
+        .assign(profile=p)
     )
-    cg.ax_heatmap.tick_params(labelsize=5)
-    cg.fig.suptitle(
-        f"{p}: correlation of top-60 hit features ({clusters.max()} modules at distance 0.5)",
-        y=1.01,
-    )
-    savefig(cg.figure, f"17_feature_module_clustermap_{p}")
 pd.concat(module_tables).to_parquet(
     results_path / "feature_modules.parquet", index=False
+)
+save_plot_data(
+    "17_feature_module_clustermap",
+    correlation=pd.concat(module_corr_frames, ignore_index=True),
 )
 
 
@@ -1415,10 +1221,7 @@ for p in main_profiles:
     )
 ev = pd.DataFrame(ev_rows).set_index("profile")
 ev.reset_index().to_parquet(results_path / "evidence_pass_rates.parquet", index=False)
-ax = ev.plot.bar(figsize=(11, 5), colormap="Set2")
-ax.set_ylabel("fraction of hits")
-ax.set_title("How many hits pass each independent check?")
-savefig(ax.figure, "18_evidence_pass_rates")
+save_plot_data("18_evidence_pass_rates", rates=ev.reset_index())
 ev
 
 
@@ -1426,8 +1229,8 @@ ev
 
 
 # top needles overall
-fig, axes = plt.subplots(1, 2, figsize=(22, 10))
-for ax, p in zip(axes, main_profiles):
+top_needles_frames = []
+for p in main_profiles:
     top = all_needles[p].head(30).copy()
     top["label"] = (
         top["drug"]
@@ -1436,23 +1239,19 @@ for ax, p in zip(axes, main_profiles):
         + " | "
         + top["feature"]
     )
-    ax.barh(
-        top["label"][::-1],
-        top["needle_score"][::-1],
-        color=np.where(top["mean_coef"][::-1] > 0, "#d73027", "#4575b4"),
-    )
-    ax.set_title(f"{p}: top 30 needles (red = up, blue = down vs DMSO)")
-    ax.tick_params(axis="y", labelsize=7)
-plt.tight_layout()
-savefig(fig, "18_top_needles")
+    top["profile"] = p
+    top_needles_frames.append(top)
+save_plot_data(
+    "18_top_needles", needles=pd.concat(top_needles_frames, ignore_index=True)
+)
 
 
 # In[ ]:
 
 
 # the top needles across every patient: is the effect visible everywhere?
-fig, axes = plt.subplots(1, 2, figsize=(22, 12))
-for ax, p in zip(axes, main_profiles):
+needles_across_patients_frames = []
+for p in main_profiles:
     top = all_needles[p].head(40)
     keys = list(zip(top["treatment"], top["feature"]))
     d = trt[p].set_index(["treatment", "feature"])
@@ -1464,38 +1263,21 @@ for ax, p in zip(axes, main_profiles):
         + " | "
         + d["feature"]
     )
-    m = d.pivot_table(index="row", columns="patient", values="coefficient").reindex(
-        columns=all_patients
+    needles_across_patients_frames.append(
+        d[["row", "patient", "coefficient"]].assign(profile=p)
     )
-    order = [
-        f"{r['drug']} | {r['treatment'].rsplit('_', 1)[-1]} | {r['feature']}"
-        for _, r in top.iterrows()
-    ]
-    m = m.reindex([o for o in order if o in m.index])
-    sns.heatmap(
-        m,
-        ax=ax,
-        cmap="vlag",
-        center=0,
-        vmin=-3,
-        vmax=3,
-        yticklabels=True,
-        cbar_kws={"label": "coef vs DMSO"},
-    )
-    ax.tick_params(axis="y", labelsize=6)
-    ax.set_ylabel("")
-    ax.set_title(f"{p}: top 40 needles across patients")
-plt.tight_layout()
-savefig(fig, "18_top_needles_across_patients")
+save_plot_data(
+    "18_top_needles_across_patients",
+    coefficients=pd.concat(needles_across_patients_frames, ignore_index=True),
+)
 
 
 # In[ ]:
 
 
 # the best feature for every treatment
-fig, axes = plt.subplots(1, 2, figsize=(22, 10))
 best_tables = []
-for ax, p in zip(axes, main_profiles):
+for p in main_profiles:
     best = (
         all_needles[p]
         .sort_values("needle_score", ascending=False)
@@ -1503,17 +1285,6 @@ for ax, p in zip(axes, main_profiles):
         .copy()
     )
     best_tables.append(best)
-    best["label"] = best["treatment"] + " | " + best["feature"]
-    best = best.sort_values("needle_score")
-    ax.barh(
-        best["label"],
-        best["needle_score"],
-        color=best["therapeutic_category"].map(moa_palette).fillna("grey"),
-    )
-    ax.tick_params(axis="y", labelsize=7)
-    ax.set_title(f"{p}: strongest needle per treatment (colour = MOA)")
-plt.tight_layout()
-savefig(fig, "18_best_needle_per_treatment")
 pd.concat(best_tables).to_parquet(
     results_path / "best_needle_per_treatment.parquet", index=False
 )
@@ -1627,8 +1398,7 @@ summary.T
 
 
 count_view = []
-fig, axes = plt.subplots(1, 2, figsize=(22, 8), sharey=True)
-for ax, p in zip(axes, main_profiles):
+for p in main_profiles:
     d = trt[p]
     h = d.loc[d["hit"]]
     tab = pd.DataFrame(
@@ -1649,16 +1419,9 @@ for ax, p in zip(axes, main_profiles):
     tab["hits_count_linked"] = tab["hits"] - tab["hits_treatment_dominant"]
     tab["profile"] = p
     count_view.append(tab.reset_index())
-    tab.sort_values("hits")[["hits_treatment_dominant", "hits_count_linked"]].plot.barh(
-        stacked=True, ax=ax, color=["#1b9e77", "#d95f02"]
-    )
-    ax.set_title(
-        f"{p}: hits by treatment (green = treatment-driven, orange = count-linked)"
-    )
-plt.tight_layout()
-savefig(fig, "19_hits_treatment_vs_count_linked")
 count_view = pd.concat(count_view)
 count_view.to_parquet(results_path / "count_view_by_treatment.parquet", index=False)
+save_plot_data("19_hits_treatment_vs_count_linked", count_view=count_view)
 
 
 # In[ ]:
@@ -1666,9 +1429,8 @@ count_view.to_parquet(results_path / "count_view_by_treatment.parquet", index=Fa
 
 # treatment vs count share of variance, per (patient, treatment) -- points above
 # the diagonal are treatments whose count effect exceeds their morphology effect
-fig, axes = plt.subplots(1, 2, figsize=(16, 7))
-for ax, p in zip(axes, main_profiles):
-    pt = (
+treatment_vs_covariate_share = pd.concat(
+    [
         trt[p]
         .groupby(["treatment", "drug"])
         .agg(
@@ -1676,24 +1438,12 @@ for ax, p in zip(axes, main_profiles):
             covariate_share=("covariate_max_pct", "median"),
         )
         .reset_index()
-    )
-    ax.scatter(
-        pt["covariate_share"],
-        pt["treatment_share"],
-        c=pt["drug"].astype("category").cat.codes,
-        cmap="tab20",
-    )
-    lim = max(pt["covariate_share"].max(), pt["treatment_share"].max())
-    ax.plot([0, lim], [0, lim], "k--", lw=0.6)
-    for _, r in pt.iterrows():
-        ax.annotate(
-            r["treatment"], (r["covariate_share"], r["treatment_share"]), fontsize=6
-        )
-    ax.set_xlabel("median max count-term % variance")
-    ax.set_ylabel("median treatment % variance")
-    ax.set_title(f"{p}: treatment vs count share")
-plt.tight_layout()
-savefig(fig, "19_treatment_vs_covariate_share")
+        .assign(profile=p)
+        for p in main_profiles
+    ],
+    ignore_index=True,
+)
+save_plot_data("19_treatment_vs_covariate_share", share=treatment_vs_covariate_share)
 
 
 # In[ ]:
@@ -1784,25 +1534,16 @@ for p, t in tumor_specific.items():
 # In[ ]:
 
 
-fig, axes = plt.subplots(2, 2, figsize=(22, 16))
-for i, p in enumerate(main_profiles):
+tumor_specificity_scatter_frames = []
+tumor_specificity_heat_frames = []
+for p in main_profiles:
     t = tumor_specific[p]
-    axes[i, 0].scatter(
-        t["delta"],
-        -np.log10(t["kruskal_p"].clip(lower=1e-12)),
-        s=3,
-        c="lightgrey",
-        rasterized=True,
+    tumor_specificity_scatter_frames.append(
+        t.assign(neglog_p=-np.log10(t["kruskal_p"].clip(lower=1e-12)), profile=p)[
+            ["delta", "neglog_p", "tumor_type_specific", "profile"]
+        ]
     )
     sp = t.loc[t["tumor_type_specific"]]
-    axes[i, 0].scatter(
-        sp["delta"], -np.log10(sp["kruskal_p"].clip(lower=1e-12)), s=12, c="crimson"
-    )
-    axes[i, 0].set_xlabel("delta: mean coef in best tumor type - mean elsewhere")
-    axes[i, 0].set_ylabel("-log10 Kruskal p")
-    axes[i, 0].set_title(
-        f"{p}: tumor-type contrast (red = hit confined to one tumor type)"
-    )
     top = sp.reindex(sp["delta"].abs().sort_values(ascending=False).index).head(30)
     if len(top):
         d = trt[p].set_index(["treatment", "feature"])
@@ -1815,18 +1556,19 @@ for i, p in enumerate(main_profiles):
             )
             rows.append(m)
         heat = pd.DataFrame(rows).reindex(columns=["cNF", "pNF", "MPNST", "Other"])
-        sns.heatmap(
-            heat,
-            ax=axes[i, 1],
-            cmap="vlag",
-            center=0,
-            yticklabels=True,
-            cbar_kws={"label": "mean coef"},
+        tumor_specificity_heat_frames.append(
+            heat.rename_axis("pair")
+            .reset_index()
+            .melt(id_vars="pair", var_name="tumor_type", value_name="mean_coef")
+            .assign(profile=p)
         )
-        axes[i, 1].tick_params(axis="y", labelsize=6)
-    axes[i, 1].set_title(f"{p}: top tumor-type-specific pairs")
-plt.tight_layout()
-savefig(fig, "20_tumor_type_specificity")
+save_plot_data(
+    "20_tumor_type_specificity",
+    scatter=pd.concat(tumor_specificity_scatter_frames, ignore_index=True),
+    heatmap=pd.concat(tumor_specificity_heat_frames, ignore_index=True)
+    if tumor_specificity_heat_frames
+    else pd.DataFrame(columns=["pair", "tumor_type", "mean_coef", "profile"]),
+)
 
 
 # In[ ]:
@@ -1839,12 +1581,7 @@ ts_all = pd.concat(
         for p, t in tumor_specific.items()
     ]
 )
-fig, ax = plt.subplots(figsize=(10, 5))
-sns.countplot(
-    data=ts_all, x="best_tumor_type", hue="profile", palette=profile_palette, ax=ax
-)
-ax.set_title("Tumor-type-specific hits by tumor type")
-savefig(fig, "20_tumor_type_specific_counts")
+save_plot_data("20_tumor_type_specific_counts", ts_all=ts_all)
 ts_all.groupby(["profile", "best_tumor_type", "therapeutic_category"]).size().rename(
     "n"
 ).reset_index().sort_values("n", ascending=False).head(15)
@@ -1955,10 +1692,7 @@ print(
 # In[ ]:
 
 
-fig, axes = plt.subplots(1, 2, figsize=(18, 6))
 counts = shortlist.groupby("profile")[crit].sum().T
-counts.plot.bar(ax=axes[0], color=[profile_palette["organoid"], profile_palette["sc"]])
-axes[0].set_title("Pairs passing each definition of interesting")
 combo = (
     shortlist.assign(
         combo=shortlist[crit].apply(
@@ -1970,12 +1704,11 @@ combo = (
     .rename("n")
     .reset_index()
 )
-sns.barplot(
-    data=combo, y="combo", x="n", hue="profile", palette=profile_palette, ax=axes[1]
+save_plot_data(
+    "21_definitions_of_interesting",
+    counts=counts.rename_axis("criterion").reset_index(),
+    combo=combo,
 )
-axes[1].set_title("Which definitions co-occur? (rep=replicated, tumo, dose, moa_)")
-plt.tight_layout()
-savefig(fig, "21_definitions_of_interesting")
 
 
 # In[ ]:
@@ -2055,23 +1788,16 @@ moa_within = pd.DataFrame(moa_within_rows)
 moa_test.to_parquet(results_path / "moa_consistency_test.parquet", index=False)
 moa_within.to_parquet(results_path / "moa_within_correlation.parquet", index=False)
 
-fig, axes = plt.subplots(1, 3, figsize=(24, 5))
-for ax, p in zip(axes[:2], main_profiles):
-    obs, perms = perm_store[p]
-    ax.hist(perms, bins=40, color="lightgrey")
-    ax.axvline(obs, color="crimson")
-    ax.set_title(f"{p}: within- minus between-MOA correlation (red = observed)")
-sns.barplot(
-    data=moa_within,
-    y="therapeutic_category",
-    x="mean_within_corr",
-    hue="profile",
-    palette=profile_palette,
-    ax=axes[2],
+perm_frames = [
+    pd.DataFrame({"profile": p, "perm_value": perms})
+    for p, (obs, perms) in perm_store.items()
+]
+save_plot_data(
+    "22_moa_consistency_test",
+    permutations=pd.concat(perm_frames, ignore_index=True),
+    observed=moa_test,
+    within_corr=moa_within,
 )
-axes[2].set_title("Mean correlation between different drugs of one MOA")
-plt.tight_layout()
-savefig(fig, "22_moa_consistency_test")
 moa_test
 
 
@@ -2089,819 +1815,6 @@ qa = []
 def answer(n, question, text):
     qa.append({"n": n, "question": question, "answer": text})
     print(f"Q{n}. {question}\n    -> {text}\n")
-
-
-# **Q1. How big is the haystack, and what fraction of models are hits?**
-
-# In[ ]:
-
-
-Q = "How big is the haystack, and what fraction of models are hits?"
-r = {p: (len(trt[p]), int(trt[p]["hit"].sum())) for p in main_profiles}
-answer(
-    1,
-    Q,
-    "; ".join(
-        f"{p}: {n:,} models, {h:,} hits ({h / n:.2%})" for p, (n, h) in r.items()
-    ),
-)
-fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-pd.Series({p: len(trt[p]) for p in main_profiles}).plot.bar(
-    ax=axes[0], color="lightgrey", label="models"
-)
-pd.Series({p: int(trt[p]["hit"].sum()) for p in main_profiles}).plot.bar(
-    ax=axes[0], color="crimson", label="hits"
-)
-axes[0].set_yscale("log")
-axes[0].legend()
-axes[0].set_title("Models vs hits")
-pd.Series({p: trt[p]["hit"].mean() * 100 for p in main_profiles}).plot.bar(
-    ax=axes[1], color="crimson"
-)
-axes[1].set_ylabel("hit rate (%)")
-axes[1].set_title("Hit rate")
-plt.tight_layout()
-savefig(fig, "23_q01_haystack_size")
-
-
-# **Q2. Which patient has the highest organoid hit rate?**
-
-# In[ ]:
-
-
-Q = "Which patient has the highest organoid hit rate?"
-r = trt["organoid"].groupby("patient")["hit"].mean().sort_values(ascending=False)
-answer(
-    2,
-    Q,
-    f"{r.index[0]} ({r.iloc[0]:.2%}); next: "
-    + ", ".join(f"{k} ({v:.2%})" for k, v in r.iloc[1:4].items()),
-)
-r = trt["organoid"].groupby("patient")["hit"].mean().sort_values() * 100
-fig, ax = plt.subplots(figsize=(7, 5))
-r.plot.barh(ax=ax, color="steelblue")
-ax.set_xlabel("organoid hit rate (%)")
-ax.set_title("Organoid hit rate by patient")
-savefig(fig, "23_q02_organoid_hit_rate_by_patient")
-
-
-# **Q3. Which patient has the lowest organoid hit rate (least responsive or noisiest)?**
-
-# In[ ]:
-
-
-Q = "Which patient has the lowest organoid hit rate (least responsive or noisiest)?"
-answer(
-    3, Q, f"{r.index[-1]} ({r.iloc[-1]:.2%}); median across patients {r.median():.2%}"
-)
-rr = pd.DataFrame(
-    {p: trt[p].groupby("patient")["hit"].mean() * 100 for p in main_profiles}
-).sort_values("organoid")
-fig, ax = plt.subplots(figsize=(8, 5))
-rr.plot.barh(ax=ax, color=[profile_palette[p] for p in main_profiles])
-ax.set_xlabel("hit rate (%)")
-ax.set_title("Hit rate by patient, both profiles")
-savefig(fig, "23_q03_hit_rate_by_patient_both")
-
-
-# **Q4. Which treatment produces the most organoid hits?**
-
-# In[ ]:
-
-
-Q = "Which treatment produces the most organoid hits?"
-r = trt["organoid"].groupby("treatment")["hit"].sum().sort_values(ascending=False)
-answer(4, Q, ", ".join(f"{k} ({int(v)})" for k, v in r.head(5).items()))
-r = trt["organoid"].groupby("treatment")["hit"].sum().sort_values()
-fig, ax = plt.subplots(figsize=(7, 7))
-r.plot.barh(ax=ax, color="steelblue")
-ax.set_xlabel("# organoid hits")
-ax.set_title("Organoid hits per treatment")
-savefig(fig, "23_q04_organoid_hits_per_treatment")
-
-
-# **Q5. Which treatment produces the most single-cell hits?**
-
-# In[ ]:
-
-
-Q = "Which treatment produces the most single-cell hits?"
-r = trt["sc"].groupby("treatment")["hit"].sum().sort_values(ascending=False)
-answer(5, Q, ", ".join(f"{k} ({int(v)})" for k, v in r.head(5).items()))
-r = trt["sc"].groupby("treatment")["hit"].sum().sort_values()
-fig, ax = plt.subplots(figsize=(7, 7))
-r.plot.barh(ax=ax, color=profile_palette["sc"])
-ax.set_xlabel("# single-cell hits")
-ax.set_title("Single-cell hits per treatment")
-savefig(fig, "23_q05_sc_hits_per_treatment")
-
-
-# **Q6. Which drugs have no organoid hits at all?**
-
-# In[ ]:
-
-
-Q = "Which drugs have no organoid hits at all?"
-r = trt["organoid"].groupby("drug")["hit"].sum()
-answer(6, Q, ", ".join(r[r == 0].index) or "none")
-r = trt["organoid"].groupby("drug")["hit"].sum().sort_values()
-fig, ax = plt.subplots(figsize=(7, 7))
-r.plot.barh(ax=ax, color=np.where(r == 0, "crimson", "steelblue"))
-ax.set_xlabel("# organoid hits")
-ax.set_title("Organoid hits per drug (red = none)")
-savefig(fig, "23_q06_organoid_hits_per_drug")
-
-
-# **Q7. Which mechanism of action (therapeutic category) has the highest organoid hit rate?**
-
-# In[ ]:
-
-
-Q = "Which mechanism of action (therapeutic category) has the highest organoid hit rate?"
-r = (
-    trt["organoid"]
-    .groupby("therapeutic_category")["hit"]
-    .mean()
-    .sort_values(ascending=False)
-)
-answer(7, Q, ", ".join(f"{k} ({v:.2%})" for k, v in r.head(4).items()))
-r = pd.DataFrame(
-    {
-        p: trt[p].groupby("therapeutic_category")["hit"].mean() * 100
-        for p in main_profiles
-    }
-).sort_values("organoid")
-fig, ax = plt.subplots(figsize=(8, 5))
-r.plot.barh(ax=ax, color=[profile_palette[p] for p in main_profiles])
-ax.set_xlabel("hit rate (%)")
-ax.set_title("Hit rate by MOA")
-savefig(fig, "23_q07_hit_rate_by_moa")
-
-
-# **Q8. Which channel is most enriched for organoid hits?**
-
-# In[ ]:
-
-
-Q = "Which channel is most enriched for organoid hits?"
-e = (
-    enr[(enr["profile"] == "organoid") & (enr["family"] == "channel_label")]
-    .dropna(subset=["log2_or"])
-    .sort_values("log2_or", ascending=False)
-)
-answer(
-    8,
-    Q,
-    ", ".join(
-        f"{r['level']} (log2 OR {r['log2_or']:.2f}, FDR {r['fdr']:.2g})"
-        for _, r in e.head(3).iterrows()
-    ),
-)
-e = (
-    enr[(enr["profile"] == "organoid") & (enr["family"] == "channel_label")]
-    .dropna(subset=["log2_or"])
-    .sort_values("log2_or")
-)
-fig, ax = plt.subplots(figsize=(7, 5))
-ax.barh(e["level"], e["log2_or"], color=np.where(e["fdr"] < 0.05, "crimson", "grey"))
-ax.axvline(0, color="k", lw=0.5)
-ax.set_xlabel("log2 odds ratio (red = FDR<0.05)")
-ax.set_title("Organoid: channel enrichment for hits")
-savefig(fig, "23_q08_organoid_channel_enrichment")
-
-
-# **Q9. Which feature type (Granularity / Intensity / Colocalization / AreaSizeShape) is most enriched for hits, in organoid and single cell?**
-
-# In[ ]:
-
-
-Q = "Which feature type (Granularity / Intensity / Colocalization / AreaSizeShape) is most enriched for hits, in organoid and single cell?"
-parts = []
-for p in main_profiles:
-    e = (
-        enr[(enr["profile"] == p) & (enr["family"] == "Feature_type")]
-        .dropna(subset=["log2_or"])
-        .sort_values("log2_or", ascending=False)
-        .iloc[0]
-    )
-    parts.append(f"{p}: {e['level']} (log2 OR {e['log2_or']:.2f}, FDR {e['fdr']:.2g})")
-answer(9, Q, "; ".join(parts))
-fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
-for ax, p in zip(axes, main_profiles):
-    e = (
-        enr[(enr["profile"] == p) & (enr["family"] == "Feature_type")]
-        .dropna(subset=["log2_or"])
-        .sort_values("log2_or")
-    )
-    ax.barh(
-        e["level"], e["log2_or"], color=np.where(e["fdr"] < 0.05, "crimson", "grey")
-    )
-    ax.axvline(0, color="k", lw=0.5)
-    ax.set_title(f"{p}: feature-type enrichment")
-    ax.set_xlabel("log2 odds ratio (red = FDR<0.05)")
-plt.tight_layout()
-savefig(fig, "23_q09_feature_type_enrichment")
-
-
-# **Q10. Which cell compartment is most enriched for single-cell hits?**
-
-# In[ ]:
-
-
-Q = "Which cell compartment is most enriched for single-cell hits?"
-e = (
-    enr[(enr["profile"] == "sc") & (enr["family"] == "compartment_label")]
-    .dropna(subset=["log2_or"])
-    .sort_values("log2_or", ascending=False)
-)
-answer(
-    10,
-    Q,
-    ", ".join(
-        f"{r['level']} (log2 OR {r['log2_or']:.2f}, FDR {r['fdr']:.2g})"
-        for _, r in e.iterrows()
-    ),
-)
-e = (
-    enr[(enr["profile"] == "sc") & (enr["family"] == "compartment_label")]
-    .dropna(subset=["log2_or"])
-    .sort_values("log2_or")
-)
-fig, ax = plt.subplots(figsize=(7, 3.5))
-ax.barh(e["level"], e["log2_or"], color=np.where(e["fdr"] < 0.05, "crimson", "grey"))
-ax.axvline(0, color="k", lw=0.5)
-ax.set_xlabel("log2 odds ratio (red = FDR<0.05)")
-ax.set_title("Single cell: compartment enrichment")
-savefig(fig, "23_q10_sc_compartment_enrichment")
-
-
-# **Q11. Do treatments mostly increase or decrease features relative to DMSO?**
-
-# In[ ]:
-
-
-Q = "Do treatments mostly increase or decrease features relative to DMSO?"
-r = {p: (trt[p].loc[trt[p]["hit"], "coefficient"] > 0).mean() for p in main_profiles}
-answer(11, Q, "; ".join(f"{p}: {v:.0%} of hits are increases" for p, v in r.items()))
-r = pd.DataFrame(
-    {
-        p: {
-            "up": int((trt[p].loc[trt[p]["hit"], "coefficient"] > 0).sum()),
-            "down": int((trt[p].loc[trt[p]["hit"], "coefficient"] < 0).sum()),
-        }
-        for p in main_profiles
-    }
-).T
-fig, ax = plt.subplots(figsize=(6, 4))
-r[["down", "up"]].plot.bar(stacked=True, ax=ax, color=["#4575b4", "#d73027"])
-ax.set_ylabel("# hits")
-ax.set_title("Direction of hits vs DMSO")
-savefig(fig, "23_q11_hit_direction")
-
-
-# **Q12. How good are the models: median R2 and the fraction above the R2 threshold?**
-
-# In[ ]:
-
-
-Q = "How good are the models: median R2 and the fraction above the R2 threshold?"
-answer(
-    12,
-    Q,
-    "; ".join(
-        f"{p}: median R2 {trt[p]['rsquared'].median():.3f}, {(trt[p]['rsquared'] > R2_MIN).mean():.1%} above {R2_MIN}"
-        for p in main_profiles
-    ),
-)
-fig, ax = plt.subplots(figsize=(8, 4))
-for p in main_profiles:
-    sns.histplot(
-        trt[p]["rsquared"],
-        bins=60,
-        stat="density",
-        element="step",
-        fill=False,
-        ax=ax,
-        label=p,
-        color=profile_palette[p],
-    )
-ax.axvline(R2_MIN, color="k", ls="--")
-ax.set_title("R2 of treatment models (dashed = hit threshold)")
-ax.legend()
-savefig(fig, "23_q12_r2_distribution")
-
-
-# **Q13. How often is a model no better than the mean (adjusted R2 <= 0)?**
-
-# In[ ]:
-
-
-Q = "How often is a model no better than the mean (adjusted R2 <= 0)?"
-answer(
-    13,
-    Q,
-    "; ".join(
-        f"{p}: {(trt[p]['rsquared_adj'] <= 0).mean():.1%}" for p in main_profiles
-    ),
-)
-fig, ax = plt.subplots(figsize=(8, 4))
-for p in main_profiles:
-    sns.histplot(
-        trt[p]["rsquared_adj"].clip(-1, 1),
-        bins=60,
-        stat="density",
-        element="step",
-        fill=False,
-        ax=ax,
-        label=p,
-        color=profile_palette[p],
-    )
-ax.axvline(0, color="k", ls="--")
-ax.set_title("Adjusted R2 (left of dashed = no better than the mean)")
-ax.legend()
-savefig(fig, "23_q13_adjusted_r2")
-
-
-# **Q14. On average how much variance does treatment explain, and how much stays in the residual?**
-
-# In[ ]:
-
-
-Q = "On average how much variance does treatment explain, and how much stays in the residual?"
-answer(
-    14,
-    Q,
-    "; ".join(
-        f"{p}: treatment {partition.loc[p, 'treatment']:.1f}%, residual {partition.loc[p, 'residual']:.1f}%"
-        for p in main_profiles
-    ),
-)
-fig, ax = plt.subplots(figsize=(10, 3.5))
-partition.loc[main_profiles].plot.barh(stacked=True, ax=ax, colormap="tab20")
-ax.set_xlabel("mean % of total variance")
-ax.legend(bbox_to_anchor=(1.01, 1))
-ax.set_title("Variance partition")
-savefig(fig, "23_q14_variance_partition")
-
-
-# In[ ]:
-
-
-# Storey pi0: estimated fraction of truly non-null tests per profile and model term
-STOREY_LAMBDA = 0.5
-
-
-def storey_pi0(pvalues, lam=STOREY_LAMBDA):
-    """Estimate the null proportion pi0 = #(p > lambda) / (m * (1 - lambda)), capped at 1."""
-    pvalues = pvalues.dropna()
-    return min(1.0, (pvalues > lam).mean() / (1 - lam))
-
-
-pi0_rows = []
-for p in profiles:
-    for term, g in lm[p].groupby("term"):
-        pi0 = storey_pi0(g["pvalue"])
-        pi0_rows.append(
-            {
-                "profile": p,
-                "term": term,
-                "n_tests": g["pvalue"].notna().sum(),
-                "pi0": pi0,
-                "est_frac_non_null": 1 - pi0,
-            }
-        )
-pi0_df = pd.DataFrame(pi0_rows)
-pi0_df.to_parquet(results_path / "storey_pi0.parquet", index=False)
-pi0_df.loc[pi0_df["profile"].isin(main_profiles)]
-
-
-# **Q15. What fraction of treatment tests look truly non-null (Storey pi0)?**
-
-# In[ ]:
-
-
-Q = "What fraction of treatment tests look truly non-null (Storey pi0)?"
-r = pi0_df.loc[pi0_df["term"] == "treatment"].set_index("profile")["est_frac_non_null"]
-answer(15, Q, "; ".join(f"{p}: {r[p]:.1%}" for p in main_profiles))
-r = pi0_df.loc[pi0_df["profile"].isin(main_profiles) & (pi0_df["term"] == "treatment")]
-fig, ax = plt.subplots(figsize=(5, 4))
-sns.barplot(data=r, x="profile", y="est_frac_non_null", palette=profile_palette, ax=ax)
-ax.set_ylabel("estimated fraction non-null")
-ax.set_title("Treatment tests: non-null fraction")
-savefig(fig, "23_q15_treatment_non_null_fraction")
-
-
-# **Q16. Which model term carries the most non-null signal: treatment or a covariate?**
-
-# In[ ]:
-
-
-Q = "Which model term carries the most non-null signal: treatment or a covariate?"
-r = (
-    pi0_df.loc[pi0_df["profile"].isin(main_profiles)]
-    .sort_values("est_frac_non_null", ascending=False)
-    .drop_duplicates("profile")
-)
-answer(
-    16,
-    Q,
-    "; ".join(
-        f"{x['profile']}: {x['term']} ({x['est_frac_non_null']:.1%})"
-        for _, x in r.iterrows()
-    ),
-)
-r = pi0_df.loc[pi0_df["profile"].isin(main_profiles)]
-fig, ax = plt.subplots(figsize=(9, 4))
-sns.barplot(
-    data=r,
-    x="term",
-    y="est_frac_non_null",
-    hue="profile",
-    palette=profile_palette,
-    ax=ax,
-)
-ax.set_ylabel("estimated fraction non-null")
-ax.set_title("Non-null signal by model term")
-savefig(fig, "23_q16_non_null_by_term")
-
-
-# **Q17. Which feature is hit most often across all organoid treatments and patients?**
-
-# In[ ]:
-
-
-Q = "Which feature is hit most often across all organoid treatments and patients?"
-r = (
-    trt["organoid"]
-    .loc[trt["organoid"]["hit"]]
-    .groupby("feature")
-    .size()
-    .sort_values(ascending=False)
-)
-answer(17, Q, ", ".join(f"{k} ({v})" for k, v in r.head(5).items()))
-r = (
-    trt["organoid"]
-    .loc[trt["organoid"]["hit"]]
-    .groupby("feature")
-    .size()
-    .sort_values()
-    .tail(15)
-)
-fig, ax = plt.subplots(figsize=(9, 5))
-r.plot.barh(ax=ax, color="steelblue")
-ax.set_xlabel("# organoid hits")
-ax.set_title("Most frequently hit organoid features")
-savefig(fig, "23_q17_most_hit_features")
-
-
-# **Q18. Which single (treatment, feature) pair is a hit in the most patients?**
-
-# In[ ]:
-
-
-Q = "Which single (treatment, feature) pair is a hit in the most patients?"
-parts = []
-for p in main_profiles:
-    x = (
-        consensus[p]
-        .sort_values(["n_patients_hit", "mean_abs_coef"], ascending=False)
-        .iloc[0]
-    )
-    parts.append(
-        f"{p}: {x['treatment']} / {x['feature']} ({int(x['n_patients_hit'])} of {int(x['n_patients_tested'])} patients)"
-    )
-answer(18, Q, "; ".join(parts))
-fig, axes = plt.subplots(1, 2, figsize=(18, 5))
-for ax, p in zip(axes, main_profiles):
-    x = consensus[p].sort_values(["n_patients_hit", "mean_abs_coef"]).tail(15)
-    ax.barh(
-        x["treatment"] + " | " + x["feature"],
-        x["n_patients_hit"],
-        color=profile_palette[p],
-    )
-    ax.tick_params(axis="y", labelsize=7)
-    ax.set_xlabel("# patients with a hit")
-    ax.set_title(f"{p}: pairs hit in the most patients")
-plt.tight_layout()
-savefig(fig, "23_q18_pairs_by_patients_hit")
-
-
-# **Q19. How many (treatment, feature) pairs replicate (>=3 patients, >=80% same sign)?**
-
-# In[ ]:
-
-
-Q = "How many (treatment, feature) pairs replicate (>=3 patients, >=80% same sign)?"
-answer(
-    19,
-    Q,
-    "; ".join(
-        f"{p}: {int(((consensus[p]['n_patients_hit'] >= 3) & (consensus[p]['sign_concordance'] >= 0.8)).sum())}"
-        for p in main_profiles
-    ),
-)
-fig, ax = plt.subplots(figsize=(7, 4))
-for p in main_profiles:
-    c = consensus[p]
-    rep = (c["n_patients_hit"] >= 3) & (c["sign_concordance"] >= 0.8)
-    ax.bar(p, rep.sum(), color=profile_palette[p])
-    ax.text(p, rep.sum(), str(int(rep.sum())), ha="center", va="bottom")
-ax.set_ylabel("# replicated pairs")
-ax.set_title("Pairs hit in >=3 patients with >=80% same sign")
-savefig(fig, "23_q19_replicated_pairs")
-
-
-# **Q20. Do the four MEK inhibitors share hit features?**
-
-# In[ ]:
-
-
-Q = "Do the four MEK inhibitors share hit features?"
-mek = ["Trametinib", "Selumetinib", "Binimetinib", "Mirdametinib"]
-parts = []
-for p in main_profiles:
-    h = trt[p].loc[trt[p]["hit"] & trt[p]["drug"].isin(mek)]
-    nd = h.groupby("feature")["drug"].nunique()
-    parts.append(
-        f"{p}: {int((nd >= 3).sum())} features hit by >=3 of 4 MEK drugs (top: {', '.join(nd.sort_values(ascending=False).head(3).index)})"
-    )
-answer(20, Q, "; ".join(parts))
-mek = ["Trametinib", "Selumetinib", "Binimetinib", "Mirdametinib"]
-fig, axes = plt.subplots(1, 2, figsize=(14, 7))
-for ax, p in zip(axes, main_profiles):
-    h = trt[p].loc[trt[p]["hit"] & trt[p]["drug"].isin(mek)]
-    m = (
-        h.assign(v=1)
-        .pivot_table(index="feature", columns="drug", values="v", aggfunc="max")
-        .reindex(columns=mek)
-        .fillna(0)
-    )
-    m = m.loc[m.sum(axis=1).sort_values(ascending=False).index].head(20)
-    sns.heatmap(m, ax=ax, cmap="Reds", cbar=False, yticklabels=True, linewidths=0.5)
-    ax.tick_params(axis="y", labelsize=6)
-    ax.set_title(f"{p}: features hit by MEK inhibitors")
-plt.tight_layout()
-savefig(fig, "23_q20_mek_shared_features")
-
-
-# **Q21. Do 1 uM and 10 uM of the same drug agree?**
-
-# In[ ]:
-
-
-Q = "Do 1 uM and 10 uM of the same drug agree?"
-r = (
-    dose_pairs.loc[dose_pairs["profile"].isin(main_profiles)]
-    .groupby("profile")[["spearman", "sign_agreement"]]
-    .mean()
-)
-answer(
-    21,
-    Q,
-    "; ".join(
-        f"{p}: mean Spearman {r.loc[p, 'spearman']:.2f}, sign agreement {r.loc[p, 'sign_agreement']:.0%}"
-        for p in main_profiles
-    ),
-)
-r = dose_pairs.loc[dose_pairs["profile"].isin(main_profiles)]
-fig, ax = plt.subplots(figsize=(8, 4))
-sns.barplot(
-    data=r, x="drug", y="spearman", hue="profile", palette=profile_palette, ax=ax
-)
-ax.set_title("1 uM vs 10 uM coefficient agreement")
-savefig(fig, "23_q21_dose_agreement")
-
-
-# **Q22. Do organoid and single-cell readouts agree?**
-
-# In[ ]:
-
-
-Q = "Do organoid and single-cell readouts agree?"
-rho = spearmanr(os_merge["coef_org"], os_merge["coef_sc"])[0]
-cont = pd.crosstab(os_merge["hit_org"], os_merge["hit_sc"])
-orr = fisher_exact(cont.values)[0]
-answer(
-    22,
-    Q,
-    f"coefficient Spearman {rho:.2f}; hit overlap odds ratio {orr:.1f} ({int(cont.loc[True, True])} shared of {int(cont.loc[True].sum())} organoid hits)",
-)
-fig, ax = plt.subplots(figsize=(6, 6))
-ax.hexbin(
-    os_merge["coef_org"].clip(-3, 3),
-    os_merge["coef_sc"].clip(-3, 3),
-    gridsize=60,
-    bins="log",
-    cmap="viridis",
-)
-ax.plot([-3, 3], [-3, 3], "r--", lw=0.6)
-ax.set_xlabel("organoid coef")
-ax.set_ylabel("single-cell coef")
-ax.set_title("Organoid vs single-cell coefficients")
-savefig(fig, "23_q22_organoid_vs_sc")
-
-
-# **Q23. Does aggregating profiles change the conclusions?**
-
-# In[ ]:
-
-
-Q = "Does aggregating profiles change the conclusions?"
-answer(
-    23,
-    Q,
-    "; ".join(
-        f"{r['pair']}: coef Spearman {r['spearman_coef']:.2f}, hit Jaccard {r['jaccard_hits']:.3f}, sign agreement {r['sign_agree_when_full_hit']:.0%}"
-        for _, r in agg_concordance.iterrows()
-    ),
-)
-r = agg_concordance.melt(
-    id_vars="pair",
-    value_vars=["spearman_coef", "sign_agree_when_full_hit", "jaccard_hits"],
-    var_name="metric",
-)
-fig, ax = plt.subplots(figsize=(8, 4))
-sns.barplot(data=r, x="metric", y="value", hue="pair", ax=ax)
-ax.set_title("Full vs aggregated profiles")
-savefig(fig, "23_q23_full_vs_agg")
-
-
-# **Q25. What fraction of hits are count-linked rather than treatment-driven?**
-
-# In[ ]:
-
-
-Q = "What fraction of hits are count-linked rather than treatment-driven?"
-r = count_view.groupby("profile")[["hits", "hits_count_linked"]].sum()
-answer(
-    25,
-    Q,
-    "; ".join(
-        f"{p}: {r.loc[p, 'hits_count_linked'] / r.loc[p, 'hits']:.0%}"
-        for p in main_profiles
-    ),
-)
-r = (
-    count_view.groupby("profile")[["hits_treatment_dominant", "hits_count_linked"]]
-    .sum()
-    .loc[main_profiles]
-)
-fig, ax = plt.subplots(figsize=(6, 4))
-r.plot.bar(stacked=True, ax=ax, color=["#1b9e77", "#d95f02"])
-ax.set_ylabel("# hits")
-ax.set_title("Treatment-driven vs count-linked hits")
-savefig(fig, "23_q25_count_linked_hits")
-
-
-# **Q26. Which treatments have the most count-linked hits (candidate viability/toxicity effects)?**
-
-# In[ ]:
-
-
-Q = "Which treatments have the most count-linked hits (candidate viability/toxicity effects)?"
-parts = []
-for p in main_profiles:
-    x = (
-        count_view.loc[(count_view["profile"] == p) & (count_view["hits"] >= 5)]
-        .assign(f=lambda d: d["hits_count_linked"] / d["hits"])
-        .sort_values("f", ascending=False)
-        .head(3)
-    )
-    parts.append(
-        f"{p}: "
-        + ", ".join(
-            f"{r['treatment']} ({r['f']:.0%} of {int(r['hits'])})"
-            for _, r in x.iterrows()
-        )
-    )
-answer(26, Q, "; ".join(parts))
-fig, axes = plt.subplots(1, 2, figsize=(14, 7))
-for ax, p in zip(axes, main_profiles):
-    x = (
-        count_view.loc[(count_view["profile"] == p) & (count_view["hits"] >= 5)]
-        .assign(f=lambda d: d["hits_count_linked"] / d["hits"])
-        .sort_values("f")
-    )
-    ax.barh(x["treatment"], x["f"], color=profile_palette[p])
-    ax.set_xlabel("fraction of hits count-linked")
-    ax.set_title(f"{p} (treatments with >=5 hits)")
-plt.tight_layout()
-savefig(fig, "23_q26_count_linked_by_treatment")
-
-
-# **Q27. Which tumor type has the highest and lowest hit rate?**
-
-# In[ ]:
-
-
-Q = "Which tumor type has the highest and lowest hit rate?"
-parts = []
-for p in main_profiles:
-    r = landscape.loc[
-        (landscape["profile"] == p) & (landscape["level"] == "tumor_type")
-    ].sort_values("hit_rate", ascending=False)
-    parts.append(
-        f"{p}: highest {r.iloc[0]['group']} ({r.iloc[0]['hit_rate']:.2%}), lowest {r.iloc[-1]['group']} ({r.iloc[-1]['hit_rate']:.2%})"
-    )
-answer(27, Q, "; ".join(parts))
-r = landscape.loc[
-    landscape["profile"].isin(main_profiles) & (landscape["level"] == "tumor_type")
-]
-fig, ax = plt.subplots(figsize=(7, 4))
-sns.barplot(
-    data=r, x="group", y="hit_rate", hue="profile", palette=profile_palette, ax=ax
-)
-ax.set_xlabel("tumor type")
-ax.set_title("Hit rate by tumor type")
-savefig(fig, "23_q27_hit_rate_by_tumor_type")
-
-
-# **Q28. How many tumor-type-specific effects are there, and which tumor type owns them?**
-
-# In[ ]:
-
-
-Q = "How many tumor-type-specific effects are there, and which tumor type owns them?"
-parts = []
-for p in main_profiles:
-    x = ts_all.loc[ts_all["profile"] == p]["best_tumor_type"].value_counts()
-    parts.append(
-        f"{p}: {int(x.sum())} (" + ", ".join(f"{k}: {v}" for k, v in x.items()) + ")"
-    )
-answer(28, Q, "; ".join(parts))
-fig, ax = plt.subplots(figsize=(7, 4))
-sns.countplot(
-    data=ts_all, x="best_tumor_type", hue="profile", palette=profile_palette, ax=ax
-)
-ax.set_title("Tumor-type-specific effects by tumor type")
-savefig(fig, "23_q28_tumor_type_specific")
-
-
-# **Q29. Is a treatment signature driven more by the patient or by the drug?**
-
-# In[ ]:
-
-
-Q = "Is a treatment signature driven more by the patient or by the drug?"
-r = (
-    pairs.assign(category=pairs["category"].str.replace("\n", " ", regex=False))
-    .groupby(["profile", "category"])["correlation"]
-    .median()
-    .unstack()
-)
-answer(
-    29,
-    Q,
-    "; ".join(
-        f"{p}: " + ", ".join(f"{c} r={v:.2f}" for c, v in r.loc[p].items())
-        for p in main_profiles
-    ),
-)
-fig, ax = plt.subplots(figsize=(11, 4))
-sns.boxplot(
-    data=pairs,
-    x="category",
-    y="correlation",
-    hue="profile",
-    palette=profile_palette,
-    ax=ax,
-    fliersize=1,
-)
-ax.set_title("Signature correlation: patient vs drug")
-savefig(fig, "23_q29_patient_vs_drug")
-
-
-# **Q30. Are drugs of the same MOA more alike than chance?**
-
-# In[ ]:
-
-
-Q = "Are drugs of the same MOA more alike than chance?"
-answer(
-    30,
-    Q,
-    "; ".join(
-        f"{r['profile']}: within-minus-between correlation {r['observed_within_minus_between']:.3f}, permutation p={r['p_value']:.3f}"
-        for _, r in moa_test.iterrows()
-    ),
-)
-fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-for ax, p in zip(axes, main_profiles):
-    obs, perms = perm_store[p]
-    ax.hist(perms, bins=40, color="lightgrey")
-    ax.axvline(obs, color="crimson")
-    ax.set_title(f"{p}: MOA permutation test")
-plt.tight_layout()
-savefig(fig, "23_q30_moa_permutation")
-
-
-# In[ ]:
-
-
-qa_df = pd.DataFrame(qa).sort_values("n")
-qa_df.to_parquet(results_path / "qa_answers.parquet", index=False)
-print(f"{len(qa_df)} questions answered")
-qa_df
 
 
 # ## 24. Every technical variate, explored like treatment
@@ -2939,33 +1852,11 @@ term_summary = pd.concat(
         .assign(profile=p)
         .reset_index()
         for p in profiles
-    ]
+    ],
+    ignore_index=True,
 )
 term_summary.to_parquet(results_path / "term_summary_all_terms.parquet", index=False)
-
-fig, axes = plt.subplots(1, 3, figsize=(24, 6), sharey=True)
-for ax, (col, lab) in zip(
-    axes,
-    [
-        ("frac_term_hit", "fraction of models with a significant term"),
-        ("mean_pct_var", "mean % of total variance"),
-        ("frac_positive", "fraction of positive coefficients"),
-    ],
-):
-    sns.barplot(
-        data=term_summary,
-        y="term",
-        x=col,
-        hue="profile",
-        order=term_order,
-        palette=profile_palette,
-        ax=ax,
-    )
-    ax.set_title(lab)
-    if ax is not axes[0]:
-        ax.legend_.remove()
-plt.tight_layout()
-savefig(fig, "24_term_summary")
+save_plot_data("24_term_summary", summary=term_summary)
 term_summary
 
 
@@ -2973,31 +1864,28 @@ term_summary
 
 
 # significance vs variance share, one panel per term
-fig, axes = plt.subplots(
-    len(main_profiles),
-    len(term_order),
-    figsize=(3.2 * len(term_order), 6.5),
-    sharey=True,
-    squeeze=False,
-)
-for i, p in enumerate(main_profiles):
-    for j, term in enumerate(term_order):
+volcano_all_terms_frames = []
+for p in main_profiles:
+    for term in term_order:
         d = lm[p].loc[lm[p]["term"] == term]
         d = d.sample(min(len(d), 30000), random_state=0)
-        ax.scatter = axes[i, j].scatter(
-            d["term_pct_of_total_var"],
-            -np.log10(d["pvalue_fdr"].clip(lower=1e-300)),
-            s=1,
-            c=np.where(d["term_hit"], "#d73027", "lightgrey"),
-            rasterized=True,
+        volcano_all_terms_frames.append(
+            pd.DataFrame(
+                {
+                    "profile": p,
+                    "term": term,
+                    "term_pct_of_total_var": d["term_pct_of_total_var"].to_numpy(),
+                    "neglog_fdr": -np.log10(
+                        d["pvalue_fdr"].clip(lower=1e-300)
+                    ).to_numpy(),
+                    "term_hit": d["term_hit"].to_numpy(),
+                }
+            )
         )
-        axes[i, j].axhline(-np.log10(FDR_MAX), color="k", ls="--", lw=0.5)
-        axes[i, j].set_title(f"{p}: {term}", fontsize=7)
-        axes[i, j].set_xlabel("% total variance", fontsize=7)
-        if j == 0:
-            axes[i, j].set_ylabel("-log10 FDR")
-plt.tight_layout()
-savefig(fig, "24_volcano_all_terms")
+save_plot_data(
+    "24_volcano_all_terms",
+    points=pd.concat(volcano_all_terms_frames, ignore_index=True),
+)
 
 
 # In[ ]:
@@ -3005,21 +1893,11 @@ savefig(fig, "24_volcano_all_terms")
 
 # where does each term act? term hit rate by patient and by treatment
 for p in main_profiles:
-    fig, axes = plt.subplots(1, 2, figsize=(26, 6))
     by_patient = (
         lm[p]
         .pivot_table(index="term", columns="patient", values="term_hit", aggfunc="mean")
         .reindex(term_order)
     )
-    sns.heatmap(
-        by_patient,
-        ax=axes[0],
-        cmap="rocket_r",
-        annot=True,
-        fmt=".2f",
-        cbar_kws={"label": "term hit rate"},
-    )
-    axes[0].set_title(f"{p}: term x patient")
     by_trt = (
         lm[p]
         .pivot_table(
@@ -3030,17 +1908,13 @@ for p in main_profiles:
         )
         .reindex(term_order)
     )
-    sns.heatmap(
-        by_trt,
-        ax=axes[1],
-        cmap="rocket_r",
-        cbar_kws={"label": "median % total variance"},
-    )
-    axes[1].set_title(f"{p}: term x treatment")
-    plt.tight_layout()
-    savefig(fig, f"24_term_by_patient_and_treatment_{p}")
     by_patient.reset_index().to_parquet(
         results_path / f"term_hit_rate_by_patient_{p}.parquet", index=False
+    )
+    save_plot_data(
+        f"24_term_by_patient_and_treatment_{p}",
+        by_patient=by_patient.reset_index(),
+        by_treatment=by_trt.reset_index(),
     )
 
 
@@ -3049,8 +1923,8 @@ for p in main_profiles:
 
 # which parts of the feature space does each term touch? term x feature family, mean % variance
 for p in main_profiles:
-    fig, axes = plt.subplots(1, 3, figsize=(26, 6))
-    for ax, fam in zip(axes, ["channel_label", "compartment_label", "Feature_type"]):
+    family_tables = {}
+    for fam in ["channel_label", "compartment_label", "Feature_type"]:
         m = (
             lm[p]
             .pivot_table(
@@ -3061,20 +1935,11 @@ for p in main_profiles:
             )
             .reindex(term_order)
         )
-        sns.heatmap(
-            m,
-            ax=ax,
-            cmap="rocket_r",
-            annot=True,
-            fmt=".1f",
-            cbar_kws={"label": "mean % total variance"},
-        )
-        ax.set_title(f"{p}: term x {fam}")
         m.reset_index().to_parquet(
             results_path / f"term_by_{fam}_{p}.parquet", index=False
         )
-    plt.tight_layout()
-    savefig(fig, f"24_term_by_feature_family_{p}")
+        family_tables[fam] = m.reset_index()
+    save_plot_data(f"24_term_by_feature_family_{p}", **family_tables)
 
 
 # In[ ]:
@@ -3096,8 +1961,8 @@ for p in main_profiles:
 rep = pd.concat(rep_rows)
 rep.to_parquet(results_path / "term_patient_replication.parquet", index=False)
 
-fig, axes = plt.subplots(1, len(main_profiles), figsize=(22, 6), sharey=True)
-for ax, p in zip(np.atleast_1d(axes), main_profiles):
+frac_frames = []
+for p in main_profiles:
     x = rep.loc[rep["profile"] == p]
     frac = (
         x.assign(rep3=x["n_patients"] >= 3)
@@ -3105,16 +1970,9 @@ for ax, p in zip(np.atleast_1d(axes), main_profiles):
         .mean()
         .reindex(term_order)
     )
-    ax.barh(frac.index, frac.values, color=profile_palette[p])
-    ax.set_title(
-        f"{p}: fraction of (treatment, feature) pairs with the term significant in >=3 patients"
+    frac_frames.append(
+        frac.rename("frac_replicated_3plus").reset_index().assign(profile=p)
     )
-    ax.title.set_fontsize(8)
-plt.tight_layout()
-savefig(fig, "24_term_patient_replication")
-
-
-# In[ ]:
-
-
-pdfs.close()
+save_plot_data(
+    "24_term_patient_replication", fraction=pd.concat(frac_frames, ignore_index=True)
+)

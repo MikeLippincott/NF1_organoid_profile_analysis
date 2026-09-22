@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# set -euo pipefail
 
 git_root=$(git rev-parse --show-toplevel)
 if [ -z "$git_root" ]; then
@@ -31,20 +30,33 @@ conda deactivate >/dev/null 2>&1 || true
 # deactivate any existing venv environment
 deactivate >/dev/null 2>&1 || true
 
-uv run python "$module_dir/scripts/calculate_well_manhattan_distance.py"
-uv run python "$module_dir/scripts/00.preprocessing_non_fs_agg.py"
-uv run python "$module_dir/scripts/0.linear_modeling.py"
-uv run python "$module_dir/scripts/1.linear_modeling_technical_vars.py"
-uv run python "$module_dir/scripts/2.variance_decomposition.py"
 
-# each calculation step is followed by its ggplot2 plotting step (R, run in the uvr project at the git root)
-# uv run python "$module_dir/scripts/3.variate_importance.py"
-uvr run "$module_dir/scripts/6.plot_variate_importance.r"
+# Linear modeling steps
+# pre-processing, data cleaning, and covariate construction
+# linear modeling base model
+# linear modeling with technical variables
+# uv run python "$module_dir/scripts/0.preprocessing_non_fs_agg.py"
+# uv run python "$module_dir/scripts/1.calculate_well_manhattan_distance.py"
+# uv run python "$module_dir/scripts/2.linear_modeling.py"
+# uv run python "$module_dir/scripts/3.linear_modeling_technical_vars.py"
 
-# uv run python "$module_dir/scripts/4.explore_linear_model_haystacks.py"
-uvr run "$module_dir/scripts/7.plot_explore_linear_model_haystacks.r"
+# variance decomposition
+# uv run python "$module_dir/scripts/4.variance_decomposition.py"
 
-# uv run python "$module_dir/scripts/5.variate_class_upsets_and_clustermap.py"
- uvr run "$module_dir/scripts/8.plot_variate_class_upsets_and_clustermap.r"
+# variate importance
+uv run python "$module_dir/scripts/5.calculate_variate_importance.py"
+uvr run "$module_dir/scripts/6.plot_variate_importance.r"  # panel C of 11 depends on this script's treatment_only_cooccurrence.pdf
+
+# variate class membership / clustermap
+uv run python "$module_dir/scripts/7.calculate_variate_class_upsets_and_clustermap.py"
+uvr run "$module_dir/scripts/8.plot_variate_class_upsets_and_clustermap.r"
+
+# additional insights
+# uv run python "$module_dir/scripts/9.explore_linear_model_haystacks.py"
+# uvr run "$module_dir/scripts/10.plot_explore_linear_model_haystacks.r"
+
+# 11: headline multi-panel summary figure (patchwork), built from the tables saved by 5, 7 and 9
+uvr run "$module_dir/scripts/11.headline_results_figure.r"
+
 
 echo "4.linear_modeling pipeline complete."

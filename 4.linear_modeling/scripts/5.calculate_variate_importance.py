@@ -74,12 +74,13 @@ feature_term_hit_counts
 #
 # The Venn tables use the four core terms for both model sets (a Venn is only legible up to four sets); the UpSet tables use every term of the model set. Note that the covariate coefficients are per raw unit, so the fixed `coefficient > 0.1` cut-off is not scale-free for them.
 #
-# Each model set is tabulated at five scopes, and membership is recomputed within each:
+# Each model set is tabulated at six scopes, and membership is recomputed within each:
 # * `all_models`: every model pooled.
 # * `per_patient_treatment`: one Venn + UpSet per patient x treatment.
 # * `per_patient`: one per patient, all treatments pooled.
 # * `per_treatment`: one per treatment, all patients pooled.
-# * `per_treatment_tumor_type`: one per treatment within each tumor type (`NF` / `SARCO`, parsed from the patient id).
+# * `per_treatment_tumor_type`: one per treatment within each tumor type (`cNF` / `pNF` / `MPNST` / `Other`, looked up by patient id -- the same classification as `utils/r_plot_themes.r`'s `tumor_type_lookup`).
+# * `per_tumor_type`: one per tumor type (`cNF` / `pNF` / `MPNST` / `Other`), all patients and treatments pooled.
 #
 # The tables are saved to `variate_hit_venn_regions_all_scopes.parquet`, `variate_hit_upset_counts_all_scopes.parquet` and `variate_hit_set_sizes_all_scopes.parquet`, and plotted in `6.plot_variate_importance` (R / ggplot2).
 
@@ -101,6 +102,25 @@ TECHNICAL_TERMS = CORE_TERMS + [
     "cell_z_depth",
 ]
 
+# the same tumor-type lookup used in 2.linear_modeling / 3.linear_modeling_technical_vars /
+# 9.explore_linear_model_haystacks (and utils/r_plot_themes.r's tumor_type_lookup on the R side).
+# NF0030_T1 (myopericytoma) and NF0040_T1 (schwannoma) are not NF1 nerve-sheath tumors and are
+# grouped as "Other".
+TUMOR_TYPE_DICT = {
+    "NF0014_T1": "cNF",
+    "NF0014_T2": "pNF",
+    "NF0016_T1": "pNF",
+    "NF0018_T6": "cNF",
+    "NF0021_T1": "cNF",
+    "NF0030_T1": "Other",
+    "NF0035_T1": "cNF",
+    "NF0037_T1": "cNF",
+    "NF0040_T1": "Other",
+    "NF0055_T1": "pNF",
+    "SARCO219_T2": "MPNST",
+    "SARCO361_T1": "MPNST",
+}
+
 
 def load_technical_hits(path):
     """Technical-model results with the same column names / term labels as the original model."""
@@ -116,9 +136,9 @@ def load_technical_hits(path):
 
 
 def slim_hits(hits):
-    """Only the columns the plots need, plus tumor_type (NF / SARCO) parsed from the patient id."""
+    """Only the columns the plots need, plus tumor_type (cNF / pNF / MPNST / Other) looked up by patient id."""
     out = hits[["term", "patient", "treatment", "feature", "hit"]].copy()
-    out["tumor_type"] = out["patient"].str.extract(r"^([A-Za-z]+)", expand=False)
+    out["tumor_type"] = out["patient"].map(TUMOR_TYPE_DICT)
     return out
 
 
@@ -184,13 +204,14 @@ def set_sizes(membership, terms):
 # In[ ]:
 
 
-# every scope: the columns that define one Venn + UpSet pair. tumor_type = patient id prefix (NF / SARCO)
+# every scope: the columns that define one Venn + UpSet pair. tumor_type = TUMOR_TYPE_DICT lookup by patient id
 SCOPES = {
     "all_models": [],
     "per_patient_treatment": ["patient", "treatment"],
     "per_patient": ["patient"],
     "per_treatment": ["treatment"],
     "per_treatment_tumor_type": ["treatment", "tumor_type"],
+    "per_tumor_type": ["tumor_type"],
 }
 venn_parquet = results_path / "variate_hit_venn_regions_all_scopes.parquet"
 upset_parquet = results_path / "variate_hit_upset_counts_all_scopes.parquet"

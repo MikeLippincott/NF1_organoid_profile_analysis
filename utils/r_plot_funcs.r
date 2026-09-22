@@ -59,7 +59,8 @@ save_plots_pdf <- function(plots, output_path, width, height) {
     page_paths <- file.path(tmp_dir, sprintf("page_%03d.pdf", seq_len(n)))
     for (i in seq_len(n)) {
         pdf(page_paths[i], width = width[i], height = height[i])
-        print(plots[[i]])
+        # a function is a page drawn with grid (e.g. ComplexHeatmap), anything else is a ggplot
+        if (is.function(plots[[i]])) plots[[i]]() else print(plots[[i]])
         dev.off()
     }
     status <- system2("pdfunite", c(page_paths, output_path))
@@ -471,4 +472,88 @@ plot_2d_vs_3d_scatter <- function(
 
     if (!is.null(facet_formula)) p <- p + facet_wrap(facet_formula, scales = "free", ncol = facet_ncol)
     p
+}
+
+# ---- ComplexHeatmap helpers (packages ComplexHeatmap, circlize and grid must be loaded) ----
+
+heat_col_fun <- function(values = NULL, palette = "Mako", rev = TRUE, limits = range(values, na.rm = TRUE)) {
+    #' Continuous colour function for a Heatmap: an hcl.colors palette
+    #' stretched over `limits` (default: the range of `values`). The default
+    #' (Mako, light -> dark) matches viridis option "F" with direction = -1.
+    circlize::colorRamp2(seq(limits[1], limits[2], length.out = 9), hcl.colors(9, palette, rev = rev))
+}
+
+long_to_matrix <- function(df, row, col, value, row_levels = NULL, col_levels = NULL) {
+    #' Long table -> matrix (rows x columns), NA where a pair is missing.
+    if (is.null(row_levels)) row_levels <- unique(as.character(df[[row]]))
+    if (is.null(col_levels)) col_levels <- unique(as.character(df[[col]]))
+    mat <- matrix(NA_real_, nrow = length(row_levels), ncol = length(col_levels), dimnames = list(row_levels, col_levels))
+    mat[cbind(match(as.character(df[[row]]), row_levels), match(as.character(df[[col]]), col_levels))] <- df[[value]]
+    mat
+}
+
+simple_heatmap <- function(mat, name, col, title = NULL, cell_fmt = NULL, cell_labels = NULL,
+                           cell_size = 8, base_size = 11, cluster_rows = FALSE, cluster_columns = FALSE,
+                           row_names_max_width = NULL, ...) {
+    #' Heatmap with the manuscript text sizes. cell_fmt (a sprintf format)
+    #' writes the value in every cell; cell_labels (a same-shaped matrix)
+    #' writes those labels instead. Rows/columns keep the matrix order unless
+    #' cluster_rows / cluster_columns are set (any Heatmap clustering argument can go in `...`).
+    #' row_names_max_width defaults to just enough room for the longest row
+    #' label at row_names_gp's fontsize (base_size) -- ComplexHeatmap's own
+    #' default (a flat 6cm) doesn't grow with long feature names, so labels
+    #' get silently clipped and run into the legend instead of wrapping or
+    #' widening; pass a value explicitly to override.
+    cell_fun <- NULL
+    if (!is.null(cell_fmt) || !is.null(cell_labels)) {
+        cell_fun <- function(j, i, x, y, width, height, fill) {
+            label <- if (!is.null(cell_labels)) cell_labels[i, j] else if (is.na(mat[i, j])) NA else sprintf(cell_fmt, mat[i, j])
+            if (!is.na(label)) grid::grid.text(label, x, y, gp = grid::gpar(fontsize = cell_size))
+        }
+    }
+    if (is.null(row_names_max_width)) {
+        row_names_max_width <- if (!is.null(rownames(mat))) {
+            ComplexHeatmap::max_text_width(rownames(mat), gp = grid::gpar(fontsize = base_size)) + grid::unit(3, "mm")
+        } else {
+            grid::unit(6, "cm")
+        }
+    }
+    ComplexHeatmap::Heatmap(
+        mat, name = name, col = col, na_col = "grey90",
+        cluster_rows = cluster_rows, cluster_columns = cluster_columns,
+        column_title = title, column_title_gp = grid::gpar(fontsize = base_size + 3, fontface = "bold"),
+        row_names_gp = grid::gpar(fontsize = base_size), column_names_gp = grid::gpar(fontsize = base_size),
+        row_names_max_width = row_names_max_width,
+        heatmap_legend_param = list(
+            title = name,
+            title_gp = grid::gpar(fontsize = base_size, fontface = "bold"),
+            labels_gp = grid::gpar(fontsize = base_size)
+        ),
+        cell_fun = cell_fun, ...
+    )
+}
+
+heatmap_grid_page <- function(heatmaps, ncol = 1, title = NULL) {
+    #' A page (a function, for save_plots_pdf) that lays a list of Heatmaps
+    #' out on an nrow x ncol grid, with an optional title on top.
+    force(heatmaps); force(ncol); force(title)
+    function() {
+        grid::grid.newpage()
+        n_row <- ceiling(length(heatmaps) / ncol)
+        grid::pushViewport(grid::viewport(layout = grid::grid.layout(
+            n_row + 1, ncol,
+            heights = grid::unit.c(grid::unit(2, "lines"), grid::unit(rep(1, n_row), "null"))
+        )))
+        if (!is.null(title)) {
+            grid::pushViewport(grid::viewport(layout.pos.row = 1, layout.pos.col = seq_len(ncol)))
+            grid::grid.text(title, gp = grid::gpar(fontsize = 16, fontface = "bold"))
+            grid::popViewport()
+        }
+        for (i in seq_along(heatmaps)) {
+            grid::pushViewport(grid::viewport(layout.pos.row = (i - 1) %/% ncol + 2, layout.pos.col = (i - 1) %% ncol + 1))
+            ComplexHeatmap::draw(heatmaps[[i]], newpage = FALSE, merge_legend = TRUE, padding = grid::unit(c(2, 2, 2, 2), "mm"))
+            grid::popViewport()
+        }
+        grid::popViewport()
+    }
 }

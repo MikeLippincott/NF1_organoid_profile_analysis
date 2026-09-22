@@ -587,11 +587,11 @@ else:
 
 # ## Task D: distribution of the top 10 shared treatment-only features
 # Take the 10 most recurrent treatment-only features (Task C ranking) and look at their treatment coefficients over
-# every (patient, treatment) model, hit or not. Outputs:
+# every (patient, treatment) model, hit or not. Outputs (tables only; plotted in `8.plot_variate_class_upsets_and_clustermap`):
 # * `top_shared_features_coefficients.parquet`: one row per (patient, treatment, feature) with coefficient, FDR and whether it is a treatment-only hit.
-# * `top_shared_features_distribution` (plot): per-feature coefficient distribution (box + points coloured by treatment-only hit status) and the fraction of models where the feature is a treatment-only hit.
-# * `top_shared_features_space_distribution` (plot): compartment / channel / feature-type composition of the top features vs all modelled features.
-# * `top_shared_features_by_patient` / `top_shared_features_by_treatment` (plots): median coefficient heatmaps (feature x patient, feature x treatment), annotated with the number of treatment-only hits.
+# * `top_shared_features_space_distribution.parquet`: compartment / channel / feature-type composition of the top features vs all modelled features.
+# * `top_shared_features_median_by_patient.parquet` / `top_shared_features_median_by_treatment.parquet`: median treatment coefficient per feature x patient / feature x treatment.
+# * `top_shared_features_hit_count_by_patient.parquet` / `top_shared_features_hit_count_by_treatment.parquet`: number of treatment-only hits per feature x patient / feature x treatment.
 
 # In[ ]:
 
@@ -614,48 +614,7 @@ else:
         results_path / "top_shared_features_coefficients.parquet", index=False
     )
 
-    # 1. distributions per feature
-    fig, (ax_box, ax_frac) = plt.subplots(
-        1, 2, figsize=(16, 5.5), gridspec_kw={"width_ratios": [2.2, 1]}
-    )
-    sns.boxplot(
-        data=shared,
-        y="feature",
-        x="coefficient",
-        order=top_shared,
-        color="lightgrey",
-        fliersize=0,
-        ax=ax_box,
-    )
-    sns.stripplot(
-        data=shared,
-        y="feature",
-        x="coefficient",
-        order=top_shared,
-        hue="treatment_only",
-        palette={True: "#d62728", False: "#7f7f7f"},
-        size=2,
-        alpha=0.5,
-        dodge=False,
-        ax=ax_box,
-    )
-    ax_box.axvline(0, color="k", lw=0.6, ls="--")
-    ax_box.set_xlabel("treatment coefficient (all patient x treatment models)")
-    ax_box.set_ylabel("")
-    ax_box.tick_params(axis="y", labelsize=8)
-    ax_box.legend(title="treatment-only hit", loc="lower right", fontsize=8)
-    frac = shared.groupby("feature")["treatment_only"].mean().reindex(top_shared)
-    ax_frac.barh(top_shared, frac.to_numpy(), color="#d62728")
-    ax_frac.set_xlabel("fraction of models that are treatment-only hits")
-    ax_frac.set_yticklabels([])
-    for ax in (ax_box, ax_frac):
-        ax.invert_yaxis() if ax is ax_frac else None
-    fig.tight_layout()
-    pdfs.savefig(fig, figures_path / f"{tag}.pdf", bbox_inches="tight")
-    plt.show()
-    plt.close(fig)
-
-    # 1b. where the top shared features sit in feature space vs all modelled features
+    # where the top shared features sit in feature space vs all modelled features
     parts_all = pd.DataFrame(
         [parse_feature(f) for f in lm_long["feature"].unique()],
         columns=PARTS,
@@ -663,8 +622,7 @@ else:
     ).fillna({"channel": "none"})
     parts_top = parts_all.loc[top_shared]
     space = []
-    fig, axes = plt.subplots(1, len(PARTS) - 1, figsize=(18, 4.5))
-    for ax, part in zip(axes, ["compartment", "channel", "feature_type"]):
+    for part in ["compartment", "channel", "feature_type"]:
         frac_all = parts_all[part].value_counts(normalize=True)
         frac_top = (
             parts_top[part]
@@ -675,22 +633,13 @@ else:
         both = pd.DataFrame(
             {"all modelled features": frac_all, f"top {N_SHARED} shared": frac_top}
         )
-        both.plot.bar(ax=ax, color=["#bdbdbd", "#d62728"], width=0.8)
-        ax.set_title(part)
-        ax.set_xlabel("")
-        ax.set_ylabel("fraction of features")
-        ax.tick_params(axis="x", labelsize=8, rotation=45)
         space.append(both.assign(part=part).rename_axis("value").reset_index())
     pd.concat(space, ignore_index=True).to_parquet(
         results_path / "top_shared_features_space_distribution.parquet", index=False
     )
-    fig.tight_layout()
-    pdfs.savefig(fig, figures_path / f"{tag}.pdf", bbox_inches="tight")
-    plt.show()
-    plt.close(fig)
 
-    # 2/3. median coefficient heatmaps over patients and over treatments
-    for by, width in (("patient", 8), ("treatment", max(9, 0.4 * len(treatments) + 5))):
+    # median coefficient / treatment-only hit count tables over patients and over treatments
+    for by in ("patient", "treatment"):
         med = (
             shared.groupby(["feature", by])["coefficient"]
             .median()
@@ -706,29 +655,11 @@ else:
             .fillna(0)
             .astype(int)
         )
-        lim = np.nanpercentile(np.abs(med.to_numpy()), 98)
-        fig, ax = plt.subplots(figsize=(width, 5))
-        sns.heatmap(
-            med,
-            cmap="vlag",
-            center=0,
-            vmin=-lim,
-            vmax=lim,
-            ax=ax,
-            annot=n_hits if by == "patient" else False,
-            fmt="d",
-            annot_kws={"fontsize": 7},
-            cbar_kws={"label": "median treatment coefficient"},
+        med.reset_index().to_parquet(
+            results_path / f"top_shared_features_median_by_{by}.parquet", index=False
         )
-        ax.tick_params(axis="y", labelsize=8)
-        ax.tick_params(axis="x", labelsize=8, rotation=90)
-        ax.set_xlabel("")
-        ax.set_ylabel("")
-        ax.set_title(
-            f"top {N_SHARED} shared treatment-only features across {by}s"
-            + (" (numbers = treatment-only hits)" if by == "patient" else "")
+        n_hits.reset_index().to_parquet(
+            results_path / f"top_shared_features_hit_count_by_{by}.parquet",
+            index=False,
         )
-        pdfs.savefig(fig, figures_path / f"{tag}.pdf", bbox_inches="tight")
-        plt.show()
-        plt.close(fig)
     shared.groupby("feature")["coefficient"].describe().reindex(top_shared)

@@ -119,7 +119,7 @@ model_keys = ["patient", "treatment", "feature"]
 # In[2]:
 
 
-def plot_decomposed_variance(df, level_order=None, title=None, save_path=None):
+def plot_decomposed_variance(df, level_order=None, save_path=None):
     """
     Plots the distribution of % of total variance per model term (plus residual).
 
@@ -127,7 +127,6 @@ def plot_decomposed_variance(df, level_order=None, title=None, save_path=None):
     - df: long DataFrame with one row per (fitted model, term) and a
       `pct_variance` column.
     - level_order: List specifying the order of terms. Defaults to row order.
-    - title: Title of the plot.
     - save_path: Path to save the plot (png, dpi=600). If None, not saved.
     """
     # horizontal boxplots so long term names (e.g. manhattan_distance_from_center)
@@ -143,7 +142,6 @@ def plot_decomposed_variance(df, level_order=None, title=None, save_path=None):
         linewidth=1,
         ax=ax,
     )
-    ax.set_title(title)
     ax.set_xlabel("% of total variance per model")
     ax.set_ylabel("Model term")
     fig.tight_layout()
@@ -189,7 +187,6 @@ for lm_name, lm_dict in lm_results_dict.items():
     var_decomp.to_parquet(lm_dict["output_profile_path"], index=False)
     plot_decomposed_variance(
         var_decomp,
-        title=f"Variance Decomposition for {lm_name}",
         save_path=figures_path / "variance_decomposition.pdf",
     )
 
@@ -378,7 +375,6 @@ for lm_name, lm_dict in lm_results_dict.items():
     ax.invert_yaxis()
     ax.set_xlabel("% of total variance")
     ax.set_ylabel("")
-    ax.set_title(f"Top {TOP_N_PLOT} models by explained variance: {lm_name}")
     ax.legend(loc="center left", bbox_to_anchor=(1, 0.5), title="Term")
     fig.tight_layout()
     pdfs.savefig(fig, figures_path / "variance_decomposition.pdf")
@@ -393,7 +389,6 @@ for lm_name, lm_dict in lm_results_dict.items():
     )
     fig, axes = plt.subplots(1, 4, figsize=(28, 6))
     dominant["dominant_term"].value_counts().plot(kind="barh", ax=axes[0])
-    axes[0].set_title("Dominant variate")
     axes[0].set_xlabel("n top models")
     for ax, col in zip(axes[1:], family_cols):
         share = pd.DataFrame(
@@ -403,9 +398,7 @@ for lm_name, lm_dict in lm_results_dict.items():
             }
         ).fillna(0)
         share.sort_values(f"top {TOP_N_SUMMARY}").plot(kind="barh", ax=ax)
-        ax.set_title(col)
         ax.set_xlabel("fraction of models")
-    fig.suptitle(f"Features and variates of the top {TOP_N_SUMMARY} models: {lm_name}")
     fig.tight_layout()
     pdfs.savefig(fig, figures_path / "variance_decomposition.pdf")
     plt.show()

@@ -1,4 +1,4 @@
-list_of_packages <- c("ggplot2", "dplyr", "tidyr", "patchwork", "arrow", "ggrepel", "ggrastr", "scales")
+list_of_packages <- c("ggplot2", "dplyr", "tidyr", "patchwork", "arrow", "ggrepel", "ggrastr", "scales", "ComplexHeatmap", "circlize", "grid", "RColorBrewer")
 for (package in list_of_packages) {
     suppressPackageStartupMessages(
         suppressWarnings(
@@ -17,9 +17,10 @@ find_git_root <- function() {
     current_path
 }
 root_dir <- find_git_root()
+source(file.path(root_dir, "utils/r_plot_themes.r"))
 source(file.path(root_dir, "utils/r_plot_funcs.r"))
 
-# run tag of the tables made by 5.variate_class_upsets_and_clustermap (profile + variate groups)
+# run tag of the tables made by 7.calculate_variate_class_upsets_and_clustermap (profile + variate groups)
 cli_args <- commandArgs(trailingOnly = TRUE)
 tag <- if (length(cli_args) >= 1) cli_args[1] else "sc_T-O-C-N-M-X-Y-Z-D"
 TOP_FEATURES <- 40  # features shown in the treatment-only plots
@@ -37,7 +38,7 @@ tag_pdf <- file.path(figures_path, paste0(tag, ".pdf"))
 print(tag)
 
 # Task A: UpSet plots, sets = patients. One pdf per class, one page per treatment.
-plot_patient_upset <- function(combos, title) {
+plot_patient_upset <- function(combos) {
     n <- nrow(combos)
     n_pat <- length(patients)
     combos$x <- seq_len(n)
@@ -48,13 +49,11 @@ plot_patient_upset <- function(combos, title) {
         + geom_text(aes(y = n_features, label = n_features), vjust = -0.3, size = 3)
         + labs(
             x = NULL,
-            y = paste0("features with exactly this\npatient combination", if (use_log) " (log)" else ""),
-            title = title
+            y = paste0("features with exactly this\npatient combination", if (use_log) " (log)" else "")
         )
         + theme_classic(base_size = 9)
         + theme(
-            axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.line.x = element_blank(),
-            plot.title = element_text(size = 11)
+            axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.line.x = element_blank()
         )
     )
     p_bar <- if (use_log) {
@@ -99,7 +98,7 @@ for (cls in sort(unique(upset_summary$class))) {
     heights <- c()
     for (trt in sort(unique(cls_df$treatment))) {
         combos <- cls_df |> filter(treatment == trt) |> arrange(rank)
-        plots[[length(plots) + 1]] <- plot_patient_upset(combos, paste0(trt, " | class ", cls, " | sets = patients"))
+        plots[[length(plots) + 1]] <- plot_patient_upset(combos)
         widths <- c(widths, max(7.5, 0.75 * nrow(combos) + 3.5))
         heights <- c(heights, 3.2 + 0.36 * length(patients))
     }
@@ -117,13 +116,19 @@ add_page <- function(plot, width, height) {
     page_h <<- c(page_h, height)
 }
 
-# Task B: clustermap of all patient x treatment class-count profiles. log1p, column min-max scaling; the Ward
-# row / column order comes from the tables (the dendrograms themselves are not drawn).
-patient_pal <- setNames(hue_pal()(length(patients)), patients)
-# stepped by 7 (coprime with 25) so neighbouring treatments get clearly different colours
-treatment_pal <- setNames(hue_pal()(length(treatments))[((seq_along(treatments) - 1) * 7) %% length(treatments) + 1], treatments)
+# Task B: clustermap of all patient x treatment class-count profiles. log1p, column min-max scaling; rows and
+# columns are hierarchically clustered here (Ward.D2 on the scaled values). Row annotations use the manuscript
+# theme palettes; the bar at the bottom shows which variates are significant in each class (column).
+patient_palette <- setNames(tab20_palette_for_patients[seq_along(tumor_type_lookup)], names(tumor_type_lookup))
+dose_label_palette <- c("1uM" = dose_palette[["1"]], "10uM" = dose_palette[["10"]], "10nM" = "#8da0cb")
+# class letters -> model variates (as coded by 7.calculate_variate_class_upsets_and_clustermap)
+variate_letters <- c(
+    T = "treatment", O = "organoid_count", C = "cell_per_organoid_count", N = "cell_count",
+    M = "manhattan_distance_from_center", X = "cell_x_position", Y = "cell_y_position",
+    Z = "cell_z_position", D = "cell_z_depth"
+)
 
-plot_clustermap <- function(matrix_name, order_prefix, label, title) {
+plot_clustermap <- function(matrix_name, order_prefix, label) {
     mat <- read_result(matrix_name) |>
         pivot_longer(-c(patient, treatment), names_to = "class", values_to = "value") |>
         mutate(key = paste(patient, treatment, sep = "|"), value = log1p(value))
@@ -133,40 +138,45 @@ plot_clustermap <- function(matrix_name, order_prefix, label, title) {
         filter(class %in% col_order, key %in% row_order) |>
         group_by(class) |>
         mutate(scaled = (value - min(value)) / (max(value) - min(value))) |>
-        ungroup() |>
-        mutate(class = factor(class, levels = col_order), key = factor(key, levels = rev(row_order)))
-    strips <- data.frame(key = factor(row_order, levels = rev(row_order))) |>
-        mutate(patient = sub("\\|.*$", "", key), treatment = sub("^[^|]*\\|", "", key))
-    strip_theme <- theme_void() + theme(legend.text = element_text(size = 8), legend.title = element_text(size = 9))
-    p_pat <- (
-        ggplot(strips, aes(x = 1, y = key, fill = patient)) + geom_tile()
-        + scale_fill_manual(values = patient_pal, name = "patient") + strip_theme
+        ungroup()
+    scaled <- long_to_matrix(mat, "key", "class", "scaled", row_levels = row_order, col_levels = col_order)
+    scaled[is.na(scaled)] <- 0  # constant columns have no range to scale
+
+    patient_of_row <- sub("\\|.*$", "", row_order)
+    treatment_of_row <- sub("^[^|]*\\|", "", row_order)
+    left_annotation <- rowAnnotation(
+        Patient = patient_of_row, `Tumor type` = tumor_type_lookup[patient_of_row],
+        Treatment = sub("_.*$", "", treatment_of_row), Dose = sub("^.*_", "", treatment_of_row),
+        col = list(Patient = patient_palette, `Tumor type` = tumor_type_palette,
+                   Treatment = custom_treatment_palette, Dose = dose_label_palette),
+        annotation_name_gp = gpar(fontsize = 9), simple_anno_size = unit(4, "mm"),
+        annotation_legend_param = list(Treatment = list(ncol = 2))
     )
-    p_trt <- (
-        ggplot(strips, aes(x = 1, y = key, fill = treatment)) + geom_tile()
-        + scale_fill_manual(values = treatment_pal, name = "treatment") + strip_theme
+    # presence / absence of each variate in each class (column)
+    in_class <- sapply(names(variate_letters), function(v) ifelse(sapply(strsplit(col_order, "+", fixed = TRUE), function(x) v %in% x), "yes", "no"))
+    colnames(in_class) <- paste0(names(variate_letters), " ", variate_letters)
+    bottom_annotation <- HeatmapAnnotation(
+        df = as.data.frame(in_class),
+        col = setNames(rep(list(c(no = "white", yes = "#333333")), ncol(in_class)), colnames(in_class)),
+        show_legend = c(TRUE, rep(FALSE, ncol(in_class) - 1)),
+        annotation_legend_param = list(list(title = "variate significant\nin class", at = c("yes", "no"))),
+        annotation_name_side = "right", annotation_name_gp = gpar(fontsize = 8),
+        simple_anno_size = unit(3, "mm")
     )
-    p_heat <- (
-        ggplot(mat, aes(x = class, y = key, fill = scaled))
-        + geom_tile()
-        + scale_fill_viridis_c(name = label, na.value = "grey90")
-        + labs(x = NULL, y = NULL, title = title)
-        + theme_minimal(base_size = 9)
-        + theme(
-            axis.text.y = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1),
-            panel.grid = element_blank(), legend.position = "top"
-        )
+    simple_heatmap(
+        scaled, label, heat_col_fun(c(0, 1), palette = "Viridis", rev = FALSE),
+        cluster_rows = TRUE, cluster_columns = TRUE,
+        clustering_method_rows = "ward.D2", clustering_method_columns = "ward.D2",
+        left_annotation = left_annotation, bottom_annotation = bottom_annotation,
+        show_row_names = FALSE, show_column_names = FALSE, use_raster = TRUE
     )
-    (p_pat + p_trt + p_heat) + plot_layout(widths = c(0.03, 0.03, 1))
 }
 add_page(
-    plot_clustermap("class_count_matrix.parquet", "clustermap_counts", "column-scaled log1p(count)",
-                    "Clustermap of patient x treatment class-count profiles"),
+    heatmap_grid_page(list(plot_clustermap("class_count_matrix.parquet", "clustermap_counts", "column-scaled\nlog1p(count)"))),
     10, 12
 )
 add_page(
-    plot_clustermap("class_fraction_matrix.parquet", "clustermap_fractions", "column-scaled log1p(fraction)",
-                    "Clustermap of patient x treatment class-fraction profiles"),
+    heatmap_grid_page(list(plot_clustermap("class_fraction_matrix.parquet", "clustermap_fractions", "column-scaled\nlog1p(fraction)"))),
     10, 12
 )
 
@@ -174,53 +184,52 @@ add_page(
 recurrence <- read_result("treatment_only_feature_recurrence.parquet") |>
     mutate(channel = ifelse(is.na(channel), "none", channel))
 top <- head(recurrence, TOP_FEATURES)
+top_features <- top$feature
 top$feature <- factor(top$feature, levels = rev(top$feature))
 p_bar <- (
     ggplot(top, aes(x = n_patient_treatments, y = feature, fill = feature_type))
     + geom_col()
     + labs(
         x = "# (patient, treatment) pairs where feature is treatment-only", y = NULL,
-        fill = "feature type", title = paste("top", nrow(top), "recurrent treatment-only features")
+        fill = "feature type"
     )
     + theme_classic(base_size = 10)
     + theme(axis.text.y = element_text(size = 7))
 )
+add_page(p_bar, 12, max(6, 0.28 * nrow(top)))
+
 grid_df <- recurrence |> count(channel, feature_type, name = "n_features")
-p_grid <- (
-    ggplot(grid_df, aes(x = feature_type, y = channel, fill = n_features))
-    + geom_tile()
-    + geom_text(aes(label = n_features), colour = "white", size = 3)
-    + scale_fill_viridis_c(name = "# distinct features")
-    + labs(x = NULL, y = NULL, title = "distinct treatment-only features: channel x feature type")
-    + theme_minimal(base_size = 10)
-    + theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1))
+grid_mat <- long_to_matrix(grid_df, "channel", "feature_type", "n_features")
+add_page(
+    heatmap_grid_page(list(simple_heatmap(
+        grid_mat, "# distinct\nfeatures", heat_col_fun(grid_mat), cell_fmt = "%d", cell_size = 10,
+        column_names_rot = 45
+    ))),
+    9, 7
 )
-add_page((p_bar + p_grid) + plot_layout(widths = c(1.4, 1)), 18, max(6, 0.28 * nrow(top)))
 
 per_treatment <- read_result("treatment_only_feature_by_treatment.parquet") |>
-    pivot_longer(-feature, names_to = "treatment", values_to = "n_patients") |>
-    mutate(feature = factor(feature, levels = rev(top$feature)))
-p_by_trt <- (
-    ggplot(per_treatment, aes(x = treatment, y = feature, fill = n_patients))
-    + geom_tile()
-    + scale_fill_viridis_c(name = "# patients (feature is treatment-only)")
-    + labs(x = NULL, y = NULL, title = "top treatment-only features across treatments")
-    + theme_minimal(base_size = 10)
-    + theme(panel.grid = element_blank(), axis.text.y = element_text(size = 7), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+    pivot_longer(-feature, names_to = "treatment", values_to = "n_patients")
+per_treatment_mat <- long_to_matrix(per_treatment, "feature", "treatment", "n_patients", row_levels = top_features)
+add_page(
+    heatmap_grid_page(list(simple_heatmap(
+        per_treatment_mat, "# patients\n(feature is\ntreatment-only)", heat_col_fun(per_treatment_mat),
+        base_size = 9
+    ))),
+    max(14, 0.4 * length(unique(per_treatment$treatment)) + 9), max(6, 0.28 * nrow(top))
 )
-add_page(p_by_trt, max(8, 0.4 * length(unique(per_treatment$treatment)) + 5), max(6, 0.28 * nrow(top)))
 
 # Task D: distribution of the top shared treatment-only features
 shared <- read_result("top_shared_features_coefficients.parquet")
 top_shared <- head(recurrence$feature, N_SHARED)
 shared <- shared |> mutate(feature = factor(feature, levels = rev(top_shared)))
-hit_pal <- c("TRUE" = "#d62728", "FALSE" = "#7f7f7f")
+sig_pal <- c("TRUE" = "#d62728", "FALSE" = "#7f7f7f")
 p_box <- (
     ggplot(shared, aes(x = coefficient, y = feature))
     + geom_boxplot(fill = "lightgrey", outlier.shape = NA)
     + geom_jitter(aes(colour = treatment_only), height = 0.2, size = 0.6, alpha = 0.5)
     + geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.4)
-    + scale_colour_manual(values = hit_pal, name = "treatment-only hit")
+    + scale_colour_manual(values = sig_pal, name = "treatment-only significant")
     + labs(x = "treatment coefficient (all patient x treatment models)", y = NULL)
     + theme_classic(base_size = 10)
 )
@@ -228,7 +237,7 @@ frac <- shared |> group_by(feature) |> summarise(fraction = mean(treatment_only)
 p_frac <- (
     ggplot(frac, aes(x = fraction, y = feature))
     + geom_col(fill = "#d62728")
-    + labs(x = "fraction of models that are treatment-only hits", y = NULL)
+    + labs(x = "fraction of models that are treatment-only significant", y = NULL)
     + theme_classic(base_size = 10)
     + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
 )
@@ -250,22 +259,23 @@ add_page(p_space, 18, 4.5)
 
 for (by in c("patient", "treatment")) {
     med <- shared |> group_by(feature, .data[[by]]) |> summarise(median_coef = median(coefficient), .groups = "drop")
-    n_hits <- shared |> filter(treatment_only) |> count(feature, .data[[by]], name = "n_hits")
-    med <- med |> left_join(n_hits, by = c("feature", by)) |> mutate(n_hits = ifelse(is.na(n_hits), 0L, n_hits))
+    n_significant <- shared |> filter(treatment_only) |> count(feature, .data[[by]], name = "n_significant")
+    med <- med |> left_join(n_significant, by = c("feature", by)) |> mutate(n_significant = ifelse(is.na(n_significant), 0L, n_significant))
     lim <- quantile(abs(med$median_coef), 0.98, na.rm = TRUE)
-    p_med <- (
-        ggplot(med, aes(x = .data[[by]], y = feature, fill = median_coef))
-        + geom_tile()
-        + scale_fill_gradient2(low = "#3b4cc0", mid = "white", high = "#b40426", midpoint = 0, limits = c(-lim, lim), oob = squish, name = "median treatment coefficient")
-        + labs(
-            x = NULL, y = NULL,
-            title = paste0("top ", N_SHARED, " shared treatment-only features across ", by, "s", if (by == "patient") " (numbers = treatment-only hits)" else "")
-        )
-        + theme_minimal(base_size = 10)
-        + theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+    med_mat <- long_to_matrix(med, "feature", by, "median_coef", row_levels = top_shared)
+    significant_labels <- if (by == "patient") {
+        matrix(as.character(long_to_matrix(med, "feature", by, "n_significant", row_levels = top_shared)), nrow = length(top_shared),
+               dimnames = dimnames(med_mat))
+    } else NULL
+    ht <- simple_heatmap(
+        med_mat, "median treatment\ncoefficient",
+        circlize::colorRamp2(c(-lim, 0, lim), c("#3b4cc0", "white", "#b40426")),
+        cell_labels = significant_labels, cell_size = 9, column_names_rot = 90
     )
-    if (by == "patient") p_med <- p_med + geom_text(aes(label = n_hits), size = 2.5)
-    add_page(p_med, if (by == "patient") 8 else max(9, 0.4 * length(treatments) + 5), 5)
+    # extra width to fit the long feature-name row labels (see simple_heatmap's row_names_max_width) next to the heatmap body and legend
+    row_label_width <- max(nchar(top_shared)) * 0.09 + 0.5
+    base_width <- if (by == "patient") 8 else max(9, 0.4 * length(treatments) + 5)
+    add_page(heatmap_grid_page(list(ht)), base_width + row_label_width, 5)
 }
 
 save_plots_pdf(pages, tag_pdf, width = page_w, height = page_h)
