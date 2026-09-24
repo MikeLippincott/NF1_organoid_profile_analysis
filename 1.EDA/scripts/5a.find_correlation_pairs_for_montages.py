@@ -117,7 +117,7 @@ df_long_with_meta = df_long_with_meta.merge(
 
 # aggregate viability to one row per patient/treatment/dose
 viability_summary = viability_df.groupby(
-    ["patient_id", "Treatment", "Dose"], as_index=False
+    ["Metadata_Biology_PatientTumor", "Treatment", "Dose"], as_index=False
 ).agg(
     {
         "Metadata_Viability_percentage": "mean",
@@ -126,14 +126,16 @@ viability_summary = viability_df.groupby(
 )
 
 # sanity check: this should now be duplicate-free
-dupe_check = viability_summary.groupby(["patient_id", "Treatment", "Dose"]).size()
+dupe_check = viability_summary.groupby(
+    ["Metadata_Biology_PatientTumor", "Treatment", "Dose"]
+).size()
 assert dupe_check.max() == 1, "still duplicates after aggregation"
 
 # merge in group1 viability scores
 df_long_with_meta_and_viability = df_long_with_meta.merge(
     viability_summary.rename(
         columns={
-            "patient_id": "group1_patient_id",
+            "Metadata_Biology_PatientTumor": "group1_patient_id",
             "Treatment": "group1_Treatment",
             "Dose": "group1_Dose",
             "Metadata_Viability_percentage": "group1_viability",
@@ -153,7 +155,7 @@ df_long_with_meta_and_viability = df_long_with_meta.merge(
 df_long_with_meta_and_viability = df_long_with_meta_and_viability.merge(
     viability_summary.rename(
         columns={
-            "patient_id": "group2_patient_id",
+            "Metadata_Biology_PatientTumor": "group2_patient_id",
             "Treatment": "group2_Treatment",
             "Dose": "group2_Dose",
             "Metadata_Viability_percentage": "group2_viability",
@@ -250,7 +252,7 @@ df_long_with_meta_and_viability.to_parquet(
 )
 
 
-# In[ ]:
+# In[11]:
 
 
 threshold_definitions_dict = {  # bottom right
@@ -273,7 +275,7 @@ threshold_definitions_dict = {  # bottom right
 }
 
 
-# In[ ]:
+# In[12]:
 
 
 high_correlation_similar_viability_df = filter_out_self_correlations(  # bottom right
@@ -354,7 +356,7 @@ print(
 )
 
 
-# In[ ]:
+# In[13]:
 
 
 high_correlation_dissimilar_viability_list = retrieve_quadrant_info(
@@ -391,7 +393,7 @@ for _df in (
     )
 
 
-# In[ ]:
+# In[14]:
 
 
 number_of_choices = 5  # number of random choices to make from each quadrant list
@@ -416,7 +418,7 @@ dict_of_randomly_selected_images = {
 }
 
 
-# In[ ]:
+# In[15]:
 
 
 for quadrent_of_correlation_and_viability in tqdm.tqdm(
@@ -466,4 +468,4 @@ for quadrent_of_correlation_and_viability in tqdm.tqdm(
             image_2_label=image_label2,
             output_path=output_image_path,
         )
-        plt.pyplot.close()
+        plt.close()
