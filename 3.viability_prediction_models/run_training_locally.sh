@@ -12,6 +12,7 @@ jupyter nbconvert --to=script --FilesWriter.build_directory="$git_root"/3.viabil
 
 cd "$git_root"/3.viability_prediction_models/scripts
 
-uv run python viability_prediction.py
+uv run python 0.pre-processing_profiles_for_viability_models.py
+uv run python 1.viability_prediction.py
 
 echo "Training complete."
