@@ -42,6 +42,9 @@ dependencies = [
     "microfilm>=0.3.0",
     "umap-learn>=0.5.12",
     "pycytominer>=1.7.1",
+    "streamlit>=1.40",
+    "plotly>=6",
+    "kaleido>=1.0",
 ]
 
 

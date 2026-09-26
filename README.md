@@ -8,6 +8,7 @@ This repo contains analysis code of profiles generated in multiple image-based p
 ## Repo modules
 - `0.download_data`: Download image-based profiles from the internet (not yet available)
 - `1.EDA`: Exploratory data analysis of image-based profiles
+- `data_viewing`: Interactive Streamlit app to explore results from `1.EDA`, `3.viability_prediction_models` and `4.linear_modeling` (see `data_viewing/README.md`)
 
 ## Computational environment
 Notebooks in this repo are split between Python and R, each managed by a separate environment.
