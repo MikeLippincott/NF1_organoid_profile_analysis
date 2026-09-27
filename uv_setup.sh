@@ -45,6 +45,7 @@ echo "Setting up uvr..."
 # check if r version is installed and meets the requirement
 # parse this from the uvr.toml file
 R_VERSION_REQUIRED=$(grep -m1 -E '^r_version[[:space:]]*=' "$UVR_TOML" | grep -oE '[0-9]+(\.[0-9]+)*' | head -n1)
+uvr r install "$R_VERSION_REQUIRED"
 if [[ -z "$R_VERSION_REQUIRED" ]]; then
     echo "Error: no valid r_version found in $UVR_TOML (expected e.g. r_version = \">=4.3.0\")."
     exit 1
@@ -68,6 +69,7 @@ if [[ -z "$R_BIN" || ! -x "$R_BIN" ]]; then
     echo "Error: no R executable found (checked uvr and PATH)."
     exit 1
 fi
+uvr r install "$R_VERSION_REQUIRED"
 R_VERSION_INSTALLED=$("$R_BIN" --version | head -n 1 | awk '{print $3}')
 if [[ $(printf '%s\n' "$R_VERSION_REQUIRED" "$R_VERSION_INSTALLED" | sort -V | head -n1) != "$R_VERSION_REQUIRED" ]]; then
     echo "R version $R_VERSION_REQUIRED or higher is required. Installed version is $R_VERSION_INSTALLED."
