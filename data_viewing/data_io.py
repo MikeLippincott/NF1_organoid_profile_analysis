@@ -35,6 +35,9 @@ except FileNotFoundError:
 EDA_RESULTS = root_dir / "1.EDA" / "results"
 VIABILITY_RESULTS = root_dir / "3.viability_prediction_models" / "model_results"
 LINEAR_MODELING_RESULTS = root_dir / "4.linear_modeling" / "results" / "linear_modeling"
+VARIATE_IMPORTANCE_RESULTS = (
+    root_dir / "4.linear_modeling" / "results" / "variate_importance"
+)
 PLATEMAPS = root_dir / "data" / "viabilities" / "combined_platemaps.parquet"
 
 # ---------------------------------------------------------------------------
@@ -242,6 +245,11 @@ def registry() -> dict[str, dict[str, Dataset]]:
             ).items()
             if "feature_name_mapping" not in k
         },
+        "variate_importance": _glob(
+            VARIATE_IMPORTANCE_RESULTS,
+            "variate_hit_*_all_scopes.parquet",
+            "4.linear_modeling/scripts/5.calculate_variate_importance.py",
+        ),
     }
 
 

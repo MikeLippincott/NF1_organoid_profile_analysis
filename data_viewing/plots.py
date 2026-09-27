@@ -1,11 +1,17 @@
 """Generic interactive plot explorer: subset, color and facet by any column."""
 
+import math
+
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from data_io import GLOBAL_FILTER_COLUMNS, _natural_key
-from palettes import order_for, palette_for
+from palettes import TERM_COLORS, order_for, palette_for
+from plotly.subplots import make_subplots
+from scipy.cluster.hierarchy import dendrogram, leaves_list, linkage
+from scipy.spatial.distance import pdist
 
 NONE = "(none)"
 MAX_FACETS = 30
@@ -354,6 +360,507 @@ def _build(
             color_continuous_scale="Viridis",
         )
     raise ValueError(f"unknown plot type {kind}")
+
+
+# ---------------------------------------------------------------------------
+# UpSet plot (ported from 6.plot_variate_importance.r's plot_upset())
+# ---------------------------------------------------------------------------
+def regroup_combos_by_identity(
+    combos: pd.DataFrame, groups: dict[str, list[str]]
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Collapse individual-term combinations onto group identities (e.g. every
+    biological term folded into one "Biological" set, every technical term
+    into one "Technical" set): a combination is "in" a group's set if any of
+    its member terms is in the original combination.
+
+    Returns ``(combos, sizes)`` shaped like ``upset_df``/``sizes_df`` filtered
+    to ``plot == "upset"``, so the result plugs straight into ``upset_plot``.
+    """
+    work = combos.copy()
+    group_names = list(groups)
+    for name, terms in groups.items():
+        cols = [f"in_{t}" for t in terms if f"in_{t}" in work.columns]
+        work[f"in_{name}"] = work[cols].fillna(False).any(axis=1) if cols else False
+    keep_cols = [f"in_{g}" for g in group_names]
+    regrouped = work.groupby(keep_cols, dropna=False)["n_features"].sum().reset_index()
+    regrouped = regrouped[regrouped[keep_cols].fillna(False).any(axis=1)].reset_index(
+        drop=True
+    )
+    regrouped["combination"] = regrouped[keep_cols].apply(
+        lambda r: " + ".join(g for g, c in zip(group_names, keep_cols) if bool(r[c])),
+        axis=1,
+    )
+    regrouped["treatment_specific"] = False
+    regrouped = regrouped.sort_values("n_features", ascending=False).reset_index(
+        drop=True
+    )
+    sizes = pd.DataFrame(
+        {
+            "term": group_names,
+            "set_size": [
+                int(work.loc[work[f"in_{g}"], "n_features"].sum()) for g in group_names
+            ],
+        }
+    )
+    return regrouped, sizes
+
+
+def upset_plot(
+    sizes: pd.DataFrame,
+    combos: pd.DataFrame,
+    term_order: list[str],
+    top_n: int = 25,
+    title: str = "",
+) -> go.Figure | None:
+    """Bar chart of the top term combinations (by feature count) plus a set-size
+    bar chart and dot matrix showing which terms make up each combination.
+
+    Parameters
+    ----------
+    sizes : one row per term, with a ``set_size`` column (``sizes_df`` filtered
+        to ``plot == "upset"`` for the chosen model_set/scope/group).
+    combos : one row per term combination, with ``in_<term>`` booleans,
+        ``n_features`` and ``treatment_specific`` (``upset_df`` filtered the
+        same way).
+    """
+    terms = [t for t in term_order if t in sizes["term"].to_numpy()]
+    if not terms or combos.empty:
+        return None
+
+    shown = (
+        combos.sort_values("n_features", ascending=False)
+        .head(top_n)
+        .reset_index(drop=True)
+    )
+    n_combo = len(shown)
+    n_terms = len(terms)
+    x = list(range(1, n_combo + 1))
+
+    fig = make_subplots(
+        rows=2,
+        cols=3,
+        row_heights=[0.42, 0.58],
+        column_widths=[0.16, 0.22, 0.62],
+        horizontal_spacing=0.02,
+        vertical_spacing=0.03,
+        specs=[
+            [{}, {}, {}],
+            [{}, {}, {}],
+        ],
+    )
+
+    # top-right: bar chart of features per combination (log scale), orange = treatment-only
+    bar_colors = [
+        "#d95f02" if v else "#555555" for v in shown["treatment_specific"].fillna(False)
+    ]
+    fig.add_trace(
+        go.Bar(
+            x=x,
+            y=shown["n_features"],
+            marker_color=bar_colors,
+            text=shown["n_features"],
+            textposition="outside",
+            showlegend=False,
+            hovertext=shown["combination"],
+            hoverinfo="text+y",
+        ),
+        row=1,
+        col=3,
+    )
+    # explicit headroom above the tallest bar: on a log axis, kaleido's static PNG
+    # renderer flips "outside" text upside-down if it sits too close to the top of
+    # the subplot, so round the range up to the next whole decade above the max
+    max_n = float(shown["n_features"].max())
+    y_top = 10 ** (math.floor(math.log10(max_n)) + 1) if max_n > 0 else 10
+    fig.update_yaxes(
+        type="log",
+        range=[math.log10(0.8), math.log10(y_top)],
+        title_text="features in exactly this combination (log)",
+        row=1,
+        col=3,
+    )
+    fig.update_xaxes(showticklabels=False, range=[0.4, n_combo + 0.6], row=1, col=3)
+
+    # bottom-left: set-size bars (horizontal, largest terms first)
+    term_sizes = sizes.set_index("term").reindex(terms)["set_size"]
+    fig.add_trace(
+        go.Bar(
+            x=term_sizes.to_numpy(),
+            y=list(range(n_terms)),
+            orientation="h",
+            marker_color="#555555",
+            text=term_sizes.to_numpy(),
+            textposition="outside",
+            showlegend=False,
+        ),
+        row=2,
+        col=1,
+    )
+    fig.update_xaxes(autorange="reversed", title_text="features in group", row=2, col=1)
+    fig.update_yaxes(range=[n_terms - 0.5, -0.5], showticklabels=False, row=2, col=1)
+
+    # bottom-middle: term labels, colored to match the dot matrix
+    fig.add_trace(
+        go.Scatter(
+            x=[0] * n_terms,
+            y=list(range(n_terms)),
+            mode="text",
+            text=terms,
+            textposition="middle right",
+            textfont=dict(color=[TERM_COLORS.get(t, "black") for t in terms], size=13),
+            showlegend=False,
+            hoverinfo="skip",
+        ),
+        row=2,
+        col=2,
+    )
+    fig.update_xaxes(visible=False, range=[0, 1], row=2, col=2)
+    fig.update_yaxes(visible=False, range=[n_terms - 0.5, -0.5], row=2, col=2)
+
+    # bottom-right: dot matrix (grey = not in combination, colored + connected = in combination)
+    bg_x = [j + 1 for j in range(n_combo) for _ in range(n_terms)]
+    bg_y = [i for _ in range(n_combo) for i in range(n_terms)]
+    fig.add_trace(
+        go.Scatter(
+            x=bg_x,
+            y=bg_y,
+            mode="markers",
+            marker=dict(size=13, color="#dddddd"),
+            showlegend=False,
+            hoverinfo="skip",
+        ),
+        row=2,
+        col=3,
+    )
+    for j, (_, row) in enumerate(shown.iterrows()):
+        on_terms = [t for t in terms if bool(row.get(f"in_{t}"))]
+        if not on_terms:
+            continue
+        on_idx = [terms.index(t) for t in on_terms]
+        if len(on_idx) > 1:
+            fig.add_trace(
+                go.Scatter(
+                    x=[j + 1, j + 1],
+                    y=[min(on_idx), max(on_idx)],
+                    mode="lines",
+                    line=dict(color="black", width=2),
+                    showlegend=False,
+                    hoverinfo="skip",
+                ),
+                row=2,
+                col=3,
+            )
+        fig.add_trace(
+            go.Scatter(
+                x=[j + 1] * len(on_idx),
+                y=on_idx,
+                mode="markers",
+                marker=dict(
+                    size=13,
+                    color=[TERM_COLORS.get(t, "black") for t in on_terms],
+                    line=dict(color="black", width=1),
+                ),
+                showlegend=False,
+                hovertext=on_terms,
+                hoverinfo="text",
+            ),
+            row=2,
+            col=3,
+        )
+    fig.update_xaxes(showticklabels=False, range=[0.4, n_combo + 0.6], row=2, col=3)
+    fig.update_yaxes(range=[n_terms - 0.5, -0.5], showticklabels=False, row=2, col=3)
+
+    fig.update_layout(
+        title=title,
+        height=max(500, 90 * n_terms + 260),
+        template="plotly_white",
+        bargap=0.25,
+        showlegend=False,
+    )
+    return fig
+
+
+def _discrete_colorscale(
+    categories: list[str], palette: dict[str, str], fallback: str = "#cccccc"
+) -> tuple[list, dict]:
+    """A piecewise-constant Plotly colorscale over ``[0, 1]``, one flat step per
+    category, plus the ``category -> z`` map to look values up by. Lets a
+    ``go.Heatmap`` (which only takes a continuous colorscale) render a
+    categorical color strip, e.g. an annotation track."""
+    n = len(categories)
+    if n == 0:
+        return [[0, fallback], [1, fallback]], {}
+    colors = [palette.get(c, fallback) for c in categories]
+    if n == 1:
+        return [[0, colors[0]], [1, colors[0]]], {categories[0]: 0.5}
+    scale = []
+    for i, color in enumerate(colors):
+        scale += [[i / n, color], [(i + 1) / n, color]]
+    cat_to_z = {c: (i + 0.5) / n for i, c in enumerate(categories)}
+    return scale, cat_to_z
+
+
+def _annotation_strip(
+    axis_categories: list[str],
+    labels: list[str],
+    palette: dict[str, str],
+    orientation: str,
+    name: str,
+) -> go.Heatmap:
+    """One color-coded annotation strip (a single-row or single-column
+    ``go.Heatmap``) for the given category labels, e.g. a "Patient" or
+    "Feature type" track alongside a main heatmap. ``axis_categories`` are the
+    main heatmap's own column (or row) ids, in the same order as ``labels``
+    (the attribute value to color each one by, e.g. each column's patient)."""
+    categories = sorted(set(labels))
+    scale, cat_to_z = _discrete_colorscale(categories, palette)
+    z_values = [cat_to_z[label] for label in labels]
+    if orientation == "row":  # a top strip, one column per main-heatmap column
+        z, x, y = [z_values], axis_categories, [name]
+        text = [labels]
+    else:  # a left strip, one row per main-heatmap row
+        z, x, y = [[v] for v in z_values], [name], axis_categories
+        text = [[label] for label in labels]
+    return go.Heatmap(
+        z=z,
+        x=x,
+        y=y,
+        colorscale=scale,
+        zmin=0,
+        zmax=1,
+        showscale=False,
+        showlegend=False,
+        text=text,
+        hovertemplate=f"{name}: %{{text}}<extra></extra>",
+    )
+
+
+def _hclust(arr: np.ndarray) -> tuple[list[int], np.ndarray | None]:
+    """Leaf order and linkage matrix from average-linkage hierarchical
+    clustering on binary (Jaccard) distance, matching R's ``hclust(dist(mat,
+    method="binary"), method="average")``. Falls back to the original order
+    (and no linkage, so no dendrogram) when there are too few rows to
+    cluster, or the distance matrix has non-finite entries (e.g. two
+    all-zero rows, for which binary/Jaccard distance is undefined)."""
+    n = arr.shape[0]
+    if n < 3:
+        return list(range(n)), None
+    try:
+        d = pdist(arr, metric="jaccard")
+        if not np.all(np.isfinite(d)):
+            return list(range(n)), None
+        z = linkage(d, method="average")
+        return leaves_list(z).tolist(), z
+    except Exception:
+        return list(range(n)), None
+
+
+def _dendrogram_traces(
+    z: np.ndarray | None, leaf_axis: str, color: str = "#999999"
+) -> list[go.Scatter]:
+    """Line traces for a dendrogram of linkage matrix ``z``.
+
+    ``leaf_axis="x"``: leaves along x (0..n-1), merge height along y, root at
+    the top -- for a strip above the heatmap.
+    ``leaf_axis="y"``: leaves along y (0..n-1), merge height mirrored onto x
+    so the root is at x=0 (far left) and the leaves sit at x=max distance,
+    right next to the heatmap -- for a strip to its left.
+    """
+    if z is None:
+        return []
+    dd = dendrogram(z, no_plot=True)
+    max_dist = max((max(ys) for ys in dd["dcoord"]), default=1) or 1
+    traces = []
+    for xs, ys in zip(dd["icoord"], dd["dcoord"]):
+        leaf_pos = [(v - 5) / 10 for v in xs]
+        if leaf_axis == "x":
+            x, y = leaf_pos, ys
+        else:
+            x, y = [max_dist - v for v in ys], leaf_pos
+        traces.append(
+            go.Scatter(
+                x=x,
+                y=y,
+                mode="lines",
+                line=dict(color=color, width=1),
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+    return traces
+
+
+def annotated_significance_heatmap(
+    sig: pd.DataFrame,
+    title: str,
+    legend_title: str = "significant",
+) -> go.Figure | None:
+    """Feature x (patient, treatment) yes/no significance matrix with Patient,
+    Tumor type, Treatment (top) and Compartment, Channel, Feature type (left)
+    color-coded annotation strips, both axes hierarchically clustered, ported
+    from ``6.plot_variate_importance.r``'s ``cooccurrence_heatmap()``. ``sig``
+    is one row per (feature, patient, treatment) pair that is significant
+    under the chosen criterion, with columns ``feature``, ``Feature_type``,
+    ``Channel``, ``Compartment``, ``patient``, ``treatment``, ``drug``,
+    ``tumor_type``.
+    """
+    if sig.empty:
+        return None
+    sig = sig.assign(
+        patient_treatment=sig["patient"] + " | " + sig["treatment"],
+        Feature_type=sig["Feature_type"].fillna("Other"),
+        Channel=sig["Channel"].fillna("Other"),
+        Compartment=sig["Compartment"].fillna("Other"),
+    )
+    features = sig.drop_duplicates("feature")[
+        ["feature", "Feature_type", "Channel", "Compartment"]
+    ].reset_index(drop=True)
+    columns = sig.drop_duplicates("patient_treatment")[
+        ["patient_treatment", "patient", "drug", "tumor_type"]
+    ].reset_index(drop=True)
+    feat_list = features["feature"].tolist()
+    col_list = columns["patient_treatment"].tolist()
+
+    feat_idx = {f: i for i, f in enumerate(feat_list)}
+    col_idx = {c: i for i, c in enumerate(col_list)}
+    arr = np.zeros((len(feat_list), len(col_list)), dtype=int)
+    arr[
+        sig["feature"].map(feat_idx).to_numpy(),
+        sig["patient_treatment"].map(col_idx).to_numpy(),
+    ] = 1
+
+    row_order, row_z = _hclust(arr)
+    col_order, col_z = _hclust(arr.T)
+    arr = arr[np.ix_(row_order, col_order)]
+    features = features.iloc[row_order].reset_index(drop=True)
+    columns = columns.iloc[col_order].reset_index(drop=True)
+    feat_list = features["feature"].tolist()
+    col_list = columns["patient_treatment"].tolist()
+
+    row_annotations = [
+        ("Compartment", features["Compartment"].tolist(), "compartment"),
+        ("Channel", features["Channel"].tolist(), "channel"),
+        ("Feature type", features["Feature_type"].tolist(), "feature_type"),
+    ]
+    col_annotations = [
+        ("Patient", columns["patient"].tolist(), "patient"),
+        ("Tumor type", columns["tumor_type"].tolist(), "tumor_type"),
+        ("Treatment", columns["drug"].tolist(), "treatment"),
+    ]
+    n_row_strips = len(row_annotations)
+    n_col_strips = len(col_annotations)
+    top_strip_frac = 0.018
+    left_strip_frac = 0.03
+    dendro_top_frac = 0.08
+    dendro_left_frac = 0.08
+    row_heights = (
+        [dendro_top_frac]
+        + [top_strip_frac] * n_col_strips
+        + [1 - dendro_top_frac - top_strip_frac * n_col_strips]
+    )
+    col_widths = (
+        [dendro_left_frac]
+        + [left_strip_frac] * n_row_strips
+        + [1 - dendro_left_frac - left_strip_frac * n_row_strips]
+    )
+
+    fig = make_subplots(
+        rows=n_col_strips + 2,
+        cols=n_row_strips + 2,
+        row_heights=row_heights,
+        column_widths=col_widths,
+        horizontal_spacing=0.003,
+        vertical_spacing=0.003,
+        specs=[[{}] * (n_row_strips + 2)] * (n_col_strips + 2),
+    )
+    main_row, main_col = n_col_strips + 2, n_row_strips + 2
+
+    for trace in _dendrogram_traces(col_z, "x"):
+        fig.add_trace(trace, row=1, col=main_col)
+    for trace in _dendrogram_traces(row_z, "y"):
+        fig.add_trace(trace, row=main_row, col=1)
+    for i, (name, values, palette_key) in enumerate(col_annotations, start=2):
+        fig.add_trace(
+            _annotation_strip(
+                col_list, values, palette_for(palette_key, values) or {}, "row", name
+            ),
+            row=i,
+            col=main_col,
+        )
+    for i, (name, values, palette_key) in enumerate(row_annotations, start=2):
+        fig.add_trace(
+            _annotation_strip(
+                feat_list, values, palette_for(palette_key, values) or {}, "col", name
+            ),
+            row=main_row,
+            col=i,
+        )
+    fig.add_trace(
+        go.Heatmap(
+            z=arr,
+            x=col_list,
+            y=feat_list,
+            colorscale=[[0, "white"], [0.5, "white"], [0.5, "#d95f02"], [1, "#d95f02"]],
+            zmin=0,
+            zmax=1,
+            showscale=True,
+            colorbar=dict(
+                title=legend_title,
+                tickvals=[0.25, 0.75],
+                ticktext=["no", "yes"],
+                len=0.5,
+            ),
+            hovertemplate="%{y}<br>%{x}<extra></extra>",
+        ),
+        row=main_row,
+        col=main_col,
+    )
+
+    main_axis_num = main_row * main_col
+    # the color strips are categorical heatmaps on the same string categories as
+    # the main heatmap, so `matches` keeps their axis in lockstep; the
+    # dendrograms plot numeric leaf positions instead, so instead they get an
+    # explicit range spanning the same [-0.5, n-0.5] span Plotly gives a
+    # category axis with n categories, which lines them up just as exactly
+    for r in range(2, main_row):
+        fig.update_xaxes(matches=f"x{main_axis_num}", row=r, col=main_col)
+        fig.update_xaxes(showticklabels=False, row=r, col=main_col)
+    for c in range(2, main_col):
+        fig.update_yaxes(matches=f"y{main_axis_num}", row=main_row, col=c)
+        fig.update_yaxes(showticklabels=False, row=main_row, col=c)
+    fig.update_xaxes(
+        range=[-0.5, len(col_list) - 0.5],
+        showticklabels=False,
+        showgrid=False,
+        zeroline=False,
+        row=1,
+        col=main_col,
+    )
+    fig.update_yaxes(
+        showticklabels=False, showgrid=False, zeroline=False, row=1, col=main_col
+    )
+    fig.update_yaxes(
+        range=[-0.5, len(feat_list) - 0.5],
+        showticklabels=False,
+        showgrid=False,
+        zeroline=False,
+        row=main_row,
+        col=1,
+    )
+    fig.update_xaxes(
+        showticklabels=False, showgrid=False, zeroline=False, row=main_row, col=1
+    )
+    # feature names are dropped (the Compartment/Channel/Feature type strips
+    # carry the per-row identity instead); hover still shows the feature name
+    fig.update_yaxes(showticklabels=False, row=main_row, col=main_col)
+    fig.update_xaxes(showticklabels=False, row=main_row, col=main_col)
+    fig.update_layout(
+        template="plotly_white",
+        title=f"{title} ({len(feat_list):,} features x {len(col_list):,} patient-treatments)",
+        height=max(280, 4 * len(feat_list) + 140),
+        showlegend=False,
+    )
+    return fig
 
 
 def _add_grey_background(

@@ -5,13 +5,23 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from data_io import EDA_RESULTS, Dataset, load_dataset, parquet_columns, registry
+from palettes import (
+    BIOLOGICAL_TERMS,
+    TECHNICAL_TERMS,
+    TERM_ORDER,
+    TUMOR_TYPE_LOOKUP,
+    palette_for,
+)
 from plots import (
     NONE,
+    annotated_significance_heatmap,
     apply_global_filters,
     explorer,
     local_subset,
     missing_notice,
     png_download,
+    regroup_combos_by_identity,
+    upset_plot,
 )
 
 Filters = dict[str, list[str]]
@@ -534,6 +544,22 @@ VIABILITY_SECTIONS = {
 # ---------------------------------------------------------------------------
 # 4.linear_modeling
 # ---------------------------------------------------------------------------
+def _normalize_lm_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Column/value fixups shared by every linear-modeling results table.
+
+    The "_technical_model" files keep their raw Metadata_-prefixed schema, so
+    ``canonicalize_columns`` maps their patient column to "patient_tumor" (not
+    "patient") and their treatment-term rows still read the raw column name.
+    """
+    if "patient" not in df.columns and "patient_tumor" in df.columns:
+        df = df.rename(columns={"patient_tumor": "patient"})
+    if "term" in df.columns:
+        df["term"] = df["term"].replace({"Metadata_Experiment_Treatment": "treatment"})
+    if "tumor_type" not in df.columns and "patient" in df.columns:
+        df["tumor_type"] = df["patient"].map(TUMOR_TYPE_LOOKUP)
+    return df
+
+
 def _linear_model_data(key: str, extra_defaults=None):
     datasets = registry()["linear_modeling"]
     if not datasets:
@@ -544,7 +570,7 @@ def _linear_model_data(key: str, extra_defaults=None):
         )
         return None, None
     label = st.selectbox("Model results", list(datasets), key=f"{key}_dataset")
-    df = load_dataset(str(datasets[label].path))
+    df = _normalize_lm_df(load_dataset(str(datasets[label].path)))
     if "pvalue_fdr" in df.columns:
         df["neg_log10_pvalue_fdr"] = -np.log10(df["pvalue_fdr"].clip(lower=1e-300))
         df["significant_fdr_0.05"] = np.where(
@@ -614,8 +640,513 @@ def lm_fit_section(filters: Filters) -> None:
     )
 
 
+# ported from 6.plot_variate_importance.r's `scopes` list: scope name -> its group columns
+UPSET_SCOPES = {
+    "all_models": [],
+    "per_patient_treatment": ["patient", "treatment"],
+    "per_patient": ["patient"],
+    "per_treatment": ["treatment"],
+    "per_treatment_tumor_type": ["treatment", "tumor_type"],
+    "per_tumor_type": ["tumor_type"],
+}
+
+# profile x model_set -> the linear_modeling dataset that holds it
+UPSET_PROFILE_DATASETS = {
+    ("organoid", "original"): "organoid_norm",
+    ("organoid", "technical"): "organoid_norm_technical_model",
+    ("sc", "original"): "sc_norm",
+    ("sc", "technical"): "sc_norm_technical_model",
+}
+
+
+def _build_membership(
+    hits: pd.DataFrame, terms: list[str], index_cols: list[str]
+) -> pd.DataFrame:
+    """One row per (index_cols..., feature), one boolean column per term: True
+    when any model at that index is a hit for that term. Ported from
+    ``5.calculate_variate_importance.py``'s ``build_membership()``."""
+    return (
+        hits.loc[hits["term"].isin(terms), index_cols + ["term", "hit"]]
+        .pivot_table(index=index_cols, columns="term", values="hit", aggfunc="max")
+        .reindex(columns=terms)
+        .fillna(False)
+        .astype(bool)
+    )
+
+
+def _upset_combinations(membership: pd.DataFrame, terms: list[str]) -> pd.DataFrame:
+    """Features per exact term combination, largest first. Ported from
+    ``5.calculate_variate_importance.py``'s ``upset_combinations()``."""
+    combos = (
+        membership.groupby(terms, observed=True)
+        .size()
+        .rename("n_features")
+        .reset_index()
+    )
+    combos = (
+        combos.loc[combos[terms].any(axis=1)]
+        .sort_values("n_features", ascending=False)
+        .reset_index(drop=True)
+    )
+    if combos.empty:
+        return combos.assign(combination=[], treatment_specific=[])
+    combos["combination"] = combos[terms].apply(
+        lambda r: " + ".join(t for t in terms if r[t]), axis=1
+    )
+    other = [t for t in terms if t != "treatment"]
+    combos["treatment_specific"] = (
+        combos["treatment"] & ~combos[other].any(axis=1)
+        if "treatment" in terms and other
+        else pd.Series(False, index=combos.index)
+    )
+    return combos.rename(columns={t: f"in_{t}" for t in terms})
+
+
+def _set_sizes(membership: pd.DataFrame, terms: list[str]) -> pd.DataFrame:
+    return pd.DataFrame({"term": terms, "set_size": membership[terms].sum().to_numpy()})
+
+
+def lm_upset_section(filters: Filters) -> None:
+    """UpSet plots of which variates (model terms) a feature is a 'hit' for,
+    computed on the fly (ported from ``5.calculate_variate_importance.py`` /
+    ``6.plot_variate_importance.r``'s ``plot_upset()``): a feature is a hit for
+    a term when a model has ``pvalue_fdr < threshold`` and ``coefficient >
+    min`` for it. Below the plot, an overlap matrix shows how many features
+    a chosen combination shares between every pair of groups in the scope
+    (e.g. MPNST vs pNF for the tumor-type scope).
+    """
+    c1, c2 = st.columns(2)
+    profile = c1.radio(
+        "Profile", ["organoid", "sc"], horizontal=True, key="upset_profile"
+    )
+    model_set = c2.radio(
+        "Model set", ["original", "technical"], horizontal=True, key="upset_model_set"
+    )
+    dataset_key = UPSET_PROFILE_DATASETS[(profile, model_set)]
+    ds = registry()["linear_modeling"].get(dataset_key)
+    if ds is None:
+        missing_notice(
+            f"{profile} ({model_set}) linear-model results",
+            "4.linear_modeling/scripts/0.linear_modeling.py",
+            "4.linear_modeling/results/linear_modeling",
+        )
+        return
+    df = _normalize_lm_df(load_dataset(str(ds.path)))
+    df = apply_global_filters(df, filters)
+    if df.empty:
+        st.warning("No rows left after subsetting.")
+        return
+    feature_meta = df.drop_duplicates("feature")[
+        ["feature", "Feature_type", "Channel", "Compartment"]
+    ]
+
+    c3, c4 = st.columns(2)
+    fdr_max = c3.slider("FDR threshold", 0.001, 0.25, 0.05, key="upset_fdr")
+    coef_min = c4.slider(
+        "Min coefficient (increases only, matches 5.calculate_variate_importance.py)",
+        0.0,
+        1.0,
+        0.1,
+        key="upset_coef",
+    )
+    hits = df.assign(hit=(df["pvalue_fdr"] < fdr_max) & (df["coefficient"] > coef_min))
+    terms = [t for t in TERM_ORDER if t in hits["term"].unique()]
+
+    scope = st.selectbox("Scope", list(UPSET_SCOPES), key="upset_scope")
+    group_cols = UPSET_SCOPES[scope]
+    index_cols = group_cols + ["feature"]
+    membership_all = _build_membership(hits, terms, index_cols)
+    if membership_all.empty:
+        st.warning("No hits at the current thresholds.")
+        return
+
+    group_label = ""
+    if group_cols:
+        cols = st.columns(len(group_cols))
+        selection = {}
+        for col_widget, name in zip(cols, group_cols):
+            values = sorted(membership_all.index.get_level_values(name).unique())
+            selection[name] = col_widget.selectbox(name, values, key=f"upset_{name}")
+        mask = pd.Series(True, index=membership_all.index)
+        for name, value in selection.items():
+            mask &= membership_all.index.get_level_values(name) == value
+        membership = membership_all[mask]
+        membership.index = membership.index.get_level_values("feature")
+        group_label = " | ".join(f"{k}={v}" for k, v in selection.items())
+    else:
+        membership = membership_all
+
+    combos = _upset_combinations(membership, terms)
+    sizes = _set_sizes(membership, terms)
+    if combos.empty:
+        st.warning("No term combinations for this selection.")
+        return
+
+    c5, c6 = st.columns([2, 1])
+    top_n = c5.slider("Top N combinations", 5, 40, 25, key="upset_topn")
+    term_group = c6.radio(
+        "Variate group",
+        ["Individual variates", "Grouped (Biological vs Technical)"],
+        horizontal=True,
+        key="upset_term_group",
+    )
+    if term_group == "Grouped (Biological vs Technical)":
+        groups = {
+            "Biological": [t for t in BIOLOGICAL_TERMS if t in terms],
+            "Technical": [t for t in TECHNICAL_TERMS if t in terms],
+        }
+        groups = {name: g_terms for name, g_terms in groups.items() if g_terms}
+        if len(groups) < 2:
+            st.warning(
+                "This model set doesn't have both biological and technical terms."
+            )
+            return
+        combos, sizes = regroup_combos_by_identity(combos, groups)
+        term_order = list(groups)
+    else:
+        term_order = terms
+
+    n_total = len(membership)
+    n_none = int((~membership[terms].any(axis=1)).sum())
+    st.caption(f"{n_total:,} features ({n_none:,} not a hit for any term)")
+
+    title = f"{profile} {model_set} model, {scope}" + (
+        f" ({group_label})" if group_label else ""
+    )
+    fig = upset_plot(sizes, combos, term_order, top_n=top_n, title=title)
+    if fig is None:
+        st.warning("No term combinations to show.")
+        return
+    st.plotly_chart(fig, width="stretch", key="upset_chart")
+    png_download(fig, "upset", f"upset_{profile}_{model_set}_{scope}")
+
+    if not group_cols:
+        return
+    st.divider()
+    st.caption(f"Feature overlap across {' x '.join(group_cols)} groups in this scope")
+    group_keys = membership_all.index.to_frame(index=False)[
+        group_cols
+    ].drop_duplicates()
+    group_keys["_label"] = (
+        group_keys[group_cols[0]].astype(str)
+        if len(group_cols) == 1
+        else group_keys[group_cols].astype(str).agg(" | ".join, axis=1)
+    )
+    n_groups = len(group_keys)
+    if n_groups < 2:
+        st.info("Only one group in this scope; nothing to compare.")
+        return
+    if n_groups > 60:
+        st.caption(
+            f"{n_groups} groups -- rendering the full pairwise matrix, cell counts "
+            "hidden for legibility (hover to read a value)."
+        )
+
+    combo_options = combos["combination"].tolist()
+    chosen_combo = st.selectbox(
+        "Combination to compare across groups", combo_options, key="upset_overlap_combo"
+    )
+    combo_terms = term_order if term_group == "Individual variates" else list(groups)
+    pattern_row = combos.loc[combos["combination"] == chosen_combo].iloc[0]
+    match_mask = pd.Series(True, index=membership_all.index)
+    for t in combo_terms:
+        want = bool(pattern_row[f"in_{t}"])
+        col = (
+            membership_all[t]
+            if term_group == "Individual variates"
+            else membership_all[
+                [
+                    c
+                    for c in (
+                        BIOLOGICAL_TERMS if t == "Biological" else TECHNICAL_TERMS
+                    )
+                    if c in terms
+                ]
+            ].any(axis=1)
+        )
+        match_mask &= col == want
+    matched = membership_all[match_mask].index.to_frame(index=False)
+
+    sets_by_group = {}
+    for _, row in group_keys.iterrows():
+        sub_mask = pd.Series(True, index=matched.index)
+        for c in group_cols:
+            sub_mask &= matched[c] == row[c]
+        sets_by_group[row["_label"]] = set(matched.loc[sub_mask, "feature"])
+    labels = group_keys["_label"].tolist()
+    overlap = pd.DataFrame(
+        [[len(sets_by_group[a] & sets_by_group[b]) for b in labels] for a in labels],
+        index=labels,
+        columns=labels,
+    )
+    overlap_fig = px.imshow(
+        overlap,
+        text_auto=n_groups <= 60,
+        color_continuous_scale="Viridis",
+        aspect="auto",
+        labels=dict(color="shared features"),
+        title=f"Shared features for '{chosen_combo}' across {' x '.join(group_cols)}",
+    )
+    overlap_fig.update_layout(
+        template="plotly_white", height=max(400, 40 * n_groups + 150)
+    )
+    event = st.plotly_chart(
+        overlap_fig,
+        width="stretch",
+        key="upset_overlap_chart",
+        on_select="rerun",
+        selection_mode="points",
+    )
+    png_download(overlap_fig, "upset_overlap", f"overlap_{scope}_{chosen_combo}")
+
+    # a click on a cell updates the two pickers below; they also work by hand.
+    # Widgets ignore `index=` once their key already holds a value, so a new
+    # click has to be pushed into session_state *before* the widgets are
+    # created below -- but only once per click, or it would fight the user's
+    # own dropdown choice on every later, unrelated rerun.
+    for key in ("upset_overlap_row", "upset_overlap_col"):
+        if key in st.session_state and st.session_state[key] not in labels:
+            del st.session_state[key]  # stale value from a previous scope
+
+    points = event.selection.points if event else []
+    clicked = (points[0]["y"], points[0]["x"]) if points else None
+    if clicked and (clicked[0] not in labels or clicked[1] not in labels):
+        clicked = None  # stale selection from a previous scope/combination
+    if clicked and st.session_state.get("upset_overlap_last_click") != clicked:
+        st.session_state["upset_overlap_row"] = clicked[0]
+        st.session_state["upset_overlap_col"] = clicked[1]
+        st.session_state["upset_overlap_last_click"] = clicked
+
+    c7, c8 = st.columns(2)
+    row_label = c7.selectbox("Row group", labels, key="upset_overlap_row")
+    col_label = c8.selectbox("Column group", labels, key="upset_overlap_col")
+    clicked_features = (
+        sets_by_group[row_label]
+        if row_label == col_label
+        else sets_by_group[row_label] & sets_by_group[col_label]
+    )
+    header = (
+        f"**{len(clicked_features):,} features** in **{row_label}**"
+        if row_label == col_label
+        else f"**{len(clicked_features):,} features** shared between "
+        f"**{row_label}** and **{col_label}**"
+    )
+    st.markdown(header)
+    if not clicked_features:
+        return
+    feat_df = feature_meta[feature_meta["feature"].isin(clicked_features)]
+    with st.expander(f"Feature names ({len(feat_df):,})"):
+        st.dataframe(feat_df, width="stretch", hide_index=True)
+
+    melted = feat_df.melt(
+        id_vars="feature",
+        value_vars=["Compartment", "Channel", "Feature_type"],
+        var_name="attribute",
+        value_name="value",
+    )
+    melted["value"] = melted["value"].fillna("Other")
+    counts = (
+        melted.groupby(["attribute", "value"], observed=True)
+        .size()
+        .reset_index(name="count")
+    )
+    detail_fig = px.bar(
+        counts,
+        x="value",
+        y="count",
+        color="attribute",
+        facet_col="attribute",
+        title="Selected features by Compartment / Channel / Feature type",
+    )
+    detail_fig.update_xaxes(matches=None, showticklabels=True)
+    detail_fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+    detail_fig.update_layout(template="plotly_white", showlegend=False, height=400)
+    st.plotly_chart(detail_fig, width="stretch", key="upset_overlap_detail_chart")
+    png_download(
+        detail_fig, "upset_overlap_detail", f"overlap_detail_{row_label}_{col_label}"
+    )
+
+
+def _annotation_legends(tracks: list[tuple[str, list[str], str]]) -> None:
+    """Small colored-swatch legends for the heatmap's annotation strips (Plotly
+    heatmaps have no native per-category legend for a discrete color track)."""
+    cols = st.columns(len(tracks))
+    for col, (title, categories, palette_key) in zip(cols, tracks):
+        colors = palette_for(palette_key, categories) or {}
+        swatches = "".join(
+            f'<span style="display:inline-block;width:10px;height:10px;'
+            f"background:{colors.get(c, '#cccccc')};margin-right:4px;"
+            f'border:1px solid #999;"></span>{c}<br>'
+            for c in categories
+        )
+        with col:
+            st.markdown(f"**{title}**<br>{swatches}", unsafe_allow_html=True)
+
+
+def lm_model_variates_section(filters: Filters) -> None:
+    """Where is treatment significant on its own vs alongside covariates?
+
+    Feature x (patient, treatment) yes/no heatmap -- ported from
+    ``6.plot_variate_importance.r``'s ``cooccurrence_heatmap()`` -- with
+    Patient, Tumor type and Treatment column annotations and a Feature type
+    row annotation. A toggle switches the criterion between ``treatment``
+    being a hit on its own vs together with at least one term from the
+    chosen covariate group (biological or technical, in any combination);
+    ``hit = pvalue_fdr < threshold & coefficient > min``, matching
+    ``5.calculate_variate_importance.py``. A single-model drill-down table
+    (its 'unique variate signature') is below the heatmap.
+    """
+    label, df = _linear_model_data("lmvar")
+    if df is None:
+        return
+    df = apply_global_filters(df, filters)
+    if df.empty:
+        st.warning("No rows left after subsetting.")
+        return
+
+    c1, c2 = st.columns(2)
+    fdr_max = c1.slider("FDR threshold", 0.001, 0.25, 0.05, key="lmvar_fdr")
+    coef_min = c2.slider(
+        "Min coefficient (increases only, matches 5.calculate_variate_importance.py)",
+        0.0,
+        1.0,
+        0.1,
+        key="lmvar_coef",
+    )
+    covariate_group = st.radio(
+        "Covariate group (defines '+ group' below)",
+        ["Biological", "Technical"],
+        horizontal=True,
+        key="lmvar_group",
+    )
+    group_terms = {"Biological": BIOLOGICAL_TERMS, "Technical": TECHNICAL_TERMS}[
+        covariate_group
+    ]
+    group_terms = [
+        t for t in group_terms if t != "treatment" and t in df["term"].unique()
+    ]
+    if not group_terms:
+        st.warning(f"No {covariate_group.lower()} covariates in this dataset.")
+        return
+    criterion = st.radio(
+        "Criterion",
+        ["Treatment only", f"Treatment + {covariate_group.lower()}"],
+        horizontal=True,
+        key="lmvar_criterion",
+    )
+
+    hits = df.assign(hit=(df["pvalue_fdr"] < fdr_max) & (df["coefficient"] > coef_min))
+    model_keys = ["patient", "treatment", "feature"]
+    treatment_hit = (
+        hits.loc[hits["term"] == "treatment"]
+        .set_index(model_keys)["hit"]
+        .rename("treatment_hit")
+    )
+    group_hit = (
+        hits.loc[hits["term"].isin(group_terms)]
+        .groupby(model_keys)["hit"]
+        .any()
+        .rename("group_hit")
+    )
+    models = pd.concat([treatment_hit, group_hit], axis=1).fillna(False).reset_index()
+    # "Treatment only" excludes models where the covariate group is also a hit;
+    # "Treatment + group" is every treatment hit, whether or not the group is
+    # also significant -- a superset of "Treatment only", not an intersection
+    models["treatment_only"] = models["treatment_hit"] & ~models["group_hit"]
+    selected_col = (
+        "treatment_only" if criterion == "Treatment only" else "treatment_hit"
+    )
+
+    model_meta = df.drop_duplicates(model_keys)[
+        model_keys + ["drug", "Feature_type", "Channel", "Compartment", "tumor_type"]
+    ]
+    models = models.merge(model_meta, on=model_keys, how="left")
+    sig = models.loc[models[selected_col]]
+    n_hits = len(sig)
+    st.caption(
+        f"{n_hits:,} of {len(models):,} (patient, treatment, feature) models are "
+        f"significant under **{criterion}**"
+    )
+    if sig.empty:
+        st.warning("No models meet this criterion at the current thresholds.")
+        return
+    if n_hits > 20_000:
+        st.info(
+            f"{n_hits:,} significant models is a lot to render as a heatmap -- "
+            "raise the FDR/coefficient thresholds to narrow it down."
+        )
+
+    fig = annotated_significance_heatmap(sig, criterion, legend_title=criterion)
+    if fig is None:
+        st.warning("Nothing to plot.")
+    else:
+        st.plotly_chart(fig, width="stretch", key="lmvar_heatmap")
+        png_download(fig, "lmvar_heatmap", f"{label}_{criterion.replace(' ', '_')}")
+        _annotation_legends(
+            [
+                ("Patient", sorted(sig["patient"].unique()), "patient"),
+                (
+                    "Tumor type",
+                    sorted(sig["tumor_type"].dropna().unique()),
+                    "tumor_type",
+                ),
+                ("Treatment", sorted(sig["drug"].unique()), "treatment"),
+                (
+                    "Feature type",
+                    sorted(sig["Feature_type"].fillna("Other").unique()),
+                    "feature_type",
+                ),
+                ("Channel", sorted(sig["Channel"].fillna("Other").unique()), "channel"),
+                (
+                    "Compartment",
+                    sorted(sig["Compartment"].fillna("Other").unique()),
+                    "compartment",
+                ),
+            ]
+        )
+
+    st.divider()
+    st.caption("Drill into one model's full term signature")
+    c3, c4, c5 = st.columns(3)
+    patient = c3.selectbox(
+        "Patient", sorted(df["patient"].unique()), key="lmvar_patient"
+    )
+    df_p = df[df["patient"] == patient]
+    treatment = c4.selectbox(
+        "Treatment", sorted(df_p["treatment"].unique()), key="lmvar_treatment"
+    )
+    df_pt = df_p[df_p["treatment"] == treatment]
+    feature = c5.selectbox(
+        "Feature", sorted(df_pt["feature"].unique()), key="lmvar_feature"
+    )
+    model = df_pt[df_pt["feature"] == feature].sort_values("term")
+    if model.empty:
+        st.warning("No rows for this patient / treatment / feature combination.")
+        return
+    model = model.assign(
+        hit=(model["pvalue_fdr"] < fdr_max) & (model["coefficient"] > coef_min)
+    )
+    unique_variates = model.loc[model["hit"], "term"].tolist()
+    model["hit"] = model["hit"].astype(str)
+    st.markdown(
+        "**Unique variates (significant terms) for this model:** "
+        + (
+            ", ".join(f"`{t}`" for t in unique_variates)
+            if unique_variates
+            else "_none_"
+        )
+    )
+    st.dataframe(
+        model[["term", "coefficient", "pvalue_fdr", "hit", "rsquared", "rsquared_adj"]],
+        width="stretch",
+        hide_index=True,
+    )
+
+
 LINEAR_MODELING_SECTIONS = {
     "Volcano (effects vs significance)": lm_volcano_section,
     "Effect sizes": lm_effects_section,
     "Model fit": lm_fit_section,
+    "UpSet (variate combinations)": lm_upset_section,
+    "Unique variates per model": lm_model_variates_section,
 }

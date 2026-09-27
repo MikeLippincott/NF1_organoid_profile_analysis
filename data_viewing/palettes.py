@@ -176,6 +176,49 @@ TAB20_PALETTE = [
     "#17becf", "#9edae5",
 ]  # fmt: skip
 
+# ported from 6.plot_variate_importance.r's `term_colors` / `term_order`
+TERM_ORDER = [
+    "treatment",
+    "cell_count",
+    "organoid_count",
+    "cell_per_organoid_count",
+    "manhattan_distance_from_center",
+    "cell_x_position",
+    "cell_y_position",
+    "cell_z_position",
+    "cell_z_depth",
+]
+
+# user-defined split of TERM_ORDER for the UpSet "term group" toggle
+BIOLOGICAL_TERMS = [
+    "treatment",
+    "cell_count",
+    "organoid_count",
+    "cell_per_organoid_count",
+]
+TECHNICAL_TERMS = [
+    "manhattan_distance_from_center",
+    "cell_x_position",
+    "cell_y_position",
+    "cell_z_position",
+    "cell_z_depth",
+]
+
+TERM_COLORS = {
+    "treatment": "#d95f02",
+    "cell_count": "#1b9e77",
+    "organoid_count": "#7570b3",
+    "cell_per_organoid_count": "#e7298a",
+    "manhattan_distance_from_center": "#66a61e",
+    "cell_x_position": "#e6ab02",
+    "cell_y_position": "#a6761d",
+    "cell_z_position": "#666666",
+    "cell_z_depth": "#1f78b4",
+    # synthetic group-identity sets for the UpSet "combined groups" view
+    "Biological": "#d95f02",
+    "Technical": "#377eb8",
+}
+
 NORMALIZATION_VARIANT_LABELS = {
     "organoid_norm": "Organoid (ZEDProfiler)",
     "sammed_organoid_norm": "Organoid (SAM-med)",
@@ -205,18 +248,25 @@ _FALLBACK = TAB20_PALETTE
 
 
 def palette_for(column: str, levels: list[str]) -> dict[str, str] | None:
-    """Color map for the given levels of ``column`` (None if no palette applies)."""
+    """Color map for the given levels of ``column`` (None if no palette applies).
+
+    ``levels`` may contain duplicates (e.g. one entry per row rather than per
+    distinct value); assigning by position over a duplicate-laden list would
+    make a level's color depend on how many times it repeats, so every branch
+    below de-duplicates first.
+    """
     name = column.lower()
     if name in ("patient_tumor", "held_out_group", "patient"):
+        unique_levels = sorted(set(levels))
         return {
             lvl: TAB20_PALETTE[i % len(TAB20_PALETTE)]
-            for i, lvl in enumerate(sorted(levels))
+            for i, lvl in enumerate(unique_levels)
         }
     base = _PALETTES.get(name)
     if base is None:
         return None
     colors = {}
-    unknown = [lvl for lvl in levels if lvl not in base]
+    unknown = sorted({lvl for lvl in levels if lvl not in base})
     for i, lvl in enumerate(unknown):
         colors[lvl] = _FALLBACK[i % len(_FALLBACK)]
     colors.update({lvl: base[lvl] for lvl in levels if lvl in base})

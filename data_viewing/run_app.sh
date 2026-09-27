@@ -2,7 +2,6 @@
 # Launch the data_viewing Streamlit app from anywhere inside the repo.
 # Usage: bash data_viewing/run_app.sh [port]   (default port: 8501)
 
-# set -euo pipefail
 
 PORT="${1:-8501}"
 GIT_ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"

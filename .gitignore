@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 *.DS_Store
 
+# VSCode
+.vscode/
+
 # C extensions
 *.so
 
@@ -125,6 +128,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.uvr/
 env/
 venv/
 ENV/
@@ -183,3 +187,4 @@ shippable_dir.zip
 3.viability_prediction_models/model_results/
 3.viability_prediction_models/trained_models/
 3.viability_prediction_models/data/
+4.linear_modeling/data/
