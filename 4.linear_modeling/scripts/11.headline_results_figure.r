@@ -44,28 +44,31 @@ profile_palette <- setNames(c("#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3"), profi
 # their titles; only these dedicated panel PNGs omit them).
 
 # ---- A. variance partition -------------------------------------------------
+# grouped boxplot of all variates (per-model % of total variance), matching
+# 10.plot_explore_linear_model_haystacks.r's page 2
 variate_levels <- c(
     "treatment", "cell_count", "organoid_count", "cell_per_organoid_count",
     "manhattan_distance_from_center", "cell_x_position", "cell_y_position",
-    "cell_z_position", "cell_z_depth", "shared/unattributed", "residual"
+    "cell_z_position", "cell_z_depth", "residual"
 )
-paired <- brewer.pal(12, "Paired")
-variate_palette <- setNames(
-    c(paired[c(2, 4, 6, 8, 10, 12, 1, 3, 5)], "#7f7f7f", "#d9d9d9"),
-    variate_levels
-)
-partition <- arrow::read_parquet(
-    file.path(results_path, "explore_linear_models", "variance_partition_mean.parquet")
+partition_long <- arrow::read_parquet(
+    file.path(
+        results_path, "explore_linear_models", "plot_data",
+        "5_variance_partition_by_profile__partition_long.parquet"
+    )
 ) |>
-    pivot_longer(-profile, names_to = "term", values_to = "pct") |>
-    mutate(profile = factor(profile, levels = rev(profiles)), term = factor(term, levels = variate_levels))
+    filter(profile %in% main_profiles) |>
+    mutate(profile = factor(profile, levels = main_profiles), term = factor(term, levels = variate_levels))
 pA <- (
-    ggplot(partition, aes(x = pct, y = profile, fill = term))
-    + geom_col(position = position_stack(reverse = TRUE))
-    + scale_fill_manual(values = variate_palette, drop = FALSE)
-    + labs(x = "mean % of total variance", y = NULL, fill = NULL)
+    ggplot(partition_long, aes(x = term, y = pct, fill = profile))
+    + geom_boxplot(position = position_dodge(width = 0.8), width = 0.7, outlier.size = 0.3)
+    + scale_fill_manual(values = profile_palette, drop = FALSE, breaks = main_profiles)
+    + labs(x = NULL, y = "% of total variance", fill = NULL)
     + theme_manuscript(base_size = 14)
-    + theme(legend.position = "bottom", legend.text = element_text(size = 13), legend.key.size = unit(6, "mm"))
+    + theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom", legend.text = element_text(size = 13), legend.key.size = unit(6, "mm")
+    )
 )
 
 # ---- B. volcano (treatment effect size vs significance) -------------------
@@ -95,7 +98,8 @@ if (!file.exists(cooccurrence_png)) {
         "(it saves this PNG, which panel C renders)"
     )
 }
-pC <- wrap_elements(full = grid::rasterGrob(png::readPNG(cooccurrence_png), interpolate = TRUE))
+img_cooccurrence <- png::readPNG(cooccurrence_png)
+pC <- wrap_elements(full = grid::rasterGrob(img_cooccurrence, interpolate = TRUE))
 
 # ---- D. tumor-type UpSet (title-free panel from 6.plot_variate_importance.r: original model, tumor_type=pNF) --
 tumor_type_png <- file.path(
@@ -108,17 +112,27 @@ if (!file.exists(tumor_type_png)) {
         "(it saves this PNG, which panel D renders)"
     )
 }
-pD <- wrap_elements(full = grid::rasterGrob(png::readPNG(tumor_type_png), interpolate = TRUE))
+img_upset <- png::readPNG(tumor_type_png)
+pD <- wrap_elements(full = grid::rasterGrob(img_upset, interpolate = TRUE))
 
 # ---- assemble ---------------------------------------------------------------
-# rows 2-3 give the embedded UpSet (C) and heatmap (D) twice the height of A and B
+# C and D are pre-rendered PNGs (landscape: wide bar/matrix charts), so giving them
+# a portrait cell (as a shared, doubled-height row under A/B) let-boxed them with a
+# lot of blank space top/bottom. Instead each gets its own full-width row sized to
+# its own aspect ratio, so the embedded image fills its cell with no dead space.
+fig_width <- 16
+fig_height <- 16
 layout <- "
 AABB
-CCDD
 CCDD
 "
 headline_results_figure <- (
     wrap_plots(A = pA, B = pB, C = pD, D = pC, design = layout)
     + plot_annotation(tag_levels = "A")
 )
-save_ggplot(headline_results_figure, file.path(figures_path, "headline_results_figure.png"), width = 16, height = 16, dpi = 600)
+save_ggplot(
+    headline_results_figure, file.path(figures_path, "headline_results_figure.png"),
+    width = fig_width, height = fig_height, dpi = 600
+)
+
+

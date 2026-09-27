@@ -78,27 +78,29 @@ add_page(p_volcano, 18, 14)
 variate_levels <- c(
     "treatment", "cell_count", "organoid_count", "cell_per_organoid_count",
     "manhattan_distance_from_center", "cell_x_position", "cell_y_position",
-    "cell_z_position", "cell_z_depth", "shared/unattributed", "residual"
+    "cell_z_position", "cell_z_depth", "residual"
 )
-paired <- brewer.pal(12, "Paired")
-variate_palette <- setNames(
-    c(paired[c(2, 4, 6, 8, 10, 12, 1, 3, 5)], "#7f7f7f", "#d9d9d9"),
-    variate_levels
-)
-partition <- read_plot("5_variance_partition_by_profile", "partition") |>
-    pivot_longer(-profile, names_to = "term", values_to = "pct") |>
+partition_long <- read_plot("5_variance_partition_by_profile", "partition_long") |>
+    filter(profile %in% main_profiles) |>
     mutate(
-        profile = factor(profile, levels = rev(unique(profile))),
+        profile = factor(profile, levels = main_profiles),
         term = factor(term, levels = variate_levels)
     )
+
+# number of linear models fit per profile
+model_counts <- read_plot("5_variance_partition_by_profile", "model_counts")
+cat("models fit per profile:\n")
+print(model_counts)
+
 p_partition <- (
-    ggplot(partition, aes(x = pct, y = profile, fill = term))
-    + geom_col(position = position_stack(reverse = TRUE))
-    + scale_fill_manual(values = variate_palette, drop = FALSE)
-    + labs(x = "mean % of total variance", y = NULL, fill = NULL)
+    ggplot(partition_long, aes(x = term, y = pct, fill = profile))
+    + geom_boxplot(position = position_dodge(width = 0.8), width = 0.7, outlier.size = 0.5)
+    + scale_fill_manual(values = profile_palette, drop = FALSE, breaks = main_profiles)
+    + labs(x = NULL, y = "% of total variance", fill = NULL)
     + theme_manuscript(base_size = 16)
+    + theme(axis.text.x = element_text(angle = 45, hjust = 1))
 )
-add_page(p_partition, 14, 5)
+add_page(p_partition, 16, 6)
 
 share <- read_plot("5_treatment_variance_share_heatmap", "share") |> mutate(treatment = order_treatments(treatment))
 share_heatmaps <- lapply(main_profiles, function(pf) {
@@ -239,4 +241,3 @@ meki_heatmaps <- lapply(profiles, function(profile) {
 add_page(heatmap_grid_page(meki_heatmaps, ncol = 2), 20, 18)
 
 save_plots_pdf(pages, pdf_path, width = page_w, height = page_h)
-cat(length(pages), "pages ->", pdf_path, "\n")

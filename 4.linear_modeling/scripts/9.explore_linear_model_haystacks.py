@@ -222,29 +222,50 @@ save_plot_data("4_volcano_by_profile", volcano=volcano)
 # ## 5. Variance partitioning
 #
 # *For each model the variance is split into treatment, every covariate term
-# (counts and technical), a shared/unattributed part (collinear covariates -- type II SS
-# do not add up to the explained variance) and the residual. Which piece
-# dominates?*
+# (counts and technical) and the residual. Which piece dominates?
+#
+# The gap between `explained_pct` and the sum of each term's type II SS share
+# (collinear covariates -- e.g. `cell_per_organoid_count` is
+# `cell_count / organoid_count` -- mean Type II sums don't partition explained
+# variance cleanly and can swing arbitrarily negative under suppression) is
+# left out of these tables: it isn't a meaningful quantity to plot.*
 
 # In[ ]:
 
 
 partition_rows = []
+partition_long_rows = []
 for p in profiles:
     w = wide_pct[p].reindex(columns=term_order)  # terms a profile lacks stay NaN
     meta = trt[p].set_index(model_keys)
-    explained = meta["explained_pct"].reindex(w.index)
     resid = meta["residual_pct"].reindex(w.index)
     row = {t: w[t].mean() for t in term_order}
-    row["shared/unattributed"] = (explained - w.sum(axis=1)).mean()
     row["residual"] = resid.mean()
     row["profile"] = p
     partition_rows.append(row)
+
+    long = w.assign(residual=resid, profile=p)
+    partition_long_rows.append(
+        long.melt(id_vars="profile", var_name="term", value_name="pct").dropna(
+            subset=["pct"]
+        )
+    )
 partition = pd.DataFrame(partition_rows).set_index("profile")
 partition.reset_index().to_parquet(
     results_path / "variance_partition_mean.parquet", index=False
 )
-save_plot_data("5_variance_partition_by_profile", partition=partition)
+partition_long = pd.concat(partition_long_rows, ignore_index=True)
+# exact number of models fit per profile (one row per model in trt[p]); partition_long
+# undercounts this since it drops any model whose treatment-term share is NaN
+model_counts = pd.DataFrame(
+    {"profile": profiles, "n_models": [len(trt[p]) for p in profiles]}
+)
+save_plot_data(
+    "5_variance_partition_by_profile",
+    partition=partition,
+    partition_long=partition_long,
+    model_counts=model_counts,
+)
 partition
 
 

@@ -20,3 +20,6 @@ patchwork = "*"
 pheatmap = "*"
 tidyr = "*"
 tm = "*"
+
+[dependencies.ComplexHeatmap]
+bioc = true

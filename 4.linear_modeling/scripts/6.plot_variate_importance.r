@@ -139,7 +139,7 @@ plot_upset <- function(combos, sizes, title, top_n = UPSET_TOP_N, show_title = T
         + geom_text(aes(y = n_features * 1.08, label = n_features), vjust = 0, size = 5)
         + scale_fill_manual(values = c("TRUE" = term_colors[["treatment"]], "FALSE" = "#555555"))
         + scale_y_log10(expand = c(0, 0))
-        + coord_cartesian(xlim = c(0.4, n_combo + 0.6), ylim = c(0.8, max(shown$n_features) * 3), expand = FALSE)
+        + coord_cartesian(xlim = c(0.4, n_combo + 0.6), ylim = c(0.8, max(shown$n_features) * 1.6), expand = FALSE)
         + labs(x = NULL, y = "features in exactly\nthis combination (log)")
         + theme_classic(base_size = 16)
         + theme(
