@@ -1,4 +1,4 @@
-list_of_packages <- c("ggplot2", "dplyr", "arrow", "RColorBrewer", "scales")
+list_of_packages <- c("ggplot2", "dplyr", "arrow", "RColorBrewer", "scales", "ggrastr")
 for (package in list_of_packages) {
     suppressPackageStartupMessages(
         suppressWarnings(
@@ -131,12 +131,12 @@ base_layers <- function() {
         # 2+ facets renders fine with "raster" but blank with "tile"). The
         # "uneven pixel" warning from raster is cosmetic on a log grid, not
         # a correctness issue, so raster is the right geom here.
-        stat_density_2d(aes(fill = after_stat(ndensity)), geom = "raster", contour = FALSE),
+        rasterise(stat_density_2d(aes(fill = after_stat(ndensity)), geom = "raster", contour = FALSE), dpi = 300),
         scale_fill_gradient(low = "white", high = "#3B0764", name = "Density", limits = c(0, 1)),
         # Contour lines on top of the raster fill so density structure is
         # readable even where the white/purple gradient is hard to judge by
         # eye (e.g. printed in grayscale, or subtle mid-range differences).
-        geom_density_2d(color = "grey30", linewidth = 0.3, bins = 8),
+        rasterise(geom_density_2d(color = "grey30", linewidth = 0.3, bins = 8), dpi = 300),
         geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "orange", linewidth = 0.4),
         # 3 breaks per axis (not the default ~5-6) so scientific-notation
         # labels have room and don't overlap.
