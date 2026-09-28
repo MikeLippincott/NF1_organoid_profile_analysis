@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 *.DS_Store
 
+# VSCode
+.vscode/
+
 # C extensions
 *.so
 
@@ -125,6 +128,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.uvr/
 env/
 venv/
 ENV/
@@ -167,19 +171,16 @@ data/profiles_3D*
 shippable_dir.zip
 *Rplots.pdf
 1.EDA/results/
-1.EDA/figures/
-2.2d_vs_3d_analysis/results/
-4.linear_modeling/results/
 1.EDA/figures/consensus_heatmaps/
 1.EDA/figures/distance_metrics/
 1.EDA/figures/heatmaps/
 1.EDA/figures/pca/
 1.EDA/figures/linear_modeling/
 1.EDA/figures/montages/
-1.EDA/results/
 2.2d_vs_3d_analysis/results/
-1.EDA/figures/montages/
 3.viability_prediction_models/logs/
 3.viability_prediction_models/model_results/
 3.viability_prediction_models/trained_models/
 3.viability_prediction_models/data/
+4.linear_modeling/data/
+4.linear_modeling/results/

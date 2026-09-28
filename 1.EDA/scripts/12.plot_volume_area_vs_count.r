@@ -35,13 +35,13 @@ dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
 # to 3D: the 2D projection-method variants of this analysis compared
 # representation choices, not biology, and were dropped.
 #
-# Organoid_NoChannel_AreaSizeShape_Volume and Cell_NoChannel_AreaSizeShape_Volume
-# are z-scored PER PATIENT upstream (each patient's population is normalized
-# against its own mean/SD), so patients are NOT on a common scale: e.g.
-# mean/SD of organoid volume range from (0.49, 2.15) to (3.67, 12.0) across
-# our 12 patients. We therefore never pool/overlay this column across
-# patients on one shared axis -- only ever facet by patient, where each
-# panel is valid on its own terms.
+# Plotted in RAW (unnormalized) units, read directly from each modality's
+# pre-normalization stage (4.qc_profiles) rather than the z-scored
+# 5.normalized_profiles stage used previously -- volume spans several orders
+# of magnitude, so the y axis is log10. Faceted by patient (never
+# pooled/overlaid on one shared axis) since patients differ in absolute
+# volume scale even in raw units; treatment is shown via point color within
+# each patient facet instead.
 
 # --- FOV-normalized total cell count per patient x treatment x dose, from the
 # canonical (non-sammed/non-nucleocentric) 3D single-cell profile type,
@@ -67,14 +67,14 @@ counts_3d <- raw_counts %>%
     select(Metadata_patient_tumor, Metadata_treatment, Metadata_dose, total_cell_count_norm)
 
 # --- per-organoid volume and its own per-organoid cell count (both live on
-# the same row in organoid_norm.parquet -- no need to broadcast a
+# the same row in organoid_flagged_outliers.parquet -- no need to broadcast a
 # patient x treatment x dose mean onto every organoid; the real, unaggregated
 # per-organoid count gives each point its own x value instead of collapsing
 # a whole treatment group onto one repeated number) ---
 patients_3d <- setdiff(list.dirs(file.path(root_dir, "data", "profiles_3D"), recursive = FALSE, full.names = FALSE), c("all_patients", "NF0037_T1_CQ1"))
 vol_rows <- list()
 for (patient in patients_3d) {
-    f <- file.path(root_dir, "data", "profiles_3D", patient, "5.normalized_profiles", "organoid_norm.parquet")
+    f <- file.path(root_dir, "data", "profiles_3D", patient, "4.qc_profiles", "organoid_flagged_outliers.parquet")
     if (!file.exists(f)) next
     df <- read_parquet(f, col_select = c(
         "Metadata_Experiment_Treatment", "Metadata_Experiment_Dose",
@@ -91,40 +91,52 @@ joined_3d <- vol_df
 joined_3d$Metadata_treatment <- factor(joined_3d$Metadata_treatment,
                                           levels = intersect(custom_treatment_order, unique(joined_3d$Metadata_treatment)))
 
-# --- per-organoid scatter, one PDF page per patient (the only axis this
-# z-score is valid on), faceted by Treatment within each page instead of
-# color-coded (compound colors are hard to distinguish across ~20
-# treatments). Y axis is shared across a patient's treatment facets (all
-# z-scored against that one patient's mean/SD, so they're comparable);
-# x axis is free per facet since cell counts vary a lot by treatment. ---
-make_patient_pages <- function(df, x_col, y_col, title_prefix, x_lab, y_lab, point_size, point_alpha) {
-    lapply(sort(unique(df$Metadata_patient_tumor)), function(patient) {
-        sub_df <- df %>% filter(Metadata_patient_tumor == patient)
-        (
-            ggplot(sub_df, aes(x = .data[[x_col]], y = .data[[y_col]]))
-            + rasterise(geom_point(size = point_size, alpha = point_alpha, color = "steelblue"), dpi = 300)
-            + facet_wrap(~Metadata_treatment, scales = "free_x")
-            + labs(
-                title = paste0(title_prefix, " -- patient ", patient),
-                x = x_lab, y = y_lab
-            )
-            + theme_manuscript()
-        )
-    })
+# --- per-organoid/single-cell scatter, one plot faceted by one of
+# patient/treatment and colored by the other (never both faceted -- ~20
+# treatments made for cramped, hard-to-read facets when combined with
+# per-patient paging, and free_x scales per facet don't help when the facet
+# itself is the problem). Y axis is log10-scaled (raw volume spans several
+# orders of magnitude); x axis is free per facet. Title is split across two
+# lines and x-axis tick labels angled so they don't overlap. Legend points
+# are drawn larger and fully opaque (override.aes) so they stay legible even
+# though the plotted points themselves are semi-transparent (alpha = 0.7) to
+# show overplotting density. ---
+make_faceted_scatter <- function(df, x_col, y_col, facet_col, color_col, color_values, legend_name,
+                                  title, x_lab, y_lab, point_size, point_alpha = 0.7) {
+    (
+        ggplot(df, aes(x = .data[[x_col]], y = .data[[y_col]], color = .data[[color_col]]))
+        + rasterise(geom_point(size = point_size, alpha = point_alpha), dpi = 300)
+        + facet_wrap(as.formula(paste("~", facet_col)), scales = "free_x")
+        + scale_y_log10()
+        + scale_color_manual(values = color_values, name = legend_name)
+        + guides(color = guide_legend(override.aes = list(size = 3, alpha = 1)))
+        + labs(title = title, x = x_lab, y = y_lab)
+        + theme_manuscript(x_text = "angled")
+    )
 }
 
-p_facet_patient_pages <- make_patient_pages(
+p_vol_by_patient <- make_faceted_scatter(
     joined_3d, "Metadata_Object_OrganoidSingleCellCount", "Organoid_NoChannel_AreaSizeShape_Volume",
-    "3D: organoid volume vs. cells per organoid, by treatment",
-    "Cells per organoid", "Organoid volume (z-scored within patient)",
-    point_size = 1, point_alpha = 0.5
+    facet_col = "Metadata_patient_tumor", color_col = "Metadata_treatment",
+    color_values = custom_treatment_palette, legend_name = "Treatment",
+    title = "3D: organoid volume vs. cells per organoid\nfaceted by patient, colored by treatment",
+    x_lab = "Cells per organoid", y_lab = "Organoid volume (log10 scale)",
+    point_size = 1
 )
 
-# --- single-cell volume vs. the same FOV-normalized count, one PDF page per
-# patient, faceted by Treatment within each page ---
+p_vol_by_treatment <- make_faceted_scatter(
+    joined_3d, "Metadata_Object_OrganoidSingleCellCount", "Organoid_NoChannel_AreaSizeShape_Volume",
+    facet_col = "Metadata_treatment", color_col = "Metadata_patient_tumor",
+    color_values = tab20_palette_for_patients, legend_name = "Patient",
+    title = "3D: organoid volume vs. cells per organoid\nfaceted by treatment, colored by patient",
+    x_lab = "Cells per organoid", y_lab = "Organoid volume (log10 scale)",
+    point_size = 1
+)
+
+# --- single-cell volume vs. the same FOV-normalized count ---
 sc_vol_rows <- list()
 for (patient in patients_3d) {
-    f <- file.path(root_dir, "data", "profiles_3D", patient, "5.normalized_profiles", "sc_norm.parquet")
+    f <- file.path(root_dir, "data", "profiles_3D", patient, "4.qc_profiles", "sc_flagged_outliers.parquet")
     if (!file.exists(f)) next
     df <- read_parquet(f, col_select = c("Metadata_Experiment_Treatment", "Metadata_Experiment_Dose", "Cell_NoChannel_AreaSizeShape_Volume"))
     df$Metadata_patient_tumor <- patient
@@ -139,14 +151,27 @@ joined_sc <- sc_vol_df %>%
 joined_sc$Metadata_treatment <- factor(joined_sc$Metadata_treatment,
                                           levels = intersect(custom_treatment_order, unique(joined_sc$Metadata_treatment)))
 
-p_sc_facet_patient_pages <- make_patient_pages(
+p_sc_vol_by_patient <- make_faceted_scatter(
     joined_sc, "total_cell_count_norm", "Cell_NoChannel_AreaSizeShape_Volume",
-    "3D: single-cell volume vs. total cell count (FOV-normalized), by treatment",
-    "Total cells per treatment (FOV-normalized)", "Cell volume (z-scored within patient)",
-    point_size = 0.5, point_alpha = 0.4
+    facet_col = "Metadata_patient_tumor", color_col = "Metadata_treatment",
+    color_values = custom_treatment_palette, legend_name = "Treatment",
+    title = "3D: single-cell volume vs. total cell count (FOV-normalized)\nfaceted by patient, colored by treatment",
+    x_lab = "Total cells per treatment (FOV-normalized)", y_lab = "Cell volume (log10 scale)",
+    point_size = 0.5
 )
 
-pdf(file.path(figures_dir, "3D_volume_vs_count.pdf"), width = 11, height = 8.5, onefile = TRUE)
-for (p in p_facet_patient_pages) print(p)
-for (p in p_sc_facet_patient_pages) print(p)
+p_sc_vol_by_treatment <- make_faceted_scatter(
+    joined_sc, "total_cell_count_norm", "Cell_NoChannel_AreaSizeShape_Volume",
+    facet_col = "Metadata_treatment", color_col = "Metadata_patient_tumor",
+    color_values = tab20_palette_for_patients, legend_name = "Patient",
+    title = "3D: single-cell volume vs. total cell count (FOV-normalized)\nfaceted by treatment, colored by patient",
+    x_lab = "Total cells per treatment (FOV-normalized)", y_lab = "Cell volume (log10 scale)",
+    point_size = 0.5
+)
+
+pdf(file.path(figures_dir, "3D_volume_vs_count.pdf"), width = 14, height = 10, onefile = TRUE)
+print(p_vol_by_patient)
+print(p_vol_by_treatment)
+print(p_sc_vol_by_patient)
+print(p_sc_vol_by_treatment)
 dev.off()
