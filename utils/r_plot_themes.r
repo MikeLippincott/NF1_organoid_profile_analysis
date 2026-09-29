@@ -218,6 +218,16 @@ tumor_type_palette <- c(
     "Other" = "#999999"
 )
 
+viability_model_eval_split_colors <- c(
+    train = "#3B6FA0",
+    test  = "#E08214"
+)
+
+viability_shuffle_status_colors <- c(
+    not_shuffled = "#8f3ba0",
+    shuffled      = "#70e014"
+)
+
 # Short display labels for the 3D normalization variants, for use in plot
 # titles/legends instead of the raw snake_case identifiers (e.g.
 # "nucleocentric_morphem_norm" -> "Nucleocentric (MorphEm)"). First-pass

@@ -1,8 +1,8 @@
 #!/bin/bash
 
-jupyter nbconvert --to=script --FilesWriter.build_directory=scripts/ notebooks/*.ipynb
+git_root=$(git rev-parse --show-toplevel)
 
-cd scripts || exit 1
+jupyter nbconvert --to=script --FilesWriter.build_directory="$git_root"/3.viability_prediction_models/scripts/ "$git_root"/3.viability_prediction_models/notebooks/*.ipynb
 
 echo "Running pre-processing..."
 uv run python 0.pre-processing_profiles_for_viability_models.py
@@ -18,7 +18,3 @@ uv run python 3.single-cell_visualizations.py
 
 echo "Running multi-panel summary figure..."
 uvr run 4.multi_panel_summary_figure.r
-
-cd ../ || exit 1
-
-echo "Training complete."
