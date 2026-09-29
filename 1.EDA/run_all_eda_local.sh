@@ -1,4 +1,5 @@
 #!/bin/bash
+set -eo pipefail
 
 git_root=$(git rev-parse --show-toplevel)
 if [ -z "$git_root" ]; then
@@ -19,9 +20,9 @@ fi
 jupyter nbconvert --to=script --FilesWriter.build_directory="$git_root"/1.EDA/scripts/ "$git_root"/1.EDA/notebooks/*.ipynb
 
 # deactivate any existing conda environment
-conda deactivate
+conda deactivate 2>/dev/null || true
 # deactivate any existing venv environment
-deactivate 2>/dev/null
+deactivate 2>/dev/null || true
 
 uv run python "$git_root"/1.EDA/scripts/0.generate_umap.py
 uvr run "$git_root"/1.EDA/scripts/1.plot_umap.r

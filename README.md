@@ -16,7 +16,7 @@ This repo contains analysis code of profiles generated in multiple image-based p
 ## Computational environment
 Notebooks in this repo are split between Python and R, each managed by a separate environment.
 
-### Python (uv)
+### Python (uv) and R (uvr) setup
 Python notebooks use a `uv`-managed virtual environment defined in `pyproject.toml`/`uv.lock`.
 
 ```bash
@@ -26,6 +26,11 @@ source uv_setup.sh
 This creates `.venv` and registers a `python3` Jupyter kernel.
 Select this kernel when running the Python notebooks.
 
+This also creates a `.uvr` directory for the R environment.
+
+For more about uv and uvr, see:
+- [uv documentation](https://github.com/astral-sh/uv)
+- [uvr documentation](https://github.com/nbafrank/uvr)
 ### R (uvr)
 R notebooks use a `uvr`-managed R library defined in `uvr.toml`/`uvr.lock` (R `>=4.3.0`, set by `r_version`).
 `uv_setup.sh` also sets this up: it runs `uvr sync` to install the packages into `.uvr/library`, checks the uvr-managed R against `r_version`, and registers an IRkernel Jupyter kernel named after the `uvr.toml` project (`NF1_organoid_profile_analysis`) that runs that R with the project library.
@@ -41,3 +46,14 @@ Add a package with `uvr add <package>` so it is recorded in `uvr.toml` and `uvr.
 
 ### R (mamba, older modules)
 The R notebooks in `1.EDA` and `2.2d_vs_3d_analysis` were run with the mamba environment in `environments/r_env.yml` (`mamba env create -f environments/r_env.yml`) and a generic `ir` kernel.
+
+## Running the analysis repo
+Ensure that the data are acquired prior.
+The data zip once downloaded will be extracted and placed in the `data/` directory.
+data file: `data/shippable_dir.zip` should be present.
+
+Then run:
+```shell
+just all
+```
+

@@ -15,13 +15,16 @@ from notebook_init_utils import init_notebook
 root_dir, in_notebook = init_notebook()
 
 
-# In[2]:
+# In[ ]:
 
 
 OVERWRITE = True
-shippable_zip_path = pathlib.Path(f"{root_dir}/data/shippable_dir.zip").resolve(
-    strict=True
-)
+shippable_zip_path = pathlib.Path(f"{root_dir}/data/shippable_dir.zip").resolve()
+if not shippable_zip_path.exists():
+    print("Shippable zip not found")
+    raise FileNotFoundError(
+        "Shippable zip not found, please download and place in the data directory (relative to the root of the git repository)."
+    )
 
 
 # In[ ]:
