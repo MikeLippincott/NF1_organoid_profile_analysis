@@ -114,6 +114,18 @@ profile_dict = {
 # - **Coefficients**: Effect size of each predictor.
 # - **p-value** / **FDR**: Significance of each term (`pvalue`), Benjamini-Hochberg corrected per term (`pvalue_fdr`).
 # - **Variance shares**: each term's type II sum of squares as a % of the total variance (`term_pct_of_total_var`), and the residual share (`residual_pct`).
+#
+# **Profiles and outputs.** Four profiles are modelled, each saved as long-form parquet (one row per model x term) in `results/linear_modeling/`:
+#
+# | Profile | Input | Output |
+# |---------|-------|--------|
+# | organoid | normalized organoid profile | `organoid_norm.parquet` |
+# | single cell | normalized single-cell profile (organoid count taken from the organoid profile by patient + well) | `sc_norm.parquet` |
+# | organoid, well-aggregated | `data/organoid_norm_aggregated_profile.parquet` | `organoid_agg.parquet` |
+# | single cell, well-aggregated | `data/sc_norm_aggregated_profile.parquet` | `single_cell_agg.parquet` |
+#
+# Positional (`CMI`) columns are dropped, the `NF0037_T1_CQ1` patient is excluded, and the dose and unit are appended to the treatment (for example `Trametinib_1uM`) so each dose is its own model. Models are fit in parallel (`joblib`), and a profile whose output file already exists is skipped.
+#
 
 # In[4]:
 

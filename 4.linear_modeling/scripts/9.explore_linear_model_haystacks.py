@@ -109,7 +109,7 @@ tumor_type_dict = {
     "SARCO361_T1": "MPNST",
 }
 
-# "hit" definition -- identical to 4.find_significant_features
+# "hit" definition (see the 4.linear_modeling README)
 FDR_MAX = 0.05
 R2_MIN = 0.5
 R2_ADJ_MIN = 0

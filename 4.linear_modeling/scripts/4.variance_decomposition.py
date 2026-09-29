@@ -7,10 +7,12 @@
 #
 # Sections:
 #
-# 1. **Headline**: the distribution of % of total variance per model term (plus residual), for every fitted model set.
+# 1. **Variance per term**: the distribution of % of total variance per model term (plus residual), for every fitted model set.
 # 2. **Residual diagnostics**: how `residual_pct` is distributed, whether it concentrates in feature families, patients or treatments, what the technical covariates buy, and which of them matter.
 # 3. **Variates vs residual**: the models (feature x patient x treatment) where the variates together explain more variance than the residual.
 # 4. **Top models**: the highest-explained models, which variate dominates them and which feature families they come from.
+#
+# **Outputs.** Every figure is a page of one pdf, `figures/variance_decomposition/variance_decomposition.pdf` (dense boxplot outliers are rasterized so the file stays small; each page has a title and a subtitle saying what one box or bar is). The tables are parquet files in `results/decomposed_variance/`, `results/residual_diagnostics/`, `results/variate_vs_residual/` and `results/top_models/`.
 #
 # `residual_pct = SSR / SST * 100 = (1 - R^2) * 100`, per (patient, treatment, feature) model.
 
@@ -41,7 +43,7 @@ decomposed_path = pathlib.Path(
     root_dir, "4.linear_modeling/results/decomposed_variance"
 )
 
-# headline decomposition, variate-vs-residual and top-model outputs
+# decomposition, variate-vs-residual and top-model outputs
 figures_path = pathlib.Path(
     root_dir, "4.linear_modeling/figures/variance_decomposition"
 )
@@ -50,12 +52,9 @@ results_path = pathlib.Path(
 )
 win_dir = pathlib.Path(root_dir, "4.linear_modeling/results/variate_vs_residual")
 top_dir = pathlib.Path(root_dir, "4.linear_modeling/results/top_models")
-# residual diagnostics outputs
+# residual diagnostics outputs (its figures go in the same pdf as the decomposition)
 residual_results_path = pathlib.Path(
     root_dir, "4.linear_modeling/results/residual_diagnostics"
-)
-residual_figures_path = pathlib.Path(
-    root_dir, "4.linear_modeling/figures/residual_diagnostics"
 )
 for path in (
     figures_path,
@@ -64,10 +63,11 @@ for path in (
     top_dir,
     decomposed_path,
     residual_results_path,
-    residual_figures_path,
 ):
     path.mkdir(parents=True, exist_ok=True)
-# one multi-page pdf per figure directory
+# one multi-page pdf holding every figure; dense artists (boxplot outliers) are
+# rasterized so the vector text/axes stay sharp but the file stays small
+pdf_path = figures_path / "variance_decomposition.pdf"
 pdfs = FigurePDFs(dpi=600)
 
 # model name -> (parquet, profile, model type); the aggregated fits may not
@@ -114,18 +114,19 @@ rename_map = {
 model_keys = ["patient", "treatment", "feature"]
 
 
-# ## 1. Headline: where does the variance actually go?
+# ## 1. Variance per term: where does the variance actually go?
 
 # In[2]:
 
 
-def plot_decomposed_variance(df, level_order=None, save_path=None):
+def plot_decomposed_variance(df, model_name, level_order=None, save_path=None):
     """
     Plots the distribution of % of total variance per model term (plus residual).
 
     Parameters:
     - df: long DataFrame with one row per (fitted model, term) and a
       `pct_variance` column.
+    - model_name: Name of the model set, used in the subtitle.
     - level_order: List specifying the order of terms. Defaults to row order.
     - save_path: Path to save the plot (png, dpi=600). If None, not saved.
     """
@@ -140,14 +141,23 @@ def plot_decomposed_variance(df, level_order=None, save_path=None):
         order=level_order,
         fliersize=1,
         linewidth=1,
+        flierprops={"rasterized": True},
         ax=ax,
+    )
+    fig.suptitle(
+        "Share of each model's variance explained, by model term", y=1.02, va="bottom"
+    )
+    ax.set_title(
+        f"{model_name}: each box summarises all fitted models\n"
+        "(patient x treatment x feature); 'residual' is the unexplained share",
+        fontsize=10,
     )
     ax.set_xlabel("% of total variance per model")
     ax.set_ylabel("Model term")
     fig.tight_layout()
 
     if save_path:
-        pdfs.savefig(fig, save_path)
+        pdfs.savefig(fig, save_path, bbox_inches="tight")
 
     plt.show()
 
@@ -185,10 +195,7 @@ for lm_name, lm_dict in lm_results_dict.items():
     var_decomp = pd.concat([var_decomp, residual], ignore_index=True)
     lm_dict["output_profile_path"].parent.mkdir(parents=True, exist_ok=True)
     var_decomp.to_parquet(lm_dict["output_profile_path"], index=False)
-    plot_decomposed_variance(
-        var_decomp,
-        save_path=figures_path / "variance_decomposition.pdf",
-    )
+    plot_decomposed_variance(var_decomp, lm_name, save_path=pdf_path)
 
 
 # # 2. Residual diagnostics: why is the residual so high?
@@ -268,9 +275,18 @@ sns.histplot(
     common_norm=False,
     ax=ax,
 )
+sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1), title="Model set")
+fig.suptitle(
+    "Unexplained (residual) variance across fitted models", y=1.02, va="bottom"
+)
+ax.set_title(
+    "Each observation is one fitted model (patient x treatment x feature)\n"
+    "residual_pct = (1 - R^2) x 100",
+    fontsize=10,
+)
 ax.set_xlabel("residual_pct (% of total variance unexplained)")
 fig.tight_layout()
-pdfs.savefig(fig, residual_figures_path / "residual_diagnostics.pdf")
+pdfs.savefig(fig, pdf_path, bbox_inches="tight")
 plt.show()
 
 
@@ -376,8 +392,18 @@ for lm_name, lm_dict in lm_results_dict.items():
     ax.set_xlabel("% of total variance")
     ax.set_ylabel("")
     ax.legend(loc="center left", bbox_to_anchor=(1, 0.5), title="Term")
+    fig.suptitle(
+        f"Variance explained by each term in the {TOP_N_PLOT} best-explained models",
+        y=1.02,
+        va="bottom",
+    )
+    ax.set_title(
+        f"{lm_name}: one bar per fitted model (patient | treatment | feature)\n"
+        "bars sum to 100% of that model's variance",
+        fontsize=10,
+    )
     fig.tight_layout()
-    pdfs.savefig(fig, figures_path / "variance_decomposition.pdf")
+    pdfs.savefig(fig, pdf_path, bbox_inches="tight")
     plt.show()
 
     # 2 + 3. which variate dominates each top model, and which feature
@@ -399,8 +425,16 @@ for lm_name, lm_dict in lm_results_dict.items():
         ).fillna(0)
         share.sort_values(f"top {TOP_N_SUMMARY}").plot(kind="barh", ax=ax)
         ax.set_xlabel("fraction of models")
+        ax.legend(loc="upper left", bbox_to_anchor=(0, -0.15), fontsize=10)
+        ax.set_title(col)
+    axes[0].set_title("Dominant term")
+    fig.suptitle(
+        f"What drives the {TOP_N_SUMMARY} best-explained models?\n({lm_name})",
+        y=1.03,
+        va="bottom",
+    )
     fig.tight_layout()
-    pdfs.savefig(fig, figures_path / "variance_decomposition.pdf")
+    pdfs.savefig(fig, pdf_path, bbox_inches="tight")
     plt.show()
 
     print(lm_name)
@@ -411,7 +445,7 @@ for lm_name, lm_dict in lm_results_dict.items():
     )
 
 
-# In[ ]:
+# In[8]:
 
 
 pdfs.close()

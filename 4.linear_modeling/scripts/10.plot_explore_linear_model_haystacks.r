@@ -32,9 +32,6 @@ read_plot <- function(figure, key) {
 
 # significance threshold, identical to the calculation notebook
 FDR_MAX <- 0.05
-profiles <- c("organoid", "sc", "organoid_agg", "sc_agg")
-main_profiles <- c("organoid", "sc")
-profile_palette <- setNames(c("#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3"), profiles)
 
 # every figure is a page of one pdf, in the order it is added
 pages <- list()
@@ -153,7 +150,7 @@ p_direction <- (
     ggplot(direction, aes(x = n_significant, y = forcats_rev(treatment), fill = direction))
     + geom_col()
     + geom_vline(xintercept = 0, linewidth = 0.3)
-    + scale_fill_manual(values = c(down = "#4575b4", up = "#d73027"))
+    + scale_fill_manual(values = direction_palette)
     + facet_wrap(~profile, ncol = 2, scales = "free")
     + labs(x = "number of significant variates (down < 0 < up)", y = NULL)
     + theme_manuscript(base_size = 14)
@@ -178,7 +175,7 @@ p_enrichment <- (
     + geom_col()
     + geom_vline(xintercept = 0, linewidth = 0.3)
     + scale_y_discrete(labels = function(x) sub("^.*___", "", x))
-    + scale_fill_manual(values = c(enriched = "#d73027", depleted = "#4575b4", "n.s." = "grey"), name = "FDR < 0.05")
+    + scale_fill_manual(values = enrichment_palette, name = "FDR < 0.05")
     + facet_grid(profile ~ family, scales = "free")
     + labs(x = "log2 odds ratio of being significant", y = NULL)
     + theme_manuscript(base_size = 14)
@@ -234,7 +231,7 @@ meki_heatmaps <- lapply(profiles, function(profile) {
     treatments <- levels(order_treatments(setdiff(names(coefs), c("patient", "feature"))))
     rho <- cor(coefs[treatments], method = "spearman", use = "pairwise.complete.obs")
     simple_heatmap(
-        rho, "Spearman", circlize::colorRamp2(c(-1, 0, 1), c("#4575b4", "white", "#d73027")),
+        rho, "Spearman", circlize::colorRamp2(c(-1, 0, 1), correlation_diverging_colours),
         cell_fmt = "%.2f", cell_size = 9
     )
 })

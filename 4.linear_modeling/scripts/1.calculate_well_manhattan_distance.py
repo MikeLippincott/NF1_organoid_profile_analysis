@@ -4,6 +4,9 @@
 # # Well distance from the plate center
 #
 # Computes the Manhattan distance of every well of a 96-well plate (rows A-H, columns 1-12) from the plate center (between rows D/E and columns 6/7) and draws it as a platemap. The distance is the `manhattan_distance_from_center` covariate of `3.linear_modeling_technical_vars`.
+#
+# Outputs (`results/well_manhattan_distance/`): `well_manhattan_distance.parquet` (one row per well) and `well_manhattan_distance_platemap.pdf`.
+#
 
 # In[1]:
 
