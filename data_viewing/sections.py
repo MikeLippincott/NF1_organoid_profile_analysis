@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from background import subpanel_background
 from data_io import EDA_RESULTS, Dataset, load_dataset, parquet_columns, registry
 from palettes import (
     BIOLOGICAL_TERMS,
@@ -127,6 +128,7 @@ def pca_section(filters: Filters) -> None:
             labels={"x": "Component", "y": "Explained variance ratio"},
             title="Scree plot",
         )
+        subpanel_background("pca_scree")
         st.plotly_chart(scree, width="stretch", key=f"pca_scree_{label}")
 
 
@@ -155,6 +157,9 @@ def correlation_section(filters: Filters) -> None:
         ["Replicate/treatment-level (pairs)", "Per-patient single-cell"],
         horizontal=True,
         key="corr_mode",
+    )
+    subpanel_background(
+        "corr_pairs" if mode.startswith("Replicate") else "corr_per_patient"
     )
     if mode.startswith("Replicate"):
         _pairs_heatmap(pair_files, filters)
@@ -722,6 +727,7 @@ def lm_upset_section(filters: Filters) -> None:
     model_set = c2.radio(
         "Model set", ["original", "technical"], horizontal=True, key="upset_model_set"
     )
+    subpanel_background("lm_upset_profile")
     dataset_key = UPSET_PROFILE_DATASETS[(profile, model_set)]
     ds = registry()["linear_modeling"].get(dataset_key)
     if ds is None:
@@ -1075,6 +1081,7 @@ def lm_model_variates_section(filters: Filters) -> None:
             f"{n_hits:,} significant models is a lot to render as a heatmap -- "
             "raise the FDR/coefficient thresholds to narrow it down."
         )
+        return
 
     fig = annotated_significance_heatmap(sig, criterion, legend_title=criterion)
     if fig is None:
@@ -1107,6 +1114,7 @@ def lm_model_variates_section(filters: Filters) -> None:
 
     st.divider()
     st.caption("Drill into one model's full term signature")
+    subpanel_background("lm_variates_drilldown")
     c3, c4, c5 = st.columns(3)
     patient = c3.selectbox(
         "Patient", sorted(df["patient"].unique()), key="lmvar_patient"

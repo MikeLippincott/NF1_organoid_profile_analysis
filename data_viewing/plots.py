@@ -64,8 +64,14 @@ def _order_categories(df: pd.DataFrame, col: str) -> None:
 def apply_global_filters(
     df: pd.DataFrame, filters: dict[str, list[str]]
 ) -> pd.DataFrame:
-    """Apply sidebar filters wherever the column exists (silently skipped otherwise)."""
+    """Apply sidebar filters wherever the column exists (silently skipped otherwise).
+
+    ``patient_tumor`` resolves to the ``patient`` column when a table (e.g. a
+    normalized linear-model result) only has the latter.
+    """
     for col, selected in filters.items():
+        if col not in df.columns and col == "patient_tumor" and "patient" in df.columns:
+            col = "patient"
         if selected and col in df.columns:
             df = df[df[col].astype(str).isin(selected)]
     return df

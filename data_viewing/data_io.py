@@ -14,23 +14,18 @@ import pyarrow.parquet as pq
 import streamlit as st
 from palettes import TREATMENT_MOA_MAP, TUMOR_TYPE_LOOKUP
 
+# `uv run` re-syncs the env and drops the editable `utils` install (it is not in
+# pyproject.toml), so fall back to the in-repo source when it is not importable.
 try:
-    from notebook_init_utils import init_notebook
-except ImportError:  # utils package not installed in this env
-    _here = pathlib.Path(__file__).resolve()
-    _git_root = next(p for p in _here.parents if (p / ".git").exists())
-    sys.path.append(str(_git_root / "utils" / "src" / "notebook_init_utils"))
-    from notebook_init_utils import init_notebook
-
-# ---------------------------------------------------------------------------
-# Paths (defined once, relative to the Git root)
-# ---------------------------------------------------------------------------
-try:
-    root_dir, _ = init_notebook()
-except FileNotFoundError:
-    root_dir = next(
-        p for p in pathlib.Path(__file__).resolve().parents if (p / ".git").exists()
+    from notebook_init_utils.notebook_init_utils import init_notebook
+except ModuleNotFoundError:
+    sys.path.insert(
+        0, str(pathlib.Path(__file__).resolve().parents[1] / "utils" / "src")
     )
+    from notebook_init_utils.notebook_init_utils import init_notebook
+
+root_dir, in_notebook = init_notebook()
+
 
 EDA_RESULTS = root_dir / "1.EDA" / "results"
 VIABILITY_RESULTS = root_dir / "3.viability_prediction_models" / "model_results"

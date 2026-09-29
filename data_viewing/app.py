@@ -6,6 +6,7 @@ Run from anywhere inside the repo with:
 
 import plotly.io as pio
 import streamlit as st
+from background import module_background, section_background
 from data_io import GLOBAL_FILTER_COLUMNS, all_filterable_paths, global_filter_options
 from sections import EDA_SECTIONS, LINEAR_MODELING_SECTIONS, VIABILITY_SECTIONS
 
@@ -45,9 +46,11 @@ MODULES = {
 tabs = st.tabs(list(MODULES))
 for tab, (module, sections) in zip(tabs, MODULES.items()):
     with tab:
+        module_background(module)
         # only the selected section renders, so heavy tables load on demand
         section = st.radio(
             "Analysis", list(sections), horizontal=True, key=f"section_{module}"
         )
         st.subheader(section)
+        section_background(section)
         sections[section](filters)
