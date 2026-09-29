@@ -12,6 +12,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+.Rprofile
 build/
 develop-eggs/
 dist/
@@ -54,7 +55,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-
+settings.json
+.Rprofile
 # Translations
 *.mo
 *.pot
@@ -184,3 +186,4 @@ shippable_dir.zip
 3.viability_prediction_models/data/
 4.linear_modeling/data/
 4.linear_modeling/results/
+4.linear_modeling/figures/variate_class_plots/sc_T-O-C-N-M-X-Y-Z-D/upset/

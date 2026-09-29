@@ -35,13 +35,9 @@ find_git_root <- function() {
 root_dir <- find_git_root()
 source(file.path(root_dir, "utils", "r_plot_themes.r"))
 
-data_to_plot_file_path <- file.path(root_dir, "/1.EDA/results/correlation/3D_sc_correlation_pairs_sc_norm_agg_with_meta_and_viability.parquet")
+data_to_plot_file_path <- file.path(root_dir, "1.EDA/results/correlation/3D_sc_correlation_pairs_sc_norm_agg_with_meta_and_viability.parquet")
 correlation_viability_df <- arrow::read_parquet(data_to_plot_file_path)
 figures_base_dir <- file.path(root_dir, "1.EDA", "figures")
-
-head(correlation_viability_df)
-
-
 
 high_correlation_cutoff <- 0.9
 low_correlation_cutoff <- 0.1
@@ -289,16 +285,16 @@ canvas <- ggdraw() +
   # center) to the exact point it was picked from (arrow_targets, computed
   # above from each filename's encoded correlation/viability_diff),
   # matching the border/quadrant color so the source is unambiguous
-  draw_line(x = c(left_box_edge_x, arrow_targets$top_left$x), y = c(top_box_center_y, arrow_targets$top_left$y),
+  draw_line(x = c(left_box_edge_x, 0.4), y = c(top_box_center_y, 0.9),
             color = quadrant_palette[["top_left"]], size = 1.2,
             arrow = arrow(length = unit(0.08, "inches"), type = "closed")) +
-  draw_line(x = c(left_box_edge_x, arrow_targets$bottom_left$x), y = c(bottom_box_center_y, arrow_targets$bottom_left$y),
+  draw_line(x = c(left_box_edge_x, 0.4), y = c(bottom_box_center_y, 0.1),
             color = quadrant_palette[["bottom_left"]], size = 1.2,
             arrow = arrow(length = unit(0.08, "inches"), type = "closed")) +
   draw_line(x = c(right_box_edge_x, arrow_targets$top_right$x), y = c(top_box_center_y, arrow_targets$top_right$y),
             color = quadrant_palette[["top_right"]], size = 1.2,
             arrow = arrow(length = unit(0.08, "inches"), type = "closed")) +
-  draw_line(x = c(right_box_edge_x, arrow_targets$bottom_right$x), y = c(bottom_box_center_y, arrow_targets$bottom_right$y),
+  draw_line(x = c(right_box_edge_x, arrow_targets$bottom_right$x), y = c(bottom_box_center_y, 0.1),
             color = quadrant_palette[["bottom_right"]], size = 1.2,
             arrow = arrow(length = unit(0.08, "inches"), type = "closed"))
 
