@@ -1142,7 +1142,7 @@ for image_mode, consensus_paths in censensus_profiles_all_dict.items():
 logging.info(f"Finished processing all {total_profiles} profile(s)")
 
 
-# In[ ]:
+# In[8]:
 
 
 # ---------------------------------------------------------------------
