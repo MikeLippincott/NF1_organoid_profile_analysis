@@ -12,6 +12,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+.Rprofile
 build/
 develop-eggs/
 dist/
@@ -54,7 +55,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-
+settings.json
+.Rprofile
 # Translations
 *.mo
 *.pot
@@ -171,20 +173,17 @@ data/profiles_3D*
 shippable_dir.zip
 *Rplots.pdf
 1.EDA/results/
-1.EDA/figures/
-2.2d_vs_3d_analysis/results/
-4.linear_modeling/results/
 1.EDA/figures/consensus_heatmaps/
 1.EDA/figures/distance_metrics/
 1.EDA/figures/heatmaps/
 1.EDA/figures/pca/
 1.EDA/figures/linear_modeling/
 1.EDA/figures/montages/
-1.EDA/results/
 2.2d_vs_3d_analysis/results/
-1.EDA/figures/montages/
 3.viability_prediction_models/logs/
 3.viability_prediction_models/model_results/
 3.viability_prediction_models/trained_models/
 3.viability_prediction_models/data/
 4.linear_modeling/data/
+4.linear_modeling/results/
+4.linear_modeling/figures/variate_class_plots/sc_T-O-C-N-M-X-Y-Z-D/upset/

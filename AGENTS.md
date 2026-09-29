@@ -29,3 +29,6 @@ Every analysis step exists as both a Jupyter notebook (`notebooks/`) and a mirro
 
 ## File naming and ordering
 Analysis files are numbered by pipeline order (`0.`, `1.`, `2.`, ...), not alphabetically. A new analysis step gets the next unused integer prefix, and calculation steps are typically followed by a corresponding plotting step (e.g. `N.calculate_x.py` / `N+1.plot_x.r`).
+
+## Code
+Never print the full path of a file or directory, as this can expose sensitive information about the system's file structure.

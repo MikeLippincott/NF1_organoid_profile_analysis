@@ -59,7 +59,8 @@ save_plots_pdf <- function(plots, output_path, width, height) {
     page_paths <- file.path(tmp_dir, sprintf("page_%03d.pdf", seq_len(n)))
     for (i in seq_len(n)) {
         pdf(page_paths[i], width = width[i], height = height[i])
-        print(plots[[i]])
+        # a function is a page drawn with grid (e.g. ComplexHeatmap), anything else is a ggplot
+        if (is.function(plots[[i]])) plots[[i]]() else print(plots[[i]])
         dev.off()
     }
     status <- system2("pdfunite", c(page_paths, output_path))
@@ -471,4 +472,443 @@ plot_2d_vs_3d_scatter <- function(
 
     if (!is.null(facet_formula)) p <- p + facet_wrap(facet_formula, scales = "free", ncol = facet_ncol)
     p
+}
+
+# ---- ComplexHeatmap helpers (packages ComplexHeatmap, circlize and grid must be loaded) ----
+
+heat_col_fun <- function(values = NULL, palette = "Mako", rev = TRUE, limits = range(values, na.rm = TRUE)) {
+    #' Continuous colour function for a Heatmap: an hcl.colors palette
+    #' stretched over `limits` (default: the range of `values`). The default
+    #' (Mako, light -> dark) matches viridis option "F" with direction = -1.
+    #' Degenerate limits (non-finite or equal) become a unit range centred on
+    #' the finite value, or on zero, so the breaks stay strictly increasing.
+    if (!all(is.finite(limits)) || limits[1] == limits[2]) {
+        centre <- limits[is.finite(limits)]
+        centre <- if (length(centre) > 0) centre[1] else 0
+        limits <- c(centre - 0.5, centre + 0.5)
+    }
+    circlize::colorRamp2(seq(limits[1], limits[2], length.out = 9), hcl.colors(9, palette, rev = rev))
+}
+
+long_to_matrix <- function(df, row, col, value, row_levels = NULL, col_levels = NULL) {
+    #' Long table -> matrix (rows x columns), NA where a pair is missing.
+    if (is.null(row_levels)) row_levels <- unique(as.character(df[[row]]))
+    if (is.null(col_levels)) col_levels <- unique(as.character(df[[col]]))
+    mat <- matrix(NA_real_, nrow = length(row_levels), ncol = length(col_levels), dimnames = list(row_levels, col_levels))
+    row_idx <- match(as.character(df[[row]]), row_levels)
+    col_idx <- match(as.character(df[[col]]), col_levels)
+    keep <- !is.na(row_idx) & !is.na(col_idx)
+    mat[cbind(row_idx[keep], col_idx[keep])] <- df[[value]][keep]
+    mat
+}
+
+simple_heatmap <- function(mat, name, col, title = NULL, cell_fmt = NULL, cell_labels = NULL,
+                           cell_size = 8, base_size = 11, cluster_rows = FALSE, cluster_columns = FALSE,
+                           row_names_max_width = NULL, ...) {
+    #' Heatmap with the manuscript text sizes. cell_fmt (a sprintf format)
+    #' writes the value in every cell; cell_labels (a same-shaped matrix)
+    #' writes those labels instead. Rows/columns keep the matrix order unless
+    #' cluster_rows / cluster_columns are set (any Heatmap clustering argument can go in `...`).
+    #' row_names_max_width defaults to just enough room for the longest row
+    #' label at row_names_gp's fontsize (base_size) -- ComplexHeatmap's own
+    #' default (a flat 6cm) doesn't grow with long feature names, so labels
+    #' get silently clipped and run into the legend instead of wrapping or
+    #' widening; pass a value explicitly to override.
+    cell_fun <- NULL
+    if (!is.null(cell_fmt) || !is.null(cell_labels)) {
+        cell_fun <- function(j, i, x, y, width, height, fill) {
+            label <- if (!is.null(cell_labels)) cell_labels[i, j] else if (is.na(mat[i, j])) NA else sprintf(cell_fmt, mat[i, j])
+            if (!is.na(label)) grid::grid.text(label, x, y, gp = grid::gpar(fontsize = cell_size))
+        }
+    }
+    if (is.null(row_names_max_width)) {
+        row_names_max_width <- if (!is.null(rownames(mat))) {
+            ComplexHeatmap::max_text_width(rownames(mat), gp = grid::gpar(fontsize = base_size)) + grid::unit(3, "mm")
+        } else {
+            grid::unit(6, "cm")
+        }
+    }
+    ComplexHeatmap::Heatmap(
+        mat, name = name, col = col, na_col = "grey90",
+        cluster_rows = cluster_rows, cluster_columns = cluster_columns,
+        column_title = title, column_title_gp = grid::gpar(fontsize = base_size + 3, fontface = "bold"),
+        row_names_gp = grid::gpar(fontsize = base_size), column_names_gp = grid::gpar(fontsize = base_size),
+        row_names_max_width = row_names_max_width,
+        heatmap_legend_param = list(
+            title = name,
+            title_gp = grid::gpar(fontsize = base_size, fontface = "bold"),
+            labels_gp = grid::gpar(fontsize = base_size)
+        ),
+        cell_fun = cell_fun, ...
+    )
+}
+
+heatmap_grid_page <- function(heatmaps, ncol = 1, title = NULL) {
+    #' A page (a function, for save_plots_pdf) that lays a list of Heatmaps
+    #' out on an nrow x ncol grid, with an optional title on top.
+    force(heatmaps); force(ncol); force(title)
+    function() {
+        grid::grid.newpage()
+        n_row <- ceiling(length(heatmaps) / ncol)
+        grid::pushViewport(grid::viewport(layout = grid::grid.layout(
+            n_row + 1, ncol,
+            heights = grid::unit.c(grid::unit(2, "lines"), grid::unit(rep(1, n_row), "null"))
+        )))
+        if (!is.null(title)) {
+            grid::pushViewport(grid::viewport(layout.pos.row = 1, layout.pos.col = seq_len(ncol)))
+            grid::grid.text(title, gp = grid::gpar(fontsize = 16, fontface = "bold"))
+            grid::popViewport()
+        }
+        for (i in seq_along(heatmaps)) {
+            grid::pushViewport(grid::viewport(layout.pos.row = (i - 1) %/% ncol + 2, layout.pos.col = (i - 1) %% ncol + 1))
+            ComplexHeatmap::draw(heatmaps[[i]], newpage = FALSE, merge_legend = TRUE, padding = grid::unit(c(2, 2, 2, 2), "mm"))
+            grid::popViewport()
+        }
+        grid::popViewport()
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Linear modeling figures (4.linear_modeling)
+# ---------------------------------------------------------------------------
+
+# UpSet layout: at most UPSET_TOP_N combinations are drawn. Column widths are in units of 0.5 in:
+# set-size bars, term labels (fits "cell_per_organoid_count"), and the bar-row height (fits the
+# two-line y-axis title)
+UPSET_TOP_N <- 25
+UPSET_SIZE_COL <- 4.2
+UPSET_LABEL_COL <- 6.4
+UPSET_BAR_ROW <- 3.4
+
+upset_dims <- function(n_combo, n_set) {
+    #' Page width / height (in) of a plot_upset() page.
+    c(
+        width = 0.5 * (UPSET_SIZE_COL + UPSET_LABEL_COL + max(min(n_combo, UPSET_TOP_N), 4) + 1.5) + 0.3,
+        height = 3.8 + 0.42 * n_set
+    )
+}
+
+# four-set Venn layout (plot coordinates): ellipse x, y, width, height, angle
+venn_ellipses <- data.frame(
+    set = 1:4,
+    x = c(0.350, 0.450, 0.544, 0.644),
+    y = c(0.400, 0.500, 0.500, 0.400),
+    w = 0.72, h = 0.45,
+    angle = c(140, 140, 40, 40)
+)
+# where the count of each region (bits in term order) is written
+venn_region_xy <- data.frame(
+    region_key = c(
+        "1000", "0100", "0010", "0001", "1100", "1010", "1001", "0110",
+        "0101", "0011", "1110", "1101", "1011", "0111", "1111"
+    ),
+    x = c(0.14, 0.32, 0.68, 0.85, 0.23, 0.29, 0.50, 0.50, 0.71, 0.77, 0.35, 0.61, 0.39, 0.65, 0.50),
+    y = c(0.42, 0.72, 0.72, 0.42, 0.59, 0.30, 0.17, 0.66, 0.30, 0.59, 0.50, 0.24, 0.24, 0.50, 0.38)
+)
+venn_set_label_xy <- data.frame(x = c(0.02, 0.22, 0.78, 0.98), y = c(0.86, 0.97, 0.97, 0.86), hjust = c(0, 0.5, 0.5, 1))
+
+ellipse_polygon <- function(x, y, w, h, angle, set, n = 200) {
+    t <- seq(0, 2 * pi, length.out = n)
+    theta <- angle * pi / 180
+    data.frame(
+        set = set,
+        px = x + (w / 2) * cos(t) * cos(theta) - (h / 2) * sin(t) * sin(theta),
+        py = y + (w / 2) * cos(t) * sin(theta) + (h / 2) * sin(t) * cos(theta)
+    )
+}
+
+plot_venn <- function(regions, sizes, title) {
+    #' Four-set Venn of feature membership across the linear-model variates.
+    terms <- sizes$term
+    stopifnot(length(terms) == 4)
+    polys <- do.call(rbind, lapply(seq_len(4), function(i) do.call(ellipse_polygon, as.list(venn_ellipses[i, ]))))
+    polys$term <- factor(terms[polys$set], levels = terms)
+    counts <- venn_region_xy |>
+        left_join(regions[, c("region_key", "n_features")], by = "region_key") |>
+        mutate(n_features = ifelse(is.na(n_features), 0, n_features))
+    labels <- cbind(venn_set_label_xy, term = terms, n = sizes$set_size)
+    labels$label <- paste0(labels$term, "\n(", labels$n, " features)")
+    (
+        ggplot()
+        + geom_polygon(data = polys, aes(px, py, group = term, fill = term), alpha = 0.3)
+        + geom_path(data = polys, aes(px, py, group = term, colour = term), linewidth = 0.6)
+        + geom_text(data = counts, aes(x, y, label = n_features), size = 6.5)
+        + geom_text(
+            data = labels, aes(x, y, label = label, colour = term, hjust = hjust),
+            fontface = "bold", size = 5, lineheight = 0.9
+        )
+        + scale_fill_manual(values = linear_modeling_term_palette[terms])
+        + scale_colour_manual(values = linear_modeling_term_palette[terms])
+        + coord_fixed(xlim = c(0, 1), ylim = c(0, 1))
+        + labs(title = paste0(
+            "Features that are significant for each variate (", title, ")\n",
+            sizes$n_none[1], " of ", sizes$n_total[1],
+            " features are significant for none of these ", length(terms), " variates"
+        ))
+        + theme_manuscript_void(base_size = 14)
+        + theme(legend.position = "none")
+    )
+}
+
+plot_upset <- function(combos, sizes, title, top_n = UPSET_TOP_N, show_title = TRUE) {
+    #' UpSet plot: bars = features in exactly that term combination, dots = which terms.
+    #' show_title = FALSE drops the overall plot_annotation title (used for the multiresult-figure
+    #' panel, which embeds this plot without a title even though the standalone PDF keeps one).
+    terms <- sizes$term
+    n_set <- length(terms)
+    shown <- head(combos, top_n)
+    n_combo <- nrow(shown)
+    shown$x <- seq_len(n_combo)
+    note <- if (n_combo < nrow(combos)) paste0("top ", n_combo, " of ", nrow(combos), " combinations; ") else ""
+
+    p_bar <- (
+        ggplot(shown, aes(x = x))
+        + geom_rect(
+            aes(xmin = x - 0.45, xmax = x + 0.45, ymin = 0.8, ymax = n_features, fill = treatment_specific)
+        )
+        + geom_text(aes(y = n_features * 1.08, label = n_features), vjust = 0, size = 5)
+        + scale_fill_manual(values = treatment_specific_palette)
+        + scale_y_log10(expand = c(0, 0))
+        + coord_cartesian(xlim = c(0.4, n_combo + 0.6), ylim = c(0.8, max(shown$n_features) * 1.6), expand = FALSE)
+        + labs(x = NULL, y = "features in exactly\nthis combination (log)")
+        + theme_manuscript(base_size = 16, x_text = "blank")
+        + theme(
+            legend.position = "none", panel.grid = element_blank(), panel.border = element_blank(),
+            axis.line.y = element_line(), plot.margin = margin(2, 2, 0, 2)
+        )
+    )
+
+    membership <- shown |>
+        select(x, all_of(paste0("in_", terms))) |>
+        pivot_longer(-x, names_to = "term", values_to = "on") |>
+        mutate(term = sub("^in_", "", term), row = match(term, terms))
+    stripes <- data.frame(row = seq_len(n_set), shade = seq_len(n_set) %% 2 == 1)
+    lines_df <- membership |> filter(on) |> group_by(x) |> filter(n() > 1) |> ungroup()
+    p_mat <- (
+        ggplot()
+        + geom_rect(
+            data = filter(stripes, shade),
+            aes(xmin = 0.4, xmax = n_combo + 0.6, ymin = row - 0.5, ymax = row + 0.5), fill = upset_stripe_colour
+        )
+        + geom_point(data = membership, aes(x, row), colour = upset_dot_off_colour, size = 5.5)
+        + geom_line(data = lines_df, aes(x, row, group = x), linewidth = 0.9)
+        + geom_point(data = filter(membership, on), aes(x, row, fill = term), colour = "black", shape = 21, size = 5.5)
+        + scale_fill_manual(values = linear_modeling_term_palette[terms])
+        + scale_y_reverse(limits = c(n_set + 0.5, 0.5), expand = c(0, 0))
+        + scale_x_continuous(limits = c(0.4, n_combo + 0.6), expand = c(0, 0))
+        + theme_manuscript_void()
+        + theme(legend.position = "none")
+    )
+
+    sizes$row <- seq_len(n_set)
+    p_size <- (
+        ggplot(sizes, aes(y = row))
+        + geom_rect(aes(xmin = 0, xmax = set_size, ymin = row - 0.45, ymax = row + 0.45), fill = upset_set_size_colour)
+        + geom_text(aes(x = set_size, label = paste0(set_size, " ")), hjust = 1, size = 4.5)
+        + scale_x_reverse(limits = c(max(sizes$set_size) * 1.35, 0))
+        + scale_y_reverse(limits = c(n_set + 0.5, 0.5), expand = c(0, 0))
+        + labs(x = "features in group", y = NULL)
+        + theme_manuscript(base_size = 15)
+        + theme(
+            panel.grid = element_blank(), panel.border = element_blank(), axis.line.x = element_line(),
+            axis.text.y = element_blank(), axis.ticks.y = element_blank(), plot.margin = margin(0, 0, 2, 2)
+        )
+    )
+    p_lab <- (
+        ggplot(sizes, aes(y = row))
+        + geom_text(aes(x = 0.02, label = term, colour = term), hjust = 0, fontface = "bold", size = 5)
+        + scale_colour_manual(values = linear_modeling_term_palette[terms])
+        + scale_x_continuous(limits = c(0, 1), expand = c(0, 0))
+        + scale_y_reverse(limits = c(n_set + 0.5, 0.5), expand = c(0, 0))
+        + theme_manuscript_void()
+        + theme(legend.position = "none", plot.margin = margin(0, 2, 0, 2))
+    )
+
+    combined <- (
+        (plot_spacer() + plot_spacer() + p_bar + p_size + p_lab + p_mat)
+        + plot_layout(ncol = 3, widths = c(UPSET_SIZE_COL, UPSET_LABEL_COL, max(n_combo, 4) + 1.5), heights = c(UPSET_BAR_ROW, n_set * 0.55))
+    )
+    if (!show_title) return(combined)
+    combined + plot_annotation(
+        title = paste0("Feature membership across variate groups, ", title, " (", note, "orange = treatment only)"),
+        theme = theme(plot.title = element_text(size = 14, face = "bold"), plot.margin = margin(4, 4, 2, 4))
+    )
+}
+
+plot_patient_upset <- function(combos, patients, class_label, treatment) {
+    #' UpSet plot whose sets are patients: bars = features with exactly that patient combination,
+    #' dot matrix = which patients. Titled with the variate class and treatment it shows.
+    n <- nrow(combos)
+    n_pat <- length(patients)
+    combos$x <- seq_len(n)
+    use_log <- max(combos$n_features) / max(min(combos$n_features), 1) > 30
+    p_bar <- (
+        ggplot(combos, aes(x = x))
+        + geom_rect(
+            aes(xmin = x - 0.35, xmax = x + 0.35, ymin = if (use_log) 0.8 else 0, ymax = n_features),
+            fill = upset_class_bar_colour
+        )
+        + geom_text(aes(y = n_features, label = n_features), vjust = -0.3, size = 3)
+        + labs(
+            x = NULL,
+            y = paste0("features with exactly this\npatient combination", if (use_log) " (log)" else "")
+        )
+        + theme_manuscript(base_size = 9, x_text = "blank")
+        + theme(
+            panel.grid = element_blank(), panel.border = element_blank(),
+            axis.line.y = element_line()
+        )
+    )
+    p_bar <- if (use_log) {
+        p_bar + scale_y_log10(expand = c(0, 0)) + coord_cartesian(xlim = c(0.4, n + 0.6), ylim = c(0.8, max(combos$n_features) * 3))
+    } else {
+        p_bar + scale_y_continuous(expand = c(0, 0)) + coord_cartesian(xlim = c(0.4, n + 0.6), ylim = c(0, max(combos$n_features) * 1.18))
+    }
+    dots <- do.call(rbind, lapply(seq_len(n), function(i) {
+        data.frame(
+            x = i, row = seq_len(n_pat), patient = patients,
+            on = patients %in% strsplit(combos$patients[i], ";", fixed = TRUE)[[1]]
+        )
+    }))
+    stripes <- data.frame(row = seq_len(n_pat), shade = seq_len(n_pat) %% 2 == 1)
+    lines_df <- dots |> filter(on) |> group_by(x) |> filter(n() > 1) |> ungroup()
+    p_mat <- (
+        ggplot()
+        + geom_rect(
+            data = filter(stripes, shade),
+            aes(xmin = 0.4, xmax = n + 0.6, ymin = row - 0.5, ymax = row + 0.5), fill = upset_stripe_colour
+        )
+        + geom_point(data = dots, aes(x, row), colour = upset_dot_off_colour, size = 3)
+        + geom_line(data = lines_df, aes(x, row, group = x), linewidth = 0.8)
+        + geom_point(data = filter(dots, on), aes(x, row), colour = "black", size = 3)
+        + scale_y_reverse(breaks = seq_len(n_pat), labels = patients, limits = c(n_pat + 0.5, 0.5), expand = c(0, 0))
+        + scale_x_continuous(limits = c(0.4, n + 0.6), expand = c(0, 0))
+        + labs(x = NULL, y = NULL)
+        + theme_manuscript_void(base_size = 9)
+        + theme(axis.text.y = element_text(size = 9, hjust = 1))
+    )
+    (
+        (p_bar / p_mat)
+        + plot_layout(heights = c(2.4, n_pat * 0.42))
+        + plot_annotation(
+            title = paste0(class_label, " | ", treatment),
+            subtitle = paste0(
+                "Features significant for exactly these variates, by the patients they occur in\n",
+                "(bars: number of features shared by exactly that patient combination)"
+            ),
+            theme = theme(
+                plot.title = element_text(size = 12, face = "bold"),
+                plot.subtitle = element_text(size = 9)
+            )
+        )
+    )
+}
+
+cooccurrence_heatmap <- function(sig, title, show_title = TRUE, legend_title_size = 14, legend_label_size = 12) {
+    #' Clustered heatmap of treatment-only significant features (rows) across patient-treatments
+    #' (columns), annotated with patient, tumor type, drug, dose and feature type.
+    #' show_title = FALSE drops column_title (used for the multiresult-figure subpanel, which embeds
+    #' this heatmap without a title even though the standalone PDF keeps one).
+    #' legend_*_size set the legend font sizes; the multiresult-figure subpanel enlarges them because it is shrunk to fit.
+    legend_title_gp <- gpar(fontsize = legend_title_size, fontface = "bold")
+    legend_labels_gp <- gpar(fontsize = legend_label_size)
+    sig <- sig |> mutate(patient_treatment = paste(patient, treatment, sep = " | "))
+    columns <- sig |>
+        distinct(patient, treatment, patient_treatment) |>
+        mutate(
+            tumor_type = tumor_type_lookup[patient],
+            drug = sub("_.*$", "", treatment),
+            dose = sub("^.*_", "", treatment)
+        )
+    features <- sig |> distinct(feature, Feature_type) |> mutate(Feature_type = ifelse(is.na(Feature_type), "Other", Feature_type))
+    mat <- matrix(0, nrow = nrow(features), ncol = nrow(columns), dimnames = list(features$feature, columns$patient_treatment))
+    mat[cbind(match(sig$feature, features$feature), match(sig$patient_treatment, columns$patient_treatment))] <- 1
+
+    top_annotation <- HeatmapAnnotation(
+        Patient = columns$patient, `Tumor type` = columns$tumor_type,
+        Treatment = columns$drug, Dose = columns$dose,
+        col = list(Patient = patient_palette, `Tumor type` = tumor_type_palette,
+                   Treatment = custom_treatment_palette, Dose = dose_label_palette),
+        annotation_name_side = "left", annotation_name_gp = gpar(fontsize = 14),
+        annotation_legend_param = list(
+            Treatment = list(ncol = 2, title_gp = legend_title_gp, labels_gp = legend_labels_gp),
+            Patient = list(title_gp = legend_title_gp, labels_gp = legend_labels_gp),
+            `Tumor type` = list(title_gp = legend_title_gp, labels_gp = legend_labels_gp),
+            Dose = list(title_gp = legend_title_gp, labels_gp = legend_labels_gp)
+        ),
+        simple_anno_size = unit(5, "mm")
+    )
+    left_annotation <- rowAnnotation(
+        `Feature type` = features$Feature_type,
+        col = list(`Feature type` = feature_type_palette_with_other),
+        annotation_name_gp = gpar(fontsize = 14), simple_anno_size = unit(5, "mm"),
+        annotation_legend_param = list(`Feature type` = list(title_gp = legend_title_gp, labels_gp = legend_labels_gp))
+    )
+    # the matrix is a yes/no occurrence, so it gets a discrete two-colour legend (clustering uses the 0/1 matrix)
+    row_hc <- if (nrow(mat) > 1) hclust(dist(mat, method = "binary"), method = "average") else FALSE
+    col_hc <- if (ncol(mat) > 1) hclust(dist(t(mat), method = "binary"), method = "average") else FALSE
+    sig_mat <- matrix(ifelse(mat == 1, "yes", "no"), nrow = nrow(mat), dimnames = dimnames(mat))
+    Heatmap(
+        sig_mat, name = "treatment-only significant",
+        col = treatment_only_heatmap_palette,
+        heatmap_legend_param = list(
+            title = "treatment\nonly terms", at = c("yes", "no"), border = "black",
+            title_gp = legend_title_gp, labels_gp = legend_labels_gp
+        ),
+        cluster_rows = row_hc, cluster_columns = col_hc,
+        top_annotation = top_annotation, left_annotation = left_annotation,
+        show_row_names = nrow(mat) <= 100, row_names_gp = gpar(fontsize = 8),
+        show_column_names = FALSE, use_raster = TRUE, raster_quality = 2,
+        column_title = if (show_title) paste0(title, "\n", nrow(mat), " features x ", ncol(mat), " patient-treatments") else NULL,
+        column_title_gp = gpar(fontsize = 16, fontface = "bold"),
+        row_title = "feature (clustered)", row_title_gp = gpar(fontsize = 14), column_title_side = "top"
+    )
+}
+
+plot_clustermap <- function(read_result, matrix_name, order_prefix, label) {
+    #' Clustermap of all patient x treatment class-count profiles: log1p, column min-max scaling,
+    #' hierarchical clustering (Ward.D2 on the scaled values). Row annotations use the manuscript
+    #' palettes; the bar at the bottom shows which variates are significant in each class (column).
+    #' `read_result(name)` loads a table of the run (see 8.plot_variate_class_upsets_and_clustermap).
+    mat <- read_result(matrix_name) |>
+        pivot_longer(-c(patient, treatment), names_to = "class", values_to = "value") |>
+        mutate(key = paste(patient, treatment, sep = "|"), value = log1p(value))
+    col_order <- read_result(paste0(order_prefix, "_column_order.parquet"))$column_order
+    row_order <- read_result(paste0(order_prefix, "_row_order.parquet"))$row_order
+    mat <- mat |>
+        filter(class %in% col_order, key %in% row_order) |>
+        group_by(class) |>
+        mutate(scaled = (value - min(value)) / (max(value) - min(value))) |>
+        ungroup()
+    scaled <- long_to_matrix(mat, "key", "class", "scaled", row_levels = row_order, col_levels = col_order)
+    scaled[is.na(scaled)] <- 0  # constant columns have no range to scale
+
+    patient_of_row <- sub("\\|.*$", "", row_order)
+    treatment_of_row <- sub("^[^|]*\\|", "", row_order)
+    left_annotation <- rowAnnotation(
+        Patient = patient_of_row, `Tumor type` = tumor_type_lookup[patient_of_row],
+        Treatment = sub("_.*$", "", treatment_of_row), Dose = sub("^.*_", "", treatment_of_row),
+        col = list(Patient = patient_palette, `Tumor type` = tumor_type_palette,
+                   Treatment = custom_treatment_palette, Dose = dose_label_palette),
+        annotation_name_gp = gpar(fontsize = 9), simple_anno_size = unit(4, "mm"),
+        annotation_legend_param = list(Treatment = list(ncol = 2))
+    )
+    # presence / absence of each variate in each class (column)
+    in_class <- sapply(names(variate_letters), function(v) ifelse(sapply(strsplit(col_order, "+", fixed = TRUE), function(x) v %in% x), "yes", "no"))
+    colnames(in_class) <- paste0(names(variate_letters), " ", variate_letters)
+    bottom_annotation <- HeatmapAnnotation(
+        df = as.data.frame(in_class),
+        col = setNames(rep(list(variate_presence_palette), ncol(in_class)), colnames(in_class)),
+        show_legend = c(TRUE, rep(FALSE, ncol(in_class) - 1)),
+        annotation_legend_param = list(list(title = "variate significant\nin class", at = c("yes", "no"))),
+        annotation_name_side = "right", annotation_name_gp = gpar(fontsize = 8),
+        simple_anno_size = unit(3, "mm")
+    )
+    simple_heatmap(
+        scaled, label, heat_col_fun(c(0, 1), palette = "Viridis", rev = FALSE),
+        cluster_rows = TRUE, cluster_columns = TRUE,
+        clustering_method_rows = "ward.D2", clustering_method_columns = "ward.D2",
+        left_annotation = left_annotation, bottom_annotation = bottom_annotation,
+        show_row_names = FALSE, show_column_names = FALSE, use_raster = TRUE
+    )
 }
