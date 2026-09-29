@@ -8,6 +8,9 @@ This repo contains analysis code of profiles generated in multiple image-based p
 ## Repo modules
 - `0.download_data`: Download image-based profiles from the internet (not yet available)
 - `1.EDA`: Exploratory data analysis of image-based profiles
+- `2.2d_vs_3d_analysis`: Comparison of 2D and 3D profiles (patient correlation, mAP, drug hits, entropy, kBET, sparse CCA)
+- `3.viability_prediction_models`: Viability prediction models trained on the profiles
+- `4.linear_modeling`: Per-patient linear models of every feature on treatment plus count and technical covariates, and the variance, variate-importance and hit analyses built on them (see [`4.linear_modeling/README.md`](4.linear_modeling/README.md))
 
 ## Computational environment
 Notebooks in this repo are split between Python and R, each managed by a separate environment.
@@ -22,21 +25,18 @@ source uv_setup.sh
 This creates `.venv` and registers a `python3` Jupyter kernel.
 Select this kernel when running the Python notebooks.
 
-### R (mamba)
-R notebooks use a mamba/conda environment defined in `environments/r_env.yml`.
+### R (uvr)
+R notebooks use a `uvr`-managed R library defined in `uvr.toml`/`uvr.lock` (R `>=4.3.0`, set by `r_version`).
+`uv_setup.sh` also sets this up: it runs `uvr sync` to install the packages into `.uvr/library`, checks the uvr-managed R against `r_version`, and registers an IRkernel Jupyter kernel named after the `uvr.toml` project (`NF1_organoid_profile_analysis`) that runs that R with the project library.
+Select this kernel when running the R notebooks.
+
+R scripts run in the same environment with `uvr run`:
 
 ```bash
-mamba env create -f environments/r_env.yml
-# or, if the environment already exists:
-mamba env update -f environments/r_env.yml
+uvr run 4.linear_modeling/scripts/6.plot_variate_importance.r
 ```
 
-This creates the `gff_figure_env` environment but does not register a Jupyter kernel for it.
-Register the kernel once, from inside the activated environment:
+Add a package with `uvr add <package>` so it is recorded in `uvr.toml` and `uvr.lock`.
 
-```bash
-mamba activate gff_figure_env
-Rscript -e 'IRkernel::installspec(name = "gff_figure_env", displayname = "R (gff_figure_env)")'
-```
-
-Select the `R (gff_figure_env)` kernel when running the R notebooks for visualization.
+### R (mamba, older modules)
+The R notebooks in `1.EDA` and `2.2d_vs_3d_analysis` were run with the mamba environment in `environments/r_env.yml` (`mamba env create -f environments/r_env.yml`) and a generic `ir` kernel.
