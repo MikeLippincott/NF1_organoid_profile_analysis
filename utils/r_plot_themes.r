@@ -218,6 +218,16 @@ tumor_type_palette <- c(
     "Other" = "#999999"
 )
 
+viability_model_eval_split_colors <- c(
+    train = "#3B6FA0",
+    test  = "#E08214"
+)
+
+viability_shuffle_status_colors <- c(
+    not_shuffled = "#8f3ba0",
+    shuffled      = "#70e014"
+)
+
 linear_modeling_term_palette<- c(
     treatment = "#d95f02", cell_count = "#1b9e77", organoid_count = "#7570b3",
     cell_per_organoid_count = "#e7298a", manhattan_distance_from_center = "#66a61e",

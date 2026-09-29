@@ -72,11 +72,11 @@ else:
 start_time = time.time()
 
 
-# In[3]:
+# In[ ]:
 
 
 # set up logging
-LOG_DIR = pathlib.Path("../logs")
+LOG_DIR = pathlib.Path(f"{root_dir}/3.viability_prediction_models/logs")
 LOG_DIR.mkdir(
     parents=True, exist_ok=True
 )  # FileHandler errors if this dir doesn't exist
@@ -98,7 +98,7 @@ logging.info(f"Logging to {LOG_DIR / year_month_day_hour_minute_log_name}")
 
 # ## Functions and helpers
 
-# In[4]:
+# In[ ]:
 
 
 """
@@ -191,8 +191,8 @@ MAX_ITER = 1000
 TOL = 1e-3
 N_WORKERS = multiprocessing.cpu_count() - 2  # for parallelized ElasticNetCV fits
 
-MODEL_OUTPUT = pathlib.Path("../trained_models")
-RESULTS_OUTPUT = pathlib.Path("../model_results")
+MODEL_OUTPUT = pathlib.Path(f"{root_dir}/3.viability_prediction_models/trained_models")
+RESULTS_OUTPUT = pathlib.Path(f"{root_dir}/3.viability_prediction_models/model_results")
 MODEL_OUTPUT.mkdir(exist_ok=True)
 RESULTS_OUTPUT.mkdir(exist_ok=True)
 
@@ -1154,7 +1154,7 @@ logging.info(
 )
 
 METRIC_FILE_PATTERNS = {
-    "model_performance": "*_model_performance__*.parquet",
+    "fold_metrics": "*_fold_metrics__*.parquet",
     "predicted_viabilities": "*_predicted_viabilities__*.parquet",
     "feature_importances": "*_feature_importances__*.parquet",
     "summary_metrics": "*_summary_metrics__*.parquet",
