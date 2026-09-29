@@ -1,5 +1,6 @@
 #!/bin/bash
 
+set -eo pipefail
 
 git_root=$(git rev-parse --show-toplevel)
 if [ -z "$git_root" ]; then
