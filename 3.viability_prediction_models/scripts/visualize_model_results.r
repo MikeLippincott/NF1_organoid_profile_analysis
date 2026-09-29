@@ -6,12 +6,9 @@ for (pkg in packages) {
     )   )
 }
 
-# every plot built below is appended to pdf_plots and written out as a
-# single combined ../figures/model_results.pdf at the end of the
-# notebook, instead of one .png per plot - create ../figures once up
-# front so that final pdf() call doesn't error out.
+# every ggsave() call below writes into ../figures, which doesn't exist yet -
+# create it once up front so ggsave() doesn't error out on the first plot.
 dir.create("../figures", showWarnings = FALSE, recursive = TRUE)
-pdf_plots <- list()
 
 # Get the current working directory and find Git root
 find_git_root <- function() {
@@ -49,7 +46,7 @@ model_results_files = c(
 
 
 feature_importances_df = arrow::read_parquet(
-    file.path(root_dir,"3.viability_prediction_models/model_results/combined_feature_importances.parquet"))
+    file.path(root_dir, "3.viability_prediction_models/model_results/combined_feature_importances.parquet"))
 # combined_summary_metrics.parquet only has the test-set mean/std/pooled
 # aggregate (one Metadata_stat row per group, no Metadata_eval_split or
 # Metadata_held_out_group column) - the per-fold plots below need the
@@ -129,8 +126,13 @@ predicted_viabilities_df <- add_feature_type(predicted_viabilities_df)
 # ---------------------------------------------------------------------
 # Per-fold model performance: R2 and RMSE by eval split, one plot per
 # split method (mirroring the predicted-vs-actual plots below), faceted
-# by shuffle status (rows) x profile - labeled with its feature type,
-# handcrafted ZedProfiler vs. CHAMMI/SAMMed3D embedding (columns).
+# by profile - labeled with its feature type, handcrafted ZedProfiler vs.
+# CHAMMI/SAMMed3D embedding (columns).
+#
+# The shuffled-feature negative control and the real (not_shuffled) fit
+# score very close to each other, so they are dodged side by side within
+# each eval split (fill = shuffle status) instead of sitting in separate
+# facet rows - the gap between the two bars is the signal.
 #
 # Bars show the mean across folds per (eval_split, shuffle_status,
 # profile) group, with error bars at +/- 1 SD - summarizing the same
@@ -141,7 +143,8 @@ predicted_viabilities_df <- add_feature_type(predicted_viabilities_df)
 # are real values (not a bug), but letting the scale include them
 # flattens every other bar to a line. A fixed, clipped viewport
 # (coord_cartesian, which zooms without recomputing the summary stats)
-# keeps the bars readable.
+# keeps the bars readable; the caption reports how many folds fall
+# outside the clipped view.
 #
 # Viability (and hence RMSE) is stored as a 0-1 fraction, not a 0-100
 # percentage - RMSE_YLIM must be on that same scale or every real bar
@@ -149,10 +152,7 @@ predicted_viabilities_df <- add_feature_type(predicted_viabilities_df)
 # ---------------------------------------------------------------------
 options(repr.plot.width = 16, repr.plot.height = 6)
 
-shuffle_status_colors <- c(
-    not_shuffled = "#3B6FA0",
-    shuffled      = "#E08214"
-)
+bar_dodge <- position_dodge(width = 0.7)
 
 R2_YLIM <- c(-1, 1)
 RMSE_YLIM <- c(0, 1)
@@ -160,49 +160,65 @@ RMSE_YLIM <- c(0, 1)
 for (sm in unique(fold_metrics_df$Metadata_split_method)) {
     df_sub <- filter(fold_metrics_df, Metadata_split_method == sm)
 
+    n_r2_clipped <- sum(df_sub$R2 < R2_YLIM[1], na.rm = TRUE)
     r2_summary_df <- df_sub %>%
         group_by(Metadata_eval_split, Metadata_shuffle_status, Metadata_profile_label) %>%
         summarise(mean_R2 = mean(R2), sd_R2 = sd(R2), n = n(), .groups = "drop")
     r2_plot <- (
-        ggplot(r2_summary_df, aes(x = Metadata_shuffle_status, y = mean_R2, fill = Metadata_shuffle_status))
-        + geom_col(alpha = 0.7, width = 0.6)
-        + geom_errorbar(aes(ymin = mean_R2 - sd_R2, ymax = mean_R2 + sd_R2), width = 0.25, linewidth = 0.4)
-        + facet_grid(
-            Metadata_eval_split ~ Metadata_profile_label,
+        ggplot(r2_summary_df, aes(x = Metadata_eval_split, y = mean_R2, fill = Metadata_shuffle_status))
+        + geom_col(position = bar_dodge, alpha = 0.7, width = 0.6)
+        + geom_errorbar(
+            aes(ymin = mean_R2 - sd_R2, ymax = mean_R2 + sd_R2),
+            position = bar_dodge, width = 0.25, linewidth = 0.4
+        )
+        + facet_wrap(
+            ~Metadata_profile_label, nrow = 1,
             labeller = labeller(Metadata_profile_label = label_wrap_gen(width = 18))
         )
         # + coord_cartesian(ylim = R2_YLIM)
-        + scale_fill_manual(values = shuffle_status_colors, name = "Shuffle status")
+        + scale_fill_manual(values = viability_shuffle_status_colors, name = "Shuffle status")
         + labs(
             x = NULL,
             y = expression("Mean " * R^2 * " ± SD across folds"),
-            title = bquote("Model performance (" * R^2 * ") by profile and feature type — " * .(sm))
+            title = bquote("Model performance (" * R^2 * ") by profile and feature type — " * .(sm)),
+            # caption = paste0(
+            #     "y-axis clipped to [", R2_YLIM[1], ", ", R2_YLIM[2], "]; ",
+            #     n_r2_clipped, " of ", nrow(df_sub), " folds fall below this range."
+            # )
         )
         + theme_manuscript()
     )
-    pdf_plots[[paste0("r2_by_profile_", sm)]] <- r2_plot
+    ggsave(filename = file.path("../figures", paste0("r2_by_profile_", sm, ".png")), plot = r2_plot, width = 16, height = 6, dpi = 600)
     print(r2_plot)
 
+    n_rmse_clipped <- sum(df_sub$RMSE > RMSE_YLIM[2], na.rm = TRUE)
     rmse_summary_df <- df_sub %>%
         group_by(Metadata_eval_split, Metadata_shuffle_status, Metadata_profile_label) %>%
         summarise(mean_RMSE = mean(RMSE), sd_RMSE = sd(RMSE), n = n(), .groups = "drop")
     rmse_plot <- (
-        ggplot(rmse_summary_df, aes(x = Metadata_shuffle_status, y = mean_RMSE, fill = Metadata_shuffle_status))
-        + geom_col(alpha = 0.7, width = 0.6)
-        + geom_errorbar(aes(ymin = mean_RMSE - sd_RMSE, ymax = mean_RMSE + sd_RMSE), width = 0.25, linewidth = 0.4)
-        + facet_grid(
-            Metadata_eval_split ~ Metadata_profile_label,
+        ggplot(rmse_summary_df, aes(x = Metadata_eval_split, y = mean_RMSE, fill = Metadata_shuffle_status))
+        + geom_col(position = bar_dodge, alpha = 0.7, width = 0.6)
+        + geom_errorbar(
+            aes(ymin = mean_RMSE - sd_RMSE, ymax = mean_RMSE + sd_RMSE),
+            position = bar_dodge, width = 0.25, linewidth = 0.4
+        )
+        + facet_wrap(
+            ~Metadata_profile_label, nrow = 1,
             labeller = labeller(Metadata_profile_label = label_wrap_gen(width = 18))
         )
         # + coord_cartesian(ylim = RMSE_YLIM)
-        + scale_fill_manual(values = shuffle_status_colors, name = "Shuffle status")
+        + scale_fill_manual(values = viability_shuffle_status_colors, name = "Shuffle status")
         + labs(
             x = NULL, y = "Mean RMSE ± SD across folds",
-            title = paste0("Model performance (RMSE) by profile and feature type — ", sm)
+            title = paste0("Model performance (RMSE) by profile and feature type — ", sm),
+            # caption = paste0(
+            #     "y-axis clipped to [", RMSE_YLIM[1], ", ", RMSE_YLIM[2], "]; ",
+            #     n_rmse_clipped, " of ", nrow(df_sub), " folds exceed this range."
+            # )
         )
         + theme_manuscript()
     )
-    pdf_plots[[paste0("rmse_by_profile_", sm)]] <- rmse_plot
+    ggsave(filename = file.path("../figures", paste0("rmse_by_profile_", sm, ".png")), plot = rmse_plot, width = 16, height = 6, dpi = 600)
     print(rmse_plot)
 }
 
@@ -225,10 +241,6 @@ for (sm in unique(fold_metrics_df$Metadata_split_method)) {
 # sc_consensus_profiles and sc_norm_sc_consensus_profiles - are visibly
 # distinct here too.
 #
-# Groups are ordered alphabetically (rather than by RMSE) so patients
-# (lopo) / treatments (loto) always fall in the same, predictable order
-# across plots instead of shuffling around based on that run's RMSE.
-#
 # RMSE is on the same 0-1 viability-fraction scale as everywhere else in
 # this notebook, so the clip viewport must match.
 # ---------------------------------------------------------------------
@@ -242,26 +254,31 @@ for (sm in c("lopo", "loto")) {
             Metadata_split_method == sm,
             Metadata_eval_split == "test",
             Metadata_shuffle_status == "not_shuffled"
-        ) %>%
-        mutate(
-            Metadata_held_out_group = factor(
-                Metadata_held_out_group,
-                levels = sort(unique(Metadata_held_out_group), decreasing = TRUE)
-            )
         )
 
+    n_clipped <- sum(df_sub$RMSE > GROUP_RMSE_YLIM[2], na.rm = TRUE)
+
     group_plot <- (
-        ggplot(df_sub, aes(x = Metadata_held_out_group, y = RMSE))
+        ggplot(
+            df_sub,
+            aes(x = reorder(Metadata_held_out_group, RMSE, FUN = median), y = RMSE)
+        )
         + geom_boxplot(outlier.shape = NA, color = "#898781", fill = NA)
         + geom_jitter(aes(color = Metadata_profile_label), width = 0.15, height = 0, size = 1.6, alpha = 0.85)
         + coord_flip(ylim = GROUP_RMSE_YLIM)
         + scale_color_brewer(palette = "Set2", name = "Profile (level / normalization scope)")
         + labs(
             x = NULL, y = "Test RMSE (one point per profile type)",
-            title = paste0("Test RMSE by held-out group — ", sm, " (not shuffled)")
+            title = paste0("Test RMSE by held-out group — ", sm, " (not shuffled)"),
+            caption = paste0(
+                "Groups ordered by median RMSE across profiles; a group sitting far above the rest ",
+                "is a specific patient/treatment the model consistently fails on, not a profile problem. ",
+                "y-axis clipped to [", GROUP_RMSE_YLIM[1], ", ", GROUP_RMSE_YLIM[2], "]; ",
+                n_clipped, " of ", nrow(df_sub), " points fall outside this range."
+            )
         )
     )
-    pdf_plots[[paste0("rmse_by_held_out_group_", sm)]] <- group_plot
+    ggsave(filename = file.path("../figures", paste0("rmse_by_held_out_group_", sm, ".png")), plot = group_plot, width = 11, height = 8)
     print(group_plot)
 }
 
@@ -329,20 +346,12 @@ top_features_df <- top_features_df %>%
         Metadata_facet_label = paste0(Metadata_profile_label, "\n— ", Metadata_split_method)
     )
 
-# SAMMed3D and MorphEM (and their nucleocentric variants) are embedding-
-# based feature sets whose individual dimensions aren't biologically
-# interpretable, so they're excluded from this particular plot - the
-# other downstream plots/tables (top_features_df, feature_dist_plot,
-# edge/extreme object extraction) still use every profile type.
-top_features_importance_plot_df <- top_features_df %>%
-    filter(!grepl("SAMMed3D|MorphEM", Metadata_profile_label))
-
 # feature coefficients are a polarity, not a category or a magnitude alone -
 # a diverging scale (not a categorical fill) is the correct encoding for
 # "which direction did this feature push the prediction".
 feature_importances_plot <- (
     ggplot(
-        top_features_importance_plot_df,
+        top_features_df,
         aes(x = reorder_within(feature, mean_importance, Metadata_facet_label), y = mean_importance, fill = mean_importance)
     )
     + geom_col()
@@ -369,15 +378,17 @@ feature_importances_plot <- (
         legend.position = "bottom"
     )
 )
-pdf_plots[["top_feature_importances_by_profile"]] <- feature_importances_plot
+ggsave(filename = file.path("../figures", "top_feature_importances_by_profile.png"), plot = feature_importances_plot, width = width, height = height)
 feature_importances_plot
 
 # predicted vs actual viability, one combined plot faceted by data split
 # method (rows) x profile - labeled with its feature type (columns), with
 # points colored by shuffle status so the not_shuffled fits and their
-# shuffled-feature negative control sit in the same panel for direct
+# shuffled-feature negative controlcd 34 sit in the same panel for direct
 # comparison instead of separate figures.
 options(repr.plot.width = 16, repr.plot.height = 9)
+
+
 
 pred_vs_actual_plot <- (
     ggplot(
@@ -390,7 +401,7 @@ pred_vs_actual_plot <- (
         Metadata_split_method ~ Metadata_profile_label,
         labeller = labeller(Metadata_profile_label = label_wrap_gen(width = 18))
     )
-    + scale_color_manual(values = shuffle_status_colors, name = "Shuffle status")
+    + scale_color_manual(values = viability_shuffle_status_colors, name = "Shuffle status")
     + guides(color = guide_legend(override.aes = list(alpha = 1, size = 2)))
     + labs(
         x = "Predicted viability", y = "Actual viability",
@@ -398,7 +409,7 @@ pred_vs_actual_plot <- (
     )
     + theme(strip.text.x = element_text(size = 7), strip.text.y = element_text(size = 9))
 )
-pdf_plots[["predicted_vs_actual"]] <- pred_vs_actual_plot
+ggsave(filename = file.path("../figures", "predicted_vs_actual.png"), plot = pred_vs_actual_plot, width = 16, height = 9)
 pred_vs_actual_plot
 
 # investigate the top features for each of the models by plotting the distributions of the feature for each model type
@@ -482,6 +493,8 @@ feature_dist_df <- feature_dist_df %>%
     ) %>%
     ungroup()
 
+n_dist_clipped <- sum(feature_dist_df$value != feature_dist_df$value_clipped, na.rm = TRUE)
+
 feature_dist_plot <- (
     ggplot(
         feature_dist_df,
@@ -502,7 +515,12 @@ feature_dist_plot <- (
     + labs(
         x = NULL,
         y = "Feature value (normalized consensus profile, all wells)",
-        title = "Distribution of each model's top-10 features across all profiles"
+        title = "Distribution of each model's top-10 features across all profiles",
+        caption = paste0(
+            "Each (panel, feature) clipped to its own Tukey fence (median IQR x 1.5 beyond Q1/Q3); ",
+            n_dist_clipped, " of ", nrow(feature_dist_df), " points were pulled in by this - ",
+            "the same cross-patient-normalization outlier artifact documented elsewhere in this notebook."
+        )
     )
     + theme(
         axis.text.y = element_text(size = 8),
@@ -510,19 +528,8 @@ feature_dist_plot <- (
         legend.position = "bottom"
     )
 )
-pdf_plots[["top_feature_distributions_by_profile"]] <- feature_dist_plot
+ggsave(filename = file.path("../figures", "top_feature_distributions_by_profile.png"), plot = feature_dist_plot, width = width, height = height)
 feature_dist_plot
-
-# Every figure built above was appended to pdf_plots instead of being
-# ggsave()'d to its own .png - write them all out now as pages of one
-# combined PDF. Base R's pdf() device fixes one page size for the whole
-# file, so a single size (the largest plot's, 16x16in) is used for every
-# page rather than one .png-sized file per figure.
-pdf(file.path("../figures", "model_results.pdf"), width = 16, height = 16, onefile = TRUE)
-for (p in pdf_plots) {
-    print(p)
-}
-dev.off()
 
 # ---------------------------------------------------------------------
 # The plot above shows each model's top-10 features are spread out with
@@ -597,13 +604,7 @@ read_object_features <- function(filename, compartments) {
 
 organoid_objects_df <- read_object_features("organoid_flagged_outliers.parquet", "Organoid") %>%
     mutate(
-        # Must match the literal Metadata_profile_type strings top_features_df
-        # was trained/ranked under (see raw_profile_paths above) - not the
-        # unrelated all_patients/*_norm_sc_consensus_profiles pipeline the
-        # models never saw. Using that pipeline's name here silently left
-        # the inner_join below empty for every row (0 edge/extreme objects),
-        # the same mistake documented and fixed for feature_values_df above.
-        Metadata_profile_type = "organoid_profile_consensus",
+        Metadata_profile_type = "organoid_norm_sc_consensus_profiles",
         Metadata_CenterX = Metadata_Location_Organoid_CenterX,
         Metadata_CenterY = Metadata_Location_Organoid_CenterY,
         Metadata_CenterZ = Metadata_Location_Organoid_CenterZ,
@@ -622,9 +623,7 @@ organoid_objects_df <- read_object_features("organoid_flagged_outliers.parquet",
 # is about the nucleus's own location and extent, not the whole cell's.
 sc_objects_df <- read_object_features("sc_flagged_outliers.parquet", c("Cell", "Cytoplasm", "Nuclei")) %>%
     mutate(
-        # See organoid_objects_df above - must match top_features_df's
-        # actual training-time Metadata_profile_type string.
-        Metadata_profile_type = "sc_profile_consensus",
+        Metadata_profile_type = "sc_norm_sc_consensus_profiles",
         Metadata_feature_compartment = sub("_.*", "", feature),
         Metadata_CenterX = dplyr::case_when(
             Metadata_feature_compartment == "Cell" ~ Metadata_Location_Cell_CenterX,
@@ -743,42 +742,32 @@ head(edge_objects_df, 20)
 # ---------------------------------------------------------------------
 # edge_objects_df above is a ~2% tail per (model, feature) - useful to
 # see how big the edge population is, but too many rows to physically
-# go re-inspect one by one. This narrows that down to just three
-# representative specimens per (model, feature): the organoid/cell
-# whose value sits closest to the 1st percentile, the median, and the
-# 99th percentile of that feature's observed range - so there's one
-# concrete low, central, and high image to pull up per feature instead
-# of only the single most extreme (and potentially non-representative)
-# max/min specimen.
-top_features_joined_df <- object_features_df %>%
-    inner_join(
-        top_features_df %>% select(Metadata_profile_type, Metadata_split_method, feature, mean_importance, Metadata_facet_label),
-        by = c("Metadata_profile_type", "feature"),
-        relationship = "many-to-many"
-    ) %>%
-    group_by(Metadata_facet_label, feature) %>%
-    mutate(
-        target_p01 = quantile(value, 0.01, na.rm = TRUE),
-        target_median = median(value, na.rm = TRUE),
-        target_p99 = quantile(value, 0.99, na.rm = TRUE)
-    ) %>%
-    ungroup()
-
-# Picks the single specimen per (model, feature) whose value is closest
-# to the given target (1st percentile / median / 99th percentile),
-# rather than the group's literal max or min.
-pick_nearest_to_target <- function(df, target_col, direction_label) {
-    df %>%
-        group_by(Metadata_facet_label, feature) %>%
-        slice_min(order_by = abs(value - .data[[target_col]]), n = 1, with_ties = FALSE) %>%
-        ungroup() %>%
-        mutate(edge_direction = direction_label)
-}
-
+# go re-inspect one by one. This narrows that down to just the single
+# most extreme high and single most extreme low specimen per (model,
+# feature) - the two organoids/cells that literally define each
+# feature's observed range - so there's one concrete image to pull up
+# per direction per feature.
 extreme_objects_df <- bind_rows(
-    pick_nearest_to_target(top_features_joined_df, "target_p01", "p01"),
-    pick_nearest_to_target(top_features_joined_df, "target_median", "median"),
-    pick_nearest_to_target(top_features_joined_df, "target_p99", "p99")
+    object_features_df %>%
+        inner_join(
+            top_features_df %>% select(Metadata_profile_type, Metadata_split_method, feature, mean_importance, Metadata_facet_label),
+            by = c("Metadata_profile_type", "feature"),
+            relationship = "many-to-many"
+        ) %>%
+        group_by(Metadata_facet_label, feature) %>%
+        slice_max(order_by = value, n = 1, with_ties = FALSE) %>%
+        ungroup() %>%
+        mutate(edge_direction = "high"),
+    object_features_df %>%
+        inner_join(
+            top_features_df %>% select(Metadata_profile_type, Metadata_split_method, feature, mean_importance, Metadata_facet_label),
+            by = c("Metadata_profile_type", "feature"),
+            relationship = "many-to-many"
+        ) %>%
+        group_by(Metadata_facet_label, feature) %>%
+        slice_min(order_by = value, n = 1, with_ties = FALSE) %>%
+        ungroup() %>%
+        mutate(edge_direction = "low")
 ) %>%
     select(
         Metadata_facet_label, Metadata_profile_type, Metadata_split_method, feature, mean_importance,
@@ -787,11 +776,11 @@ extreme_objects_df <- bind_rows(
         Metadata_Object_ObjectID, Metadata_CenterX, Metadata_CenterY, Metadata_CenterZ,
         Metadata_MinX, Metadata_MinY, Metadata_MinZ, Metadata_MaxX, Metadata_MaxY, Metadata_MaxZ
     ) %>%
-    arrange(Metadata_facet_label, feature, edge_direction)
+    arrange(Metadata_facet_label, feature, desc(edge_direction))
 
 arrow::write_parquet(extreme_objects_df, file.path(root_dir,"3.viability_prediction_models/model_results", "top_feature_extreme_objects.parquet"))
 
-cat(nrow(extreme_objects_df), "p01/median/p99 representative specimens across",
+cat(nrow(extreme_objects_df), "high/low extreme specimens across",
     n_distinct(extreme_objects_df$Metadata_facet_label), "models x",
     n_distinct(extreme_objects_df$feature), "unique features\n")
 
@@ -825,15 +814,8 @@ get_sc_table <- function(patient) {
 get_identified_cells <- function(row) {
     #' Return one row per cell identified for this hit: every child cell
     #' of an organoid-level hit, or the cell itself for an sc-level hit.
-    # group_modify() always probes the return type with a zero-row slice
-    # of .x before running on the real groups - row$Metadata_Biology_PatientTumor
-    # is character(0) in that call, and sc_cache[[patient]] can't be indexed
-    # by a zero-length key ("attempt to select less than one element in
-    # get1index"). Bail out before ever reaching the cache.
-    if (nrow(row) == 0) return(NULL)
-
     sc_df <- get_sc_table(row$Metadata_Biology_PatientTumor)
-    is_organoid_hit <- row$Metadata_profile_type == "organoid_profile_consensus"
+    is_organoid_hit <- row$Metadata_profile_type == "organoid_norm_sc_consensus_profiles"
 
     matched <- if (is_organoid_hit) {
         sc_df %>% filter(

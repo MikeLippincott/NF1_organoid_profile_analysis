@@ -82,7 +82,7 @@ eval_split_colors <- c(
     test  = "#E08214"
 )
 
-fold_metrics_df <- arrow::read_parquet(file.path("../model_results/combined_fold_metrics.parquet")) %>%
+fold_metrics_df <- arrow::read_parquet(file.path(root_dir,"3.viability_prediction_models/model_results/combined_fold_metrics.parquet")) %>%
     add_feature_type()
 
 r2_lopo_df <- fold_metrics_df %>%
@@ -124,7 +124,7 @@ scale_x_reordered <- function(..., sep = "___") {
 }
 
 feature_importances_df <- arrow::read_parquet(
-    file.path("../model_results/combined_feature_importances.parquet")) %>%
+    file.path(root_dir, "3.viability_prediction_models/model_results/combined_feature_importances.parquet")) %>%
     add_feature_type()
 
 feature_importance_avg_df <- feature_importances_df %>%

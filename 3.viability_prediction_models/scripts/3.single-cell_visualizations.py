@@ -68,7 +68,7 @@ crop_output_dir = pathlib.Path("../figures/single_cell_crops")
 crop_output_dir.mkdir(parents=True, exist_ok=True)
 
 
-# In[4]:
+# In[ ]:
 
 
 # Load the hits saved from visualize_model_results.ipynb:
@@ -77,7 +77,9 @@ crop_output_dir.mkdir(parents=True, exist_ok=True)
 #   - top_feature_hits_with_cells.parquet: each hit already resolved down
 #     to its identified cells (child cells for an organoid-level hit, or
 #     the cell itself for an sc-level hit).
-model_results_dir = pathlib.Path("../model_results")
+model_results_dir = pathlib.Path(
+    root_dir, "3.viability_prediction_models/model_results"
+)
 
 hits_df = pq.read_table(
     model_results_dir / "top_feature_extreme_objects.parquet"
