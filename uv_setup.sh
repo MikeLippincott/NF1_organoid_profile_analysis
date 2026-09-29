@@ -44,6 +44,7 @@ echo "Setting up uvr..."
 # check if r version is installed and meets the requirement
 # parse this from the uvr.toml file
 R_VERSION_REQUIRED=$(grep -m1 -E '^r_version[[:space:]]*=' "$UVR_TOML" | grep -oE '[0-9]+(\.[0-9]+)*' | head -n1)
+uvr r install "$R_VERSION_REQUIRED"
 if [[ -z "$R_VERSION_REQUIRED" ]]; then
     echo "Error: no valid r_version found in $UVR_TOML (expected e.g. r_version = \">=4.3.0\")."
     exit 1
@@ -93,7 +94,6 @@ KERNEL_DIR=$(jupyter kernelspec list | awk -v name="$ENV_NAME" 'tolower($1) == t
 if [[ -z "$KERNEL_DIR" ]]; then
     echo "Could not find installed kernelspec matching '$ENV_NAME'"
     jupyter kernelspec list
-    # exit 1
 fi
 
 PROJECT_LIB="$git_root/.uvr/library"
