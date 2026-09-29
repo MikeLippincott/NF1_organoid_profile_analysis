@@ -40,3 +40,14 @@ Add a package with `uvr add <package>` so it is recorded in `uvr.toml` and `uvr.
 
 ### R (mamba, older modules)
 The R notebooks in `1.EDA` and `2.2d_vs_3d_analysis` were run with the mamba environment in `environments/r_env.yml` (`mamba env create -f environments/r_env.yml`) and a generic `ir` kernel.
+
+## Running the analysis repo
+Ensure that the data are acquired prior.
+The data zip once downloaded will be extracted and placed in the `data/` directory.
+data file: `data/shippable_dir.zip` should be present.
+
+Then run:
+```shell
+just all
+```
+

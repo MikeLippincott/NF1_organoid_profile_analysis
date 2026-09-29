@@ -8,6 +8,7 @@ setup:
     ./uv_setup.sh
 
 # Module 0: unpack the raw data archive.
+# note that the data needs to be downloaded and unpacked before running any analysis.
 download-data:
     ./0.download_data/run_setup_files_local.sh
 
