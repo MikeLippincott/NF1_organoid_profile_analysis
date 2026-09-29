@@ -396,20 +396,6 @@ url = "https://cran.r-project.org/src/contrib/commonmark_2.0.0.tar.gz"
 checksum = "md5:ac18da7841af62e8c457dd4872cce1ba"
 
 [[package]]
-name = "cowplot"
-version = "1.2.0"
-source = "cran"
-raw_version = "1.2.0"
-url = "https://cran.r-project.org/src/contrib/cowplot_1.2.0.tar.gz"
-checksum = "md5:78d3f716e640c993b3958dab2690bcb6"
-requires = [
-    "ggplot2",
-    "gtable",
-    "rlang",
-    "scales",
-]
-
-[[package]]
 name = "cpp11"
 version = "0.5.5"
 source = "cran"
@@ -1087,20 +1073,6 @@ checksum = "md5:bce35a7a89fe4108f262db3e441cccae"
 requires = [
     "cli",
     "rlang",
-]
-
-[[package]]
-name = "magick"
-version = "2.9.1"
-source = "cran"
-raw_version = "2.9.1"
-url = "https://cran.r-project.org/src/contrib/magick_2.9.1.tar.gz"
-checksum = "md5:012ecba2c6bffc0d79f56658b3cb808c"
-requires = [
-    "Rcpp",
-    "magrittr",
-    "curl",
-    "Rcpp",
 ]
 
 [[package]]
