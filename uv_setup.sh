@@ -27,7 +27,6 @@ for _ in $(seq 1 $loops); do
 done
 unset VIRTUAL_ENV
 
-rm -f "$git_root/uv.lock"
 rm -rf "$ENV_PATH"
 
 uv venv --project "$git_root" "$ENV_PATH"
@@ -53,7 +52,8 @@ fi
 if [[ -d "$git_root/.uvr" ]]; then
     rm -rf "$git_root/.uvr"
 fi
-
+# reinstall the locked R packages (including IRkernel) into the fresh library
+(cd "$git_root" && uvr sync)
 
 
 # resolve the project's R through uvr (not a developer-specific path)
@@ -66,25 +66,27 @@ if [[ -z "$R_BIN" || ! -x "$R_BIN" ]]; then
 fi
 if [[ -z "$R_BIN" || ! -x "$R_BIN" ]]; then
     echo "Error: no R executable found (checked uvr and PATH)."
-    # exit 1
+    exit 1
 fi
 R_VERSION_INSTALLED=$("$R_BIN" --version | head -n 1 | awk '{print $3}')
 if [[ $(printf '%s\n' "$R_VERSION_REQUIRED" "$R_VERSION_INSTALLED" | sort -V | head -n1) != "$R_VERSION_REQUIRED" ]]; then
     echo "R version $R_VERSION_REQUIRED or higher is required. Installed version is $R_VERSION_INSTALLED."
     echo "Please install the required R version."
-    # exit 1
+    exit 1
 fi
 
 echo "Setting up Jupyter kernel for the virtual environment..."
 
 ENV_NAME=$(grep -m1 -E '^name[[:space:]]*=' "$UVR_TOML" | sed -E 's/^name[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
 
-cat > /tmp/install_kernel.R << EOF
+INSTALL_KERNEL_SCRIPT=$(mktemp --suffix=.R)
+trap 'rm -f "$INSTALL_KERNEL_SCRIPT"' EXIT
+cat > "$INSTALL_KERNEL_SCRIPT" << EOF
 IRkernel::installspec(name = "$ENV_NAME", displayname = "$ENV_NAME")
 EOF
 
-(cd "$git_root" && uvr run /tmp/install_kernel.R)
-rm -f /tmp/install_kernel.R
+(cd "$git_root" && uvr run "$INSTALL_KERNEL_SCRIPT")
+rm -f "$INSTALL_KERNEL_SCRIPT"
 
 KERNEL_DIR=$(jupyter kernelspec list | awk -v name="$ENV_NAME" 'tolower($1) == tolower(name) {print $2}')
 

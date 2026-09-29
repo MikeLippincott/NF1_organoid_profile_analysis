@@ -249,7 +249,6 @@ for (profile_type in names(profile_type_labels)) {
     size <- page_size_for(max_n_by_profile_type[[profile_type]])
     output_path <- file.path(figures_dir, paste0("2D_sc_", profile_type, "_correlation_heatmaps.pdf"))
     save_heatmaps_pdf(heatmaps_by_profile_type[[profile_type]], output_path, size$width, size$height)
-    cat("Saved:", output_path, "(", length(heatmaps_by_profile_type[[profile_type]]), "pages)\n")
 }
 
 pairs_df_3d <- arrow::read_parquet(file.path(correlation_dir, "3D_sc_correlation_pairs.parquet"))
@@ -363,8 +362,6 @@ for (variant in names(variant_display_names)) {
         gc(full = TRUE)
     }
     dev.off()
-
-    cat("Saved:", output_path, "(", n_pages, "pages)\n")
 
     rm(variant_rows)
     gc(full = TRUE)
