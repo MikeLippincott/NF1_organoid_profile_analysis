@@ -1,4 +1,4 @@
-packages <- c("ggplot2", "dplyr", "arrow", "ComplexHeatmap", "circlize", "scales", "RColorBrewer")
+packages <- c("ggplot2", "dplyr", "arrow", "ComplexHeatmap", "circlize", "scales", "RColorBrewer", "ggrastr")
 for (pkg in packages) {
     suppressPackageStartupMessages(
         suppressWarnings(
@@ -232,8 +232,8 @@ for (slice_strategy in names(slice_display_names)) {
         tumor_type <- group_samples$Metadata_Biology_TumorType
 
         correlation_label <- if (profile_type == "agg") "Replicate Correlation" else "Correlation"
-        title_clustered <- paste0("2D ", slice_label, " — Single-Cell ", profile_label, " Profiles — ", correlation_label, " (Clustered)")
-        title_unclustered <- paste0("2D ", slice_label, " — Single-Cell ", profile_label, " Profiles — ", correlation_label, " (Unclustered)")
+        title_clustered <- paste0("2D ", slice_label, " - Single-Cell ", profile_label, " Profiles - ", correlation_label, " (Clustered)")
+        title_unclustered <- paste0("2D ", slice_label, " - Single-Cell ", profile_label, " Profiles - ", correlation_label, " (Unclustered)")
 
         heatmaps_by_profile_type[[profile_type]][[paste0(slice_strategy, "_clustered")]] <- build_heatmap(
             mat, treatment, patient, tumor_type, cluster = TRUE, title = title_clustered
@@ -286,8 +286,8 @@ for (variant in names(variant_display_names_3d)) {
         tumor_type <- group_samples$Metadata_Biology_TumorType
 
         correlation_label <- if (profile_type == "agg") "Replicate Correlation" else "Correlation"
-        title_clustered <- paste0("3D ", variant_label, " — Single-Cell ", profile_label, " Profiles — ", correlation_label, " (Clustered)")
-        title_unclustered <- paste0("3D ", variant_label, " — Single-Cell ", profile_label, " Profiles — ", correlation_label, " (Unclustered)")
+        title_clustered <- paste0("3D ", variant_label, " - Single-Cell ", profile_label, " Profiles - ", correlation_label, " (Clustered)")
+        title_unclustered <- paste0("3D ", variant_label, " - Single-Cell ", profile_label, " Profiles - ", correlation_label, " (Unclustered)")
 
         heatmaps_by_profile_type_3d[[profile_type]][[paste0(variant, "_clustered")]] <- build_heatmap(
             mat, treatment, patient, tumor_type, cluster = TRUE, title = title_clustered
@@ -350,7 +350,7 @@ for (variant in names(variant_display_names)) {
         treatment <- unlist(row$treatment[[1]])
         patient_id <- row$patient[[1]]
         tumor_type <- tumor_type_lookup[[patient_id]]
-        title <- paste0("3D sc_fs (", variant_label, ") — ", patient_id, " — ", tumor_type)
+        title <- paste0("3D sc_fs (", variant_label, ") - ", patient_id, " - ", tumor_type)
         ht <- build_heatmap(mat, treatment, cluster = TRUE, title = title)
         # See the comment in save_heatmaps_pdf() (c5_helpers) -- draw()'s
         # own newpage=TRUE default doesn't reliably advance the PDF page
