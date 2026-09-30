@@ -1,4 +1,4 @@
-list_of_packages <- c("ggplot2", "dplyr", "tidyr", "circlize", "RColorBrewer")
+list_of_packages <- c("ggplot2", "dplyr", "tidyr", "RColorBrewer")
 for (package in list_of_packages) {
     suppressPackageStartupMessages(
         suppressWarnings(
@@ -128,7 +128,7 @@ for (slice in slice_specs) {
     }
 }
 
-save_plots_pdf(pca_plots_2D, file.path(figures_path, "2D_all_patients_pca.pdf"), width = 7, height = 7)
+save_umap_pca_plots_pdf(pca_plots_2D, file.path(figures_path, "2D_all_patients_pca.pdf"), width = 7, height = 7)
 
 # normalized profiles
 normalized_profiles <- c(
@@ -200,7 +200,7 @@ for (norm_profile in normalized_profiles) {
     }
 }
 
-save_plots_pdf(pca_plots_3D, file.path(figures_path, "3D_all_patients_pca.pdf"), width = 7, height = 7)
+save_umap_pca_plots_pdf(pca_plots_3D, file.path(figures_path, "3D_all_patients_pca.pdf"), width = 7, height = 7)
 
 # Reuses normalized_profiles from the 3D PCA section above.
 scree_df_list <- list()

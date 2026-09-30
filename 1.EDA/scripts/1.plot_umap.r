@@ -1,4 +1,4 @@
-list_of_packages <- c("ggplot2", "dplyr", "tidyr", "circlize", "RColorBrewer")
+list_of_packages <- c("ggplot2", "dplyr", "tidyr", "RColorBrewer")
 for (package in list_of_packages) {
   suppressPackageStartupMessages(
     suppressWarnings(
@@ -306,7 +306,7 @@ pdf_plots_3D <- list(
     rasterize_dpi = 150
   )
 )
-save_plots_pdf(pdf_plots_3D, file.path(figures_path, "3D_scfs_all_patients.pdf"))
+save_umap_pca_plots_pdf(pdf_plots_3D, file.path(figures_path, "3D_scfs_all_patients.pdf"))
 
 plot_umap(
   data = max_projection_2D_sc_umap_results,
@@ -486,7 +486,7 @@ pdf_plots_2D_maxproj <- list(
     rasterize_dpi = 150
   )
 )
-save_plots_pdf(pdf_plots_2D_maxproj, file.path(figures_path, "2D_maxproj_scfs_all_patients.pdf"))
+save_umap_pca_plots_pdf(pdf_plots_2D_maxproj, file.path(figures_path, "2D_maxproj_scfs_all_patients.pdf"))
 
 plot_umap(
   data = middle_slice_2D_sc_umap_results,
@@ -666,7 +666,7 @@ pdf_plots_2D_midslice <- list(
     rasterize_dpi = 150
   )
 )
-save_plots_pdf(pdf_plots_2D_midslice, file.path(figures_path, "2D_midslice_scfs_all_patients.pdf"))
+save_umap_pca_plots_pdf(pdf_plots_2D_midslice, file.path(figures_path, "2D_midslice_scfs_all_patients.pdf"))
 
 individual_patients <- readLines(file.path(root_dir, "data/patient_IDs.txt"))
 individual_patients <- individual_patients[individual_patients != ""]
@@ -747,6 +747,6 @@ for (patient in individual_patients) {
 
 # One combined, multi-page PDF per projection (one page per patient) instead
 # of individual PNGs.
-save_plots_pdf(plots_2D_maxproj, file.path(figures_patient_specific_path, "patient_specific_2D_maxproj_scfs_by_treatment.pdf"))
-save_plots_pdf(plots_2D_midslice, file.path(figures_patient_specific_path, "patient_specific_2D_midslice_scfs_by_treatment.pdf"))
-save_plots_pdf(plots_3D, file.path(figures_patient_specific_path, "patient_specific_3D_scfs_by_treatment.pdf"))
+save_umap_pca_plots_pdf(plots_2D_maxproj, file.path(figures_patient_specific_path, "patient_specific_2D_maxproj_scfs_by_treatment.pdf"))
+save_umap_pca_plots_pdf(plots_2D_midslice, file.path(figures_patient_specific_path, "patient_specific_2D_midslice_scfs_by_treatment.pdf"))
+save_umap_pca_plots_pdf(plots_3D, file.path(figures_patient_specific_path, "patient_specific_3D_scfs_by_treatment.pdf"))

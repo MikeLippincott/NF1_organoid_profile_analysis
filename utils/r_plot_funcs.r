@@ -148,9 +148,9 @@ plot_umap <- function(data, output_path = NULL, title,
   }
   p
 }
-save_plots_pdf <- function(plots, output_path, width = 10, height = 5) {
+save_umap_pca_plots_pdf <- function(plots, output_path, width = 10, height = 5) {
   # Save a list of ggplot objects as a single multi-page PDF, one page per
-  # plot, in list order.
+  # plot, all pages sharing the same size.
   #
   # Parameters
   # ----------
@@ -198,7 +198,7 @@ set_plot_size <- function(width, height) {
     list(width = width, height = height)
 }
 
-save_umap_plots_pdf <- function(plots, output_path, width, height) {
+save_plots_pdf <- function(plots, output_path, width, height) {
     #' Save a list of ggplot objects as a single multi-page PDF, one page
     #' per plot, in list order.
     #'

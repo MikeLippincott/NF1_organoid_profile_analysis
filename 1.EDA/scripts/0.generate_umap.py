@@ -18,8 +18,7 @@ import pathlib
 
 import pandas as pd
 import umap
-from notebook_init_utils import bandicoot_check, init_notebook
-from pycytominer import feature_select
+from notebook_init_utils import init_notebook
 from pycytominer.cyto_utils import infer_cp_features
 
 root_dir, in_notebook = init_notebook()
@@ -116,13 +115,6 @@ for projection_key in pooled_profile_paths:
 
         metadata_columns = infer_cp_features(profile_df, metadata=True)
         feature_columns = infer_cp_features(profile_df, compartments=compartments)
-        n_features_total = len(feature_columns)
-
-        selected_feature_columns = [
-            c for c in feature_columns if c in profile_df.columns
-        ]
-        n_outlier_dropped = len(feature_columns) - len(selected_feature_columns)
-        feature_columns = selected_feature_columns
 
         # Remove rows with NaN values in the feature columns
         profile_df = profile_df.dropna(subset=feature_columns, axis=0, how="any")
@@ -241,7 +233,6 @@ patient_specific_output_paths = {
 # In[6]:
 
 
-feature_drop_summary = []
 patient_specific_results = {
     projection_key: {variant: [] for variant in variants}
     for projection_key, variants in patient_specific_output_paths.items()
@@ -261,23 +252,6 @@ for patient in patient_profile_paths:
             profile_df = pd.read_parquet(profile_paths["input"])
             metadata_columns = infer_cp_features(profile_df, metadata=True)
             feature_columns = infer_cp_features(profile_df, compartments=compartments)
-            n_features_total = len(feature_columns)
-
-            selected_feature_columns = [
-                c for c in feature_columns if c in profile_df.columns
-            ]
-            n_outlier_dropped = len(feature_columns) - len(selected_feature_columns)
-            feature_columns = selected_feature_columns
-
-            feature_drop_summary.append(
-                {
-                    "projection": projection_key,
-                    "variant": profile_variant,
-                    "total": n_features_total,
-                    "outlier_dropped": n_outlier_dropped,
-                    "remaining": len(feature_columns),
-                }
-            )
 
             # Remove rows with NaN values in the feature columns
             profile_df = profile_df.dropna(subset=feature_columns, axis=0, how="any")
@@ -323,16 +297,3 @@ for projection_key, variants in patient_specific_results.items():
             patient_specific_output_paths[projection_key][profile_variant],
             index=False,
         )
-
-# Summarize feature dropping across all per-patient datasets, grouped by
-# projection/variant (feature counts are the same across patients within a
-# projection, but outlier drops can differ since each patient's profiles
-# were normalized independently).
-feature_drop_summary_df = pd.DataFrame(feature_drop_summary)
-print(
-    feature_drop_summary_df.groupby(["projection", "variant"]).agg(
-        total=("total", "first"),
-        remaining_min=("remaining", "min"),
-        remaining_max=("remaining", "max"),
-    )
-)

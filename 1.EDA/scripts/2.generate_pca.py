@@ -17,11 +17,9 @@
 
 import pathlib
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from notebook_init_utils import init_notebook
-from pycytominer import feature_select
 from sklearn.decomposition import PCA
 
 root_dir, in_notebook = init_notebook()
@@ -145,10 +143,6 @@ for i, (
     # Coerce all feature columns to numeric, treating infs as missing
     df[feature_columns] = df[feature_columns].apply(pd.to_numeric, errors="coerce")
     df[feature_columns] = df[feature_columns].replace([np.inf, -np.inf], np.nan)
-
-    selected_feature_columns = [c for c in feature_columns if c in df.columns]
-    n_outlier_dropped = len(feature_columns) - len(selected_feature_columns)
-    feature_columns = selected_feature_columns
 
     # remove column if all vlaues are NaN
     feature_columns = [c for c in feature_columns if not df[c].isna().all()]
