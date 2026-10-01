@@ -36,6 +36,7 @@
 
 
 import argparse
+import gc
 import pathlib
 import warnings
 
@@ -327,8 +328,6 @@ def patient_combinations(membership):
 
 # In[ ]:
 
-
-import gc
 
 SUMMARY_COLS = ["class", "treatment", "rank", "n_features", "n_patients", "patients"]
 STATUS_COLS = ["class", "treatment", "status", "reason"]
