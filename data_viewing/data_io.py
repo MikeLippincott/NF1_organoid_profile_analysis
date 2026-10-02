@@ -11,12 +11,13 @@ running app, picked automatically:
 - An HF Space with the bucket mounted as a storage volume (Space Settings ->
   Storage Buckets) -- set ``DATA_DIR`` to that mount path.
 - Anywhere else (e.g. Streamlit Community Cloud, which can't mount buckets):
-  this module downloads it with ``sync_bucket()`` into ``DATA_DIR`` the
-  first time it's imported with no local data already there, cached for the
-  life of the process. The bucket (see ``HF_BUCKET`` below) is **private**,
-  so this requires an ``HF_TOKEN`` secret/env var with read access to it --
-  without one, the download fails, every section shows "no results", and a
-  sidebar warning names the error.
+  this module downloads it with ``sync_bucket()`` into ``DATA_DIR`` every
+  time the process starts, via ``st.cache_resource`` so it only actually
+  transfers once per process (``sync_bucket`` also diffs, so even that one
+  call is cheap if ``DATA_DIR`` already matches). The bucket (see
+  ``HF_BUCKET`` below) is **private**, so this requires an ``HF_TOKEN``
+  secret/env var with read access to it -- without one, the download fails,
+  every section shows "no results", and a sidebar warning names the error.
 """
 
 import os
@@ -36,17 +37,18 @@ DATA_DIR = pathlib.Path(
 HF_BUCKET = os.environ.get("HF_BUCKET", "lippincm/NF1_3D_organoid_data_viewing-storage")
 
 
-def _has_content(path: pathlib.Path) -> bool:
-    return path.is_dir() and any(path.iterdir())
-
-
 @st.cache_resource(show_spinner="Downloading precomputed results from the HF Bucket...")
 def _sync_bucket_once(bucket: str, dest: str) -> None:
     """Download ``hf://buckets/<bucket>/data`` into ``dest``, once per process.
 
-    ``st.cache_resource`` only caches a *successful* call, so if this raises
-    (e.g. missing/invalid ``HF_TOKEN``), the next rerun retries it instead of
-    silently staying empty for the rest of the process's life.
+    Always attempts the sync rather than skipping when ``dest`` already has
+    *some* files: a previous attempt (e.g. before ``HF_TOKEN`` was set) can
+    leave it partially populated -- missing just one subfolder was exactly
+    that bug -- and ``sync_bucket`` only transfers what's actually missing
+    or changed, so a fully-up-to-date ``dest`` costs one cheap diff, not a
+    re-download. ``st.cache_resource`` only caches a *successful* call, so a
+    failure (e.g. bad ``HF_TOKEN``) retries on the next process start rather
+    than silently staying broken for its lifetime.
     """
     from huggingface_hub import sync_bucket
 
@@ -54,14 +56,14 @@ def _sync_bucket_once(bucket: str, dest: str) -> None:
     sync_bucket(f"hf://buckets/{bucket}/data", dest)
 
 
-if not _has_content(DATA_DIR):
-    try:
-        _sync_bucket_once(HF_BUCKET, str(DATA_DIR))
-    except Exception as err:  # no/bad HF_TOKEN, offline, unreachable, ...
-        st.sidebar.warning(
-            f"Could not sync data from the HF Bucket ({HF_BUCKET}): {err}. "
-            "If this bucket is private, set an HF_TOKEN secret with read access."
-        )
+try:
+    _sync_bucket_once(HF_BUCKET, str(DATA_DIR))
+except Exception as err:  # no/bad HF_TOKEN, offline, unreachable, ...
+    st.sidebar.warning(
+        f"Could not sync data from the HF Bucket ({HF_BUCKET}): {err}. "
+        "If this bucket is private, set an HF_TOKEN secret with read access."
+    )
+
 
 EDA_RESULTS = DATA_DIR / "eda"
 VIABILITY_RESULTS = DATA_DIR / "viability_models"
