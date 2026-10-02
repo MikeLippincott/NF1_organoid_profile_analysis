@@ -56,12 +56,15 @@ def _sync_bucket_once(bucket: str, dest: str) -> None:
     sync_bucket(f"hf://buckets/{bucket}/data", dest)
 
 
+BUCKET_SYNC_ERROR: str | None = None
 try:
     _sync_bucket_once(HF_BUCKET, str(DATA_DIR))
 except Exception as err:  # no/bad HF_TOKEN, offline, unreachable, ...
-    st.sidebar.warning(
-        f"Could not sync data from the HF Bucket ({HF_BUCKET}): {err}. "
-        "If this bucket is private, set an HF_TOKEN secret with read access."
+    from huggingface_hub import get_token
+
+    token_state = "an HF_TOKEN is set" if get_token() else "no HF_TOKEN is set"
+    BUCKET_SYNC_ERROR = (
+        f"Could not sync data from the HF Bucket `{HF_BUCKET}` ({token_state}): {err}"
     )
 
 
