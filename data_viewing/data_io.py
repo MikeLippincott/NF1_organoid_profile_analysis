@@ -5,18 +5,18 @@ columns are renamed to canonical names (e.g. ``Metadata_Experiment_Treatment``
 and ``Metadata_treatment`` both become ``treatment``) so one set of filters
 works across every module.
 
-Data lives in an HF Bucket (see ``copy_data.sh``). Two ways to get it into a
+Data lives in an HF Bucket (see ``sync_data.py``). Two ways to get it into a
 running app, picked automatically:
 
 - An HF Space with the bucket mounted as a storage volume (Space Settings ->
   Storage Buckets) -- set ``DATA_DIR`` to that mount path.
 - Anywhere else (e.g. Streamlit Community Cloud, which can't mount buckets):
-  set ``HF_BUCKET`` (``namespace/bucket-name``; a private bucket also needs
-  ``HF_TOKEN``) and this module downloads it with ``sync_bucket()`` into
-  ``DATA_DIR`` once per process, the first time it's imported.
-
-Locally, with neither set, ``DATA_DIR`` defaults to a plain ``data/`` folder
-next to this file (populated by ``copy_data.sh``).
+  this module downloads it with ``sync_bucket()`` into ``DATA_DIR`` the
+  first time it's imported with no local data already there, cached for the
+  life of the process. The bucket (see ``HF_BUCKET`` below) is **private**,
+  so this requires an ``HF_TOKEN`` secret/env var with read access to it --
+  without one, the download fails, every section shows "no results", and a
+  sidebar warning names the error.
 """
 
 import os
@@ -31,31 +31,37 @@ DATA_DIR = pathlib.Path(
     os.environ.get("DATA_DIR", pathlib.Path(__file__).resolve().parent / "data")
 )
 
-# default matches copy_data.sh's push target, so this works with zero config
-# once HF_BUCKET (or the default below) names a real, reachable bucket.
+# default matches sync_data.py's push target, so this works with zero extra
+# config beyond HF_TOKEN (the bucket is private) once deployed.
 HF_BUCKET = os.environ.get("HF_BUCKET", "lippincm/NF1_3D_organoid_data_viewing-storage")
+
+
+def _has_content(path: pathlib.Path) -> bool:
+    return path.is_dir() and any(path.iterdir())
 
 
 @st.cache_resource(show_spinner="Downloading precomputed results from the HF Bucket...")
 def _sync_bucket_once(bucket: str, dest: str) -> None:
     """Download ``hf://buckets/<bucket>/data`` into ``dest``, once per process.
 
-    ``st.cache_resource`` makes this a no-op on every rerun after the first,
-    and shared across every session this process serves (not per-session).
+    ``st.cache_resource`` only caches a *successful* call, so if this raises
+    (e.g. missing/invalid ``HF_TOKEN``), the next rerun retries it instead of
+    silently staying empty for the rest of the process's life.
     """
     from huggingface_hub import sync_bucket
 
+    pathlib.Path(dest).mkdir(parents=True, exist_ok=True)
     sync_bucket(f"hf://buckets/{bucket}/data", dest)
 
 
-if os.environ.get("HF_BUCKET") or not DATA_DIR.exists():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+if not _has_content(DATA_DIR):
     try:
         _sync_bucket_once(HF_BUCKET, str(DATA_DIR))
-    except (
-        Exception
-    ) as err:  # offline/no-token/unreachable -- fall back to whatever's local
-        st.sidebar.warning(f"Could not sync data from the HF Bucket: {err}")
+    except Exception as err:  # no/bad HF_TOKEN, offline, unreachable, ...
+        st.sidebar.warning(
+            f"Could not sync data from the HF Bucket ({HF_BUCKET}): {err}. "
+            "If this bucket is private, set an HF_TOKEN secret with read access."
+        )
 
 EDA_RESULTS = DATA_DIR / "eda"
 VIABILITY_RESULTS = DATA_DIR / "viability_models"
