@@ -306,6 +306,10 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     # manhattan_distance_df
     # drop the NF0037_T1_CQ1 patient
     df = df.loc[df["Metadata_Biology_PatientTumor"] != "NF0037_T1_CQ1"]
+    # a few rows (e.g. NF0018_T6) are missing the experimental metadata
+    # (treatment, dose, tumor type) from an incomplete metadata join;
+    # drop them so they do not form a spurious "nan" treatment group
+    df = df.loc[df["Metadata_Experiment_Treatment"].notna()]
     # combine treatment, dose, and unit into a single column so that
     # different doses of the same treatment are modeled as distinct groups
     df["Metadata_Experiment_TreatmentFull"] = (

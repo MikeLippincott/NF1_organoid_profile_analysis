@@ -174,6 +174,10 @@ def covariate_sds(profile):
         raw["cell_count"] = raw["Metadata_Object_OrganoidSingleCellCount"]
     raw = raw.merge(manhattan_df, on="Metadata_Experiment_Well", how="left")
     raw = raw.loc[raw["Metadata_Biology_PatientTumor"] != "NF0037_T1_CQ1"].copy()
+    # a few rows (e.g. NF0018_T6) are missing the experimental metadata
+    # (treatment, dose, tumor type) from an incomplete metadata join;
+    # drop them so they do not form a spurious "nan" treatment group
+    raw = raw.loc[raw["Metadata_Experiment_Treatment"].notna()].copy()
     raw["organoid_count"] = raw["Metadata_WellOrganoidCount"]
     raw["cell_per_organoid_count"] = raw["cell_count"] / raw["organoid_count"]
     raw["cell_x_position"] = raw[f"Metadata_Location_{obj}_CenterX"]
