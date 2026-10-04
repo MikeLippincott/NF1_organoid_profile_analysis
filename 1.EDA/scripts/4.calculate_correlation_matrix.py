@@ -84,7 +84,7 @@ correlation_dir.mkdir(parents=True, exist_ok=True)
 
 # ## Shared preprocessing
 
-# In[3]:
+# In[ ]:
 
 
 def clean_profile(df, patient_col):
@@ -108,7 +108,6 @@ def clean_profile(df, patient_col):
     feature_columns = [col for col in df.columns if col not in metadata_columns]
 
     df[feature_columns] = df[feature_columns].apply(pd.to_numeric, errors="coerce")
-    df[feature_columns] = df[feature_columns].replace([np.inf, -np.inf], np.nan)
 
     feature_columns = [c for c in feature_columns if c in df.columns]
 
