@@ -97,7 +97,7 @@ patient_treatment_viabilty = df[
 ].drop_duplicates()
 
 
-# In[6]:
+# In[ ]:
 
 
 for dimension in paths_dict.keys():
@@ -135,6 +135,5 @@ for dimension in paths_dict.keys():
             output_type="parquet",
         )
         consensus_df = pd.read_parquet(consensus_output_path)
-        # add viability to the consensus profiles
         consensus_df.to_parquet(consensus_output_path, index=False)
         print(consensus_df.shape)
