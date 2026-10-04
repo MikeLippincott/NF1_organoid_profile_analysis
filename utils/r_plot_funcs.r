@@ -527,6 +527,23 @@ plot_boxplot_horizontal <- function(
     p
 }
 
+derive_tumor_type_lookup <- function(
+    profiles_3D, patient_col = "Metadata_Biology_PatientTumor",
+    tumor_type_col = "Metadata_Biology_TumorType"
+) {
+    #' Named vector of patient_tumor -> tumor type (cNF/pNF/MPNST/Other),
+    #' derived from the tumor-type column carried by 3D profiles. 2D profiles
+    #' have no tumor-type column, so 2D data is mapped through this
+    #' 3D-derived lookup by patient_tumor id. Rows with a missing tumor type
+    #' are ignored; a patient mapping to more than one tumor type is an error.
+    pairs <- unique(profiles_3D[!is.na(profiles_3D[[tumor_type_col]]), c(patient_col, tumor_type_col)])
+    conflicting <- unique(pairs[[patient_col]][duplicated(pairs[[patient_col]])])
+    if (length(conflicting) > 0) {
+        stop("Patients with more than one tumor type in 3D profiles: ", paste(conflicting, collapse = ", "))
+    }
+    setNames(as.character(pairs[[tumor_type_col]]), pairs[[patient_col]])
+}
+
 plot_group_density_with_stats <- function(
     data, x_col, x_lab, y_lab = "Density", fill_lab = "Group",
     stat_col = x_col, stat_fn = function(x) sum(x, na.rm = TRUE),

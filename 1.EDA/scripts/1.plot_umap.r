@@ -108,17 +108,23 @@ patient_color_palette <- master_patient_palette[
   names(master_patient_palette) %in% unique(max_projection_2D_sc_umap_results$Metadata_Biology_PatientTumor)
 ]
 
-sc_3D_umap_results$Metadata_Biology_TumorType <- tumor_type_lookup[sc_3D_umap_results$Metadata_Biology_PatientTumor]
-max_projection_2D_sc_umap_results$Metadata_Biology_TumorType <- tumor_type_lookup[max_projection_2D_sc_umap_results$Metadata_Biology_PatientTumor]
-middle_slice_2D_sc_umap_results$Metadata_Biology_TumorType <- tumor_type_lookup[middle_slice_2D_sc_umap_results$Metadata_Biology_PatientTumor]
+# Tumor type comes from the 3D profiles' Metadata_Biology_TumorType column.
+# 2D profiles carry no tumor-type column, so 2D rows are mapped through the
+# 3D-derived patient_tumor -> tumor type lookup. 3D rows are mapped through
+# the same lookup so that the few 3D rows missing a tumor type are filled in.
+patient_tumor_type_lookup <- derive_tumor_type_lookup(sc_3D_umap_results)
+
+sc_3D_umap_results$Metadata_Biology_TumorType <- patient_tumor_type_lookup[sc_3D_umap_results$Metadata_Biology_PatientTumor]
+max_projection_2D_sc_umap_results$Metadata_Biology_TumorType <- patient_tumor_type_lookup[max_projection_2D_sc_umap_results$Metadata_Biology_PatientTumor]
+middle_slice_2D_sc_umap_results$Metadata_Biology_TumorType <- patient_tumor_type_lookup[middle_slice_2D_sc_umap_results$Metadata_Biology_PatientTumor]
 
 # Patient legend labels with tumor type in parentheses (e.g. "NF0014_T1
 # (cNF)"), used only for the unfaceted by-patient plots (which show a
 # legend); facet plots use the plain patient ID as their strip label and are
 # left unchanged.
 patient_legend_labels <- setNames(
-  paste0(names(tumor_type_lookup), " (", tumor_type_lookup, ")"),
-  names(tumor_type_lookup)
+  paste0(names(patient_tumor_type_lookup), " (", patient_tumor_type_lookup, ")"),
+  names(patient_tumor_type_lookup)
 )
 
 sc_3D_umap_results$Metadata_Biology_PatientTumorLabel <- patient_legend_labels[sc_3D_umap_results$Metadata_Biology_PatientTumor]

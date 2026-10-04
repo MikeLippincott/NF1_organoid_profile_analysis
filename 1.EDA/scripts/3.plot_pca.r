@@ -48,6 +48,22 @@ if (!dir.exists(figures_path)) {
 
 pca_results_dir <- file.path(root_dir, "1.EDA/results/pca")
 
+# 3D profile carrying Metadata_Biology_TumorType; the source of tumor type
+# for every PCA embedding below (2D profiles and 3D aggregated/consensus
+# profiles carry no tumor-type column)
+tumor_type_profile_3D_path <- file.path(
+    root_dir, "data/profiles_3D/all_patients/1.feature_selected_profiles/sc_norm_fs_profiles.parquet"
+)
+
+# patient_tumor -> tumor type, derived from the 3D profiles and used to map
+# both 2D and 3D embeddings by Metadata_Biology_PatientTumor
+patient_tumor_type_lookup <- derive_tumor_type_lookup(
+    arrow::read_parquet(
+        tumor_type_profile_3D_path,
+        col_select = c("Metadata_Biology_PatientTumor", "Metadata_Biology_TumorType")
+    )
+)
+
 slice_specs <- list(
     list(dir_name = "max_projection", file_prefix = "2D_max_projection", title_label = "2D MIP"),
     list(dir_name = "middle_slice", file_prefix = "2D_middle_slice", title_label = "2D Middle Slice"),
@@ -92,7 +108,7 @@ for (slice in slice_specs) {
                     Metadata_Experiment_Treatment = Metadata_treatment,
                     Metadata_Biology_PatientTumor = Metadata_patient_tumor
                 )
-            df$Metadata_Biology_TumorType <- tumor_type_lookup[df$Metadata_Biology_PatientTumor]
+            df$Metadata_Biology_TumorType <- patient_tumor_type_lookup[df$Metadata_Biology_PatientTumor]
 
             explained_variance_df <- arrow::read_parquet(explained_variance_file_path)
             title <- paste0("All patients: ", slice$title_label, " ", entity$entity_label, " ", profile$label, " Profiles")
@@ -165,7 +181,7 @@ for (norm_profile in normalized_profiles) {
             cat("PC1 not found, skipping:", file_path, "\n")
             next
         }
-        df$Metadata_Biology_TumorType <- tumor_type_lookup[df$Metadata_Biology_PatientTumor]
+        df$Metadata_Biology_TumorType <- patient_tumor_type_lookup[df$Metadata_Biology_PatientTumor]
 
         explained_variance_df <- arrow::read_parquet(explained_variance_file_path)
         title <- paste0("All patients: 3D ", normalization_variant_labels[[norm_profile]], " ", profile$label, " Profiles")
