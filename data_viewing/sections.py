@@ -5,9 +5,12 @@ import re
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 from background import subpanel_background
 from data_io import (
+    DIFFERENTIAL_PRODUCED_BY,
+    DIFFERENTIAL_RESULTS,
     EDA_RESULTS,
     EXCLUDED_PATIENTS,
     Dataset,
@@ -1366,4 +1369,484 @@ LINEAR_MODELING_SECTIONS = {
     "Model fit": lm_fit_section,
     "UpSet (variate combinations)": lm_upset_section,
     "Unique variates per model": lm_model_variates_section,
+}
+
+
+# ---------------------------------------------------------------------------
+# 5.differential_analysis (each treatment vs its patient's DMSO control)
+# ---------------------------------------------------------------------------
+MORPHOLOGY_COLUMNS = {
+    "organoid_mean_abs_log2fc": "Organoid",
+    "single_cell_mean_abs_log2fc": "Single cell",
+}
+PLATE_GLOBAL_TEST_LABELS = {
+    "n_groups": "plate x treatment groups",
+    "n_plates": "plates",
+    "n_features": "features",
+    "observed_rms_effect": "observed RMS effect",
+    "null_median_rms_effect": "null median RMS effect",
+    "p": "p-value",
+}
+TOP_FEATURE_COLUMNS = [
+    "feature",
+    "mean",
+    "t",
+    "q",
+    "frac_patients_same_sign",
+    "n_patients",
+    "mean_cNF",
+    "mean_pNF",
+    "mean_MPNST",
+    "mean_Other",
+]
+MEK_TOP_N = 40  # features shown in the MEK drug-consistency heatmap
+
+
+def _differential(key: str) -> pd.DataFrame | None:
+    """Load one 5.differential_analysis table, or say which script writes it."""
+    ds = registry()["differential"].get(key)
+    if ds is None:
+        missing_notice(
+            humanize_label(key),
+            DIFFERENTIAL_PRODUCED_BY[key],
+            DIFFERENTIAL_RESULTS / f"{key}.parquet",
+        )
+        return None
+    return load_dataset(str(ds.path))
+
+
+def _with_treatment_label(df: pd.DataFrame) -> pd.DataFrame:
+    """``treatment dose unit`` (e.g. ``Binimetinib 10 uM``), so each dose gets its
+    own box or bar instead of being pooled under the drug name."""
+    return df.assign(
+        treatment_label=(
+            df["treatment"].astype(str)
+            + " "
+            + df["dose"].astype(str)
+            + " "
+            + df["dose_unit"].astype(str)
+        )
+    )
+
+
+def morphology_vs_viability_section(filters: Filters) -> None:
+    summary = _differential("log2fc_summary")
+    if summary is None:
+        return
+    n_missing = int(summary["viability_log2fc"].isna().sum())
+    st.caption(
+        f"{n_missing:,} of {len(summary):,} patient x treatment rows have no viability "
+        "measurement and are not plotted."
+    )
+    # one row per patient x treatment x compartment, so compartments can be faceted
+    long = summary.melt(
+        id_vars=[c for c in summary.columns if c not in MORPHOLOGY_COLUMNS],
+        value_vars=list(MORPHOLOGY_COLUMNS),
+        var_name="compartment",
+        value_name="morphology_mean_abs_diff",
+    ).assign(compartment=lambda d: d["compartment"].map(MORPHOLOGY_COLUMNS))
+    explorer(
+        long,
+        "diff_morph_viab",
+        filters,
+        kinds=["scatter", "histogram", "heatmap"],
+        defaults={
+            "kind": "scatter",
+            "x": "morphology_mean_abs_diff",
+            "y": "viability_log2fc",
+            "color": "tumor_type",
+            "facet": "compartment",
+        },
+        title="Morphology difference from DMSO vs viability log2 ratio",
+    )
+
+
+def viability_tumor_type_section(filters: Filters) -> None:
+    table = st.radio(
+        "Table",
+        ["Per patient", "Per tumor type (summary)"],
+        horizontal=True,
+        key="viab_tt_table",
+    )
+    if table == "Per patient":
+        df = _differential("viability_log2fc_by_patient_tumor_type")
+        defaults = {
+            "kind": "box",
+            "x": "treatment_label",
+            "y": "viability_percent",
+            "color": "tumor_type",
+        }
+    else:
+        df = _differential("viability_log2fc_by_tumor_type")
+        defaults = {
+            "kind": "bar",
+            "x": "treatment_label",
+            "y": "mean_viability_percent",
+            "color": "tumor_type",
+        }
+    if df is None:
+        return
+    explorer(
+        _with_treatment_label(df),
+        f"viab_tt_{'patient' if table == 'Per patient' else 'summary'}",
+        filters,
+        kinds=["box", "violin", "bar", "scatter", "histogram"],
+        defaults=defaults,
+        title=f"Viability (% of DMSO) by tumor type: {table.lower()}",
+    )
+
+
+def plate_position_section(filters: Filters) -> None:
+    global_test = _differential("plate_position_global_test")
+    null = _differential("plate_position_null")
+    if global_test is None or null is None:
+        return
+    st.dataframe(
+        global_test.assign(
+            compartment=global_test["compartment"].map(humanize_label)
+        ).rename(columns=PLATE_GLOBAL_TEST_LABELS),
+        hide_index=True,
+        width="stretch",
+    )
+
+    compartments = sorted(global_test["compartment"].unique())
+    fig = px.histogram(
+        null,
+        x="null_rms_effect",
+        facet_col="compartment",
+        nbins=60,
+        category_orders={"compartment": compartments},
+        title="Null RMS effect (inner/outer labels shuffled); red = observed",
+    )
+    for col, compartment in enumerate(compartments, start=1):
+        observed = global_test.loc[
+            global_test["compartment"] == compartment, "observed_rms_effect"
+        ].iloc[0]
+        fig.add_vline(
+            x=observed, line_dash="dash", line_color="firebrick", row=1, col=col
+        )
+    fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+    fig.update_layout(template="plotly_white", height=380, showlegend=False)
+    st.plotly_chart(fig, width="stretch", key="pp_null_chart")
+    png_download(fig, "pp_null", "plate_position_null")
+
+    features = _differential("plate_position_feature_tests")
+    if features is None:
+        return
+    features = features.assign(
+        neg_log10_q=-np.log10(features["q"].clip(lower=1e-300)),
+        significant_q_0_05=np.where(features["q"] < 0.05, "significant", "n.s."),
+    )
+    explorer(
+        features,
+        "pp_feat",
+        filters,
+        kinds=["scatter", "histogram", "heatmap"],
+        defaults={
+            "kind": "scatter",
+            "x": "outer_minus_inner",
+            "y": "neg_log10_q",
+            "color": "significant_q_0_05",
+            "facet": "compartment",
+        },
+        title="Inner vs outer wells: effect per feature",
+    )
+    st.markdown("**Top 10 features by q-value per compartment**")
+    st.dataframe(
+        features.sort_values("q")
+        .groupby("compartment", observed=True)
+        .head(10)[["compartment", "feature", "outer_minus_inner", "p", "q"]],
+        hide_index=True,
+        width="stretch",
+    )
+
+
+def dmso_column_section(filters: Filters) -> None:
+    tests = _differential("dmso_column_tests")
+    pairs = _differential("dmso_column_pair_correlations")
+    if tests is None or pairs is None:
+        return
+    st.dataframe(
+        tests.rename(columns={"within_minus_between": "within minus between"}),
+        hide_index=True,
+        width="stretch",
+    )
+    explorer(
+        pairs,
+        "dmso_pairs",
+        filters,
+        kinds=["box", "violin", "scatter"],
+        defaults={
+            "kind": "box",
+            "x": "pair_type",
+            "y": "correlation",
+            "color": "patient_tumor",
+            "facet": "compartment",
+        },
+        title="Correlation between DMSO wells, within vs between columns",
+    )
+
+
+def _plate_map(wells: pd.DataFrame, title: str) -> go.Figure:
+    """8 x 12 well grid colored by correlation to DMSO; hover shows the treatment."""
+    values = wells.pivot_table(
+        index="plate_row",
+        columns="plate_column",
+        values="correlation_to_dmso",
+        aggfunc="mean",
+    )
+    labels = (
+        wells.pivot_table(
+            index="plate_row",
+            columns="plate_column",
+            values="treatment_label",
+            aggfunc="first",
+        )
+        .reindex(index=values.index, columns=values.columns)
+        .to_numpy()
+    )
+    fig = go.Figure(
+        go.Heatmap(
+            z=values.to_numpy(),
+            x=[str(c) for c in values.columns],
+            y=list(values.index),
+            customdata=labels,
+            colorscale="RdBu_r",
+            zmid=0,
+            zmin=-1,
+            zmax=1,
+            colorbar=dict(title="r to DMSO"),
+            hovertemplate=(
+                "well %{y}%{x}<br>%{customdata}<br>r = %{z:.2f}<extra></extra>"
+            ),
+        )
+    )
+    fig.update_layout(
+        title=title,
+        template="plotly_white",
+        height=420,
+        yaxis_autorange="reversed",
+    )
+    return fig
+
+
+def well_correlation_section(filters: Filters) -> None:
+    df = _differential("well_dmso_correlation")
+    if df is None:
+        return
+    explorer(
+        df,
+        "wc",
+        filters,
+        kinds=["box", "violin", "scatter", "histogram"],
+        defaults={
+            "kind": "box",
+            "x": "treatment",
+            "y": "correlation_to_dmso",
+            "color": "plate_position",
+            "facet": "compartment",
+        },
+        title="Well correlation to plate DMSO",
+    )
+
+    st.divider()
+    st.markdown("**Plate map**")
+    subpanel_background("plate_map")
+    df = apply_global_filters(_with_treatment_label(df), filters)
+    c1, c2 = st.columns(2)
+    compartment = c1.radio(
+        "Compartment",
+        sorted(df["compartment"].unique()),
+        horizontal=True,
+        key="wc_map_comp",
+        format_func=humanize_label,
+    )
+    patient = c2.selectbox(
+        "Patient", sorted(df["patient_tumor"].unique()), key="wc_map_patient"
+    )
+    wells = df[(df["compartment"] == compartment) & (df["patient_tumor"] == patient)]
+    if wells.empty:
+        st.warning("No wells left after subsetting.")
+        return
+    fig = _plate_map(wells, f"{patient}: well correlation to plate DMSO")
+    st.plotly_chart(fig, width="stretch", key="wc_map_chart")
+    png_download(fig, "wc_map", f"{patient}_{compartment}_plate_map")
+
+
+def mek_feature_section(filters: Filters) -> None:
+    tests = _differential("mek_contrast_feature_tests")
+    if tests is None:
+        return
+    c1, c2 = st.columns(2)
+    compartment = c1.radio(
+        "Compartment",
+        sorted(tests["compartment"].unique()),
+        horizontal=True,
+        key="mek_feat_comp",
+        format_func=humanize_label,
+    )
+    contrast = c2.selectbox(
+        "Contrast", sorted(tests["contrast"].unique()), key="mek_feat_contrast"
+    )
+    sub = tests.loc[
+        (tests["compartment"] == compartment) & (tests["contrast"] == contrast)
+    ]
+    sub = sub.assign(
+        neg_log10_q=-np.log10(sub["q"].clip(lower=1e-300)),
+        significant_q_0_05=np.where(sub["q"] < 0.05, "significant", "n.s."),
+    )
+    explorer(
+        sub,
+        f"mek_feat_{compartment}_{contrast}",
+        filters,
+        kinds=["scatter", "histogram", "box", "heatmap"],
+        defaults={
+            "kind": "scatter",
+            "x": "mean",
+            "y": "neg_log10_q",
+            "color": "significant_q_0_05",
+            "facet": "feature_object",
+        },
+        title=f"{contrast}: mean difference vs significance",
+    )
+
+    top = sub.nsmallest(25, "rank")
+    st.markdown("**Top 25 features by |t|**")
+    st.dataframe(top[TOP_FEATURE_COLUMNS], hide_index=True, width="stretch")
+
+    st.divider()
+    st.markdown("**Consistency across the MEK drugs**")
+    subpanel_background("mek_drug_consistency")
+    conditions = _differential("mek_condition_feature_means")
+    features = top.head(MEK_TOP_N)["feature"].tolist()
+    if conditions is not None and features:
+        conditions = apply_global_filters(
+            conditions.loc[conditions["compartment"] == compartment], filters
+        )
+        grid = (
+            conditions.loc[conditions["feature"].isin(features)]
+            .assign(condition=lambda d: d["treatment"] + " " + d["dose"].astype(str))
+            .pivot_table(index="feature", columns="condition", values="mean_log2fc")
+            .reindex(index=features)
+        )
+        if grid.empty:
+            st.warning("No MEK conditions left after subsetting.")
+        else:
+            fig = px.imshow(
+                grid,
+                color_continuous_scale="RdBu_r",
+                color_continuous_midpoint=0,
+                aspect="auto",
+                labels=dict(x="MEK drug and dose", y="feature", color="difference"),
+                title=f"Top {len(features)} features by |t| ({contrast}): "
+                "mean difference from DMSO per MEK condition",
+            )
+            fig.update_layout(
+                template="plotly_white", height=max(450, 16 * len(features))
+            )
+            st.plotly_chart(fig, width="stretch", key="mek_consistency_chart")
+            png_download(fig, "mek_consistency", f"mek_consistency_{compartment}")
+
+    st.divider()
+    st.markdown("**Per-patient values for one feature**")
+    subpanel_background("mek_patient_values")
+    patient_values = _differential("mek_contrast_patient_values")
+    if patient_values is not None and features:
+        feature = st.selectbox("Feature", features, key="mek_pv_feature")
+        one_feature = patient_values.loc[
+            (patient_values["compartment"] == compartment)
+            & (patient_values["feature"] == feature)
+        ]
+        explorer(
+            one_feature,
+            f"mek_pv_{compartment}",
+            filters,
+            kinds=["box", "violin", "scatter", "histogram"],
+            defaults={
+                "kind": "box",
+                "x": "contrast",
+                "y": "value",
+                "color": "tumor_type",
+            },
+            title=f"{feature}: value per patient and contrast",
+        )
+
+
+def mek_levels_section(filters: Filters) -> None:
+    levels = _differential("mek_contrast_level_tests")
+    if levels is None:
+        return
+    compartment = st.radio(
+        "Compartment",
+        sorted(levels["compartment"].unique()),
+        horizontal=True,
+        key="mek_lv_comp",
+        format_func=humanize_label,
+    )
+    levels = levels.loc[levels["compartment"] == compartment].assign(
+        significant=lambda d: d["q"] < 0.05
+    )
+    summary = (
+        levels.groupby(["level", "group", "contrast"], observed=True)
+        .agg(n_significant=("significant", "sum"), n_tested=("feature", "size"))
+        .reset_index()
+    )
+    st.caption(
+        "Features with q < 0.05 in each group, per level. `n_tested` is the number "
+        "of features tested in that group."
+    )
+    explorer(
+        summary,
+        f"mek_lv_{compartment}",
+        filters,
+        kinds=["bar", "scatter", "heatmap"],
+        defaults={
+            "kind": "bar",
+            "x": "group",
+            "y": "n_significant",
+            "color": "contrast",
+            "facet": "level",
+        },
+        title="Significant features per level",
+    )
+
+    st.divider()
+    st.markdown("**Feature categories among significant features**")
+    tests = _differential("mek_contrast_feature_tests")
+    if tests is None:
+        return
+    significant = tests.loc[
+        (tests["compartment"] == compartment) & (tests["q"] < 0.05)
+    ].assign(feature_category=lambda d: d["feature_category"].fillna("Other"))
+    counts = (
+        significant.groupby(["contrast", "feature_category"], observed=True)
+        .size()
+        .rename("n_features")
+        .reset_index()
+    )
+    if counts.empty:
+        st.info("No features reach q < 0.05 for this compartment.")
+        return
+    fig = px.bar(
+        counts,
+        x="n_features",
+        y="feature_category",
+        color="contrast",
+        barmode="group",
+        orientation="h",
+        title="Features with q < 0.05 by category",
+    )
+    fig.update_layout(template="plotly_white", height=420)
+    st.plotly_chart(fig, width="stretch", key="mek_categories_chart")
+    png_download(fig, "mek_categories", f"mek_categories_{compartment}")
+
+
+DIFFERENTIAL_SECTIONS = {
+    "Morphology vs viability": morphology_vs_viability_section,
+    "Viability by tumor type": viability_tumor_type_section,
+    "Plate position (inner vs outer)": plate_position_section,
+    "DMSO column check": dmso_column_section,
+    "Well correlation to DMSO": well_correlation_section,
+    "MEK feature tests": mek_feature_section,
+    "MEK significance by level": mek_levels_section,
 }

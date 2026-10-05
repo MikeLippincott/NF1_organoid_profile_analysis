@@ -12,8 +12,10 @@ pinned: false
 
 Interactive Streamlit app for exploring the NF1 organoid profiling analysis:
 drug/plate layout, EDA (UMAP, PCA, correlation, cell counts, area & volume,
-neighbors, intensity), and linear-modeling results (volcano, effect sizes,
-model fit, UpSet, variate significance).
+neighbors, intensity), linear-modeling results (volcano, effect sizes,
+model fit, UpSet, variate significance), and differential analysis against
+DMSO (morphology and viability, viability by tumor type, plate-position
+checks, MEK signatures).
 
 ```bash
 pip install -r requirements.txt
@@ -26,7 +28,8 @@ exact filename (e.g. Streamlit Community Cloud); it re-execs `app.py`,
 which holds the real logic.
 
 ## Layout
-- One tab per module: `0.Overview`, `1.EDA`, `4.linear_modeling`.
+- One tab per module: `0.Overview`, `1.EDA`, `4.linear_modeling`,
+  `5.differential_analysis`.
   (`3.viability_prediction_models` is implemented in `sections.py` but hidden
   from the tab bar for now -- see the comment in `app.py`.)
 - One section per analysis type (pick it with the radio buttons; only the
@@ -66,6 +69,7 @@ entirely, since the files are already there.
 | 1.EDA | `data/eda/{umap,pca,correlation,cell_counts,area_vs_volume,neighbors,intensity}` |
 | 3.viability_prediction_models | `data/viability_models/combined_*.parquet` |
 | 4.linear_modeling | `data/linear_modeling/{models,variate_importance}` |
+| 5.differential_analysis | `data/differential_analysis/*.parquet` (all tables from `5.differential_analysis/results/`) |
 
 A section whose results aren't present shows which script, in the main
 repo, produces them -- it never crashes the app.

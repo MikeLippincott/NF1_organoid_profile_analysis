@@ -14,6 +14,7 @@ from data_io import (
     global_filter_options,
 )
 from sections import (  # noqa: F401 -- VIABILITY_SECTIONS kept for the commented-out tab below
+    DIFFERENTIAL_SECTIONS,
     EDA_SECTIONS,
     LINEAR_MODELING_SECTIONS,
     OVERVIEW_SECTIONS,
@@ -62,6 +63,7 @@ MODULES = {
     # this tab by uncommenting the line below.
     # "3.viability_prediction_models": VIABILITY_SECTIONS,
     "4.linear_modeling": LINEAR_MODELING_SECTIONS,
+    "5.differential_analysis": DIFFERENTIAL_SECTIONS,
 }
 
 tabs = st.tabs(list(MODULES))

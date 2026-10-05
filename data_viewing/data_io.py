@@ -72,6 +72,7 @@ EDA_RESULTS = DATA_DIR / "eda"
 VIABILITY_RESULTS = DATA_DIR / "viability_models"
 LINEAR_MODELING_RESULTS = DATA_DIR / "linear_modeling" / "models"
 VARIATE_IMPORTANCE_RESULTS = DATA_DIR / "linear_modeling" / "variate_importance"
+DIFFERENTIAL_RESULTS = DATA_DIR / "differential_analysis"
 PLATEMAP_CONFIG_DIR = DATA_DIR / "platemaps"
 PLATEMAPS = PLATEMAP_CONFIG_DIR / "combined_platemaps.parquet"
 
@@ -100,6 +101,12 @@ CANONICAL_COLUMNS = {
     "Metadata_Well": "well",
     "Metadata_modality": "modality",
     "Metadata_image_mode": "image_mode",
+    # 5.differential_analysis tables
+    "Metadata_Biology_TumorType": "tumor_type",
+    "Metadata_Viability_Percentage": "viability_percent",
+    "Metadata_Plate_Row": "plate_row",
+    "Metadata_Plate_Column": "plate_column",
+    "Metadata_Plate_Position": "plate_position",
     # linear-modeling / platemap tables use un-prefixed names
     "patient": "patient",
     "patient_id": "patient_tumor",
@@ -166,6 +173,18 @@ def _exclude_patients(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _tidy_dose(df: pd.DataFrame) -> pd.DataFrame:
+    """Whole-number float doses (``1.0``) become ``Int64`` (``1``).
+
+    The sidebar dose filter compares values as strings, and the other tables
+    store doses as int64, so a float column would silently match nothing.
+    """
+    if "dose" in df.columns and pd.api.types.is_float_dtype(df["dose"]):
+        if (df["dose"].dropna() % 1 == 0).all():
+            df["dose"] = df["dose"].astype("Int64")
+    return df
+
+
 def _harmonize(df: pd.DataFrame) -> pd.DataFrame:
     mapping = canonicalize_columns(list(df.columns))
     df = df.rename(columns=mapping)
@@ -173,7 +192,7 @@ def _harmonize(df: pd.DataFrame) -> pd.DataFrame:
     for col in ("dose", "well"):
         if col in df.columns and df[col].dtype == object:
             df[col] = df[col].astype(str)
-    return _exclude_patients(_add_derived(df))
+    return _exclude_patients(_tidy_dose(_add_derived(df)))
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +241,11 @@ def global_filter_options(paths: tuple[str, ...]) -> dict[str, list[str]]:
         if not wanted:
             continue
         df = _exclude_patients(
-            _add_derived(pd.read_parquet(path, columns=wanted).rename(columns=mapping))
+            _tidy_dose(
+                _add_derived(
+                    pd.read_parquet(path, columns=wanted).rename(columns=mapping)
+                )
+            )
         )
         for col in df.columns:
             values[col].update(df[col].dropna().astype(str).unique())
@@ -236,9 +259,47 @@ def _natural_key(value: str):
         return (1, 0.0, value)
 
 
+# 5.differential_analysis: results file stem -> the script that writes it
+_DIFF_SCRIPTS = "5.differential_analysis/scripts"
+_LOG2FC = f"{_DIFF_SCRIPTS}/0.calculate_log2_fold_change.py"
+_VIABILITY = f"{_DIFF_SCRIPTS}/2.calculate_viability_by_tumor_type.py"
+_PLATE = f"{_DIFF_SCRIPTS}/4.calculate_plate_position_effects.py"
+_WELL = f"{_DIFF_SCRIPTS}/6.calculate_well_dmso_correlation.py"
+_MEK = f"{_DIFF_SCRIPTS}/8.calculate_mek_signatures.py"
+DIFFERENTIAL_PRODUCED_BY = {
+    "organoid_log2fc": _LOG2FC,
+    "single_cell_log2fc": _LOG2FC,
+    "log2fc_summary": _LOG2FC,
+    "viability_log2fc": _LOG2FC,
+    "viability_log2fc_by_patient_tumor_type": _VIABILITY,
+    "viability_log2fc_by_tumor_type": _VIABILITY,
+    "plate_position_wells": _PLATE,
+    "plate_position_global_test": _PLATE,
+    "plate_position_null": _PLATE,
+    "plate_position_feature_tests": _PLATE,
+    "dmso_column_pair_correlations": _PLATE,
+    "dmso_column_tests": _PLATE,
+    "well_dmso_correlation": _WELL,
+    "mek_contrast_feature_tests": _MEK,
+    "mek_contrast_level_tests": _MEK,
+    "mek_contrast_patient_values": _MEK,
+    "mek_condition_feature_means": _MEK,
+}
+
+
+def _differential_datasets() -> dict[str, Dataset]:
+    """The 5.differential_analysis tables that exist, keyed by file stem."""
+    return {
+        stem: Dataset(stem, DIFFERENTIAL_RESULTS / f"{stem}.parquet", script)
+        for stem, script in DIFFERENTIAL_PRODUCED_BY.items()
+        if (DIFFERENTIAL_RESULTS / f"{stem}.parquet").exists()
+    }
+
+
 def registry() -> dict[str, dict[str, Dataset]]:
     """All datasets grouped by analysis type key."""
     return {
+        "differential": _differential_datasets(),
         "umap": {
             **_glob(
                 EDA_RESULTS / "umap", "*.parquet", "1.EDA/scripts/0.generate_umap.py"
@@ -342,5 +403,15 @@ def all_filterable_paths() -> tuple[str, ...]:
         str(d.path)
         for k, d in reg["viability_models"].items()
         if k in ("combined_fold_metrics", "combined_summary_metrics")
+    ]
+    keep += [
+        str(d.path)
+        for k, d in reg["differential"].items()
+        if k
+        in (
+            "log2fc_summary",
+            "viability_log2fc_by_patient_tumor_type",
+            "well_dmso_correlation",
+        )
     ]
     return tuple(keep)

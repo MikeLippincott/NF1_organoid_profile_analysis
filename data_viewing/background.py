@@ -59,6 +59,17 @@ MODULE_BACKGROUND = {
         "The `coefficient` is the effect in feature-SD units; for `treatment` it "
         "is the contrast against DMSO. Scripts: `4.linear_modeling/scripts/2-5.*`."
     ),
+    "5.differential_analysis": (
+        "Each treatment compared with its own patient's DMSO control, plus checks "
+        "that the comparisons are not driven by where a well sits on the plate. "
+        "Morphology is the **mean absolute difference from DMSO** across features "
+        "on the normalized scale (not a log2 fold change; the `log2fc` names are "
+        "kept from the upstream scripts). Viability is `log2(treatment % / DMSO %)` "
+        "per patient. MEK signatures pool the four MEK inhibitors (Binimetinib, "
+        "Mirdametinib, Selumetinib, Trametinib) at 1 and 10 µM. Results are written "
+        "to `5.differential_analysis/results/` by `scripts/0`-`9`, run through "
+        "`run_all_differential_analyses.sh`.\n" + PROFILE_GLOSSARY
+    ),
 }
 
 SECTION_BACKGROUND = {
@@ -194,6 +205,68 @@ SECTION_BACKGROUND = {
         "drill-down table below lists every term of one model and which ones are "
         "hits (its *unique variate signature*)."
     ),
+    # ---- 5.differential_analysis ----
+    "Morphology vs viability": (
+        "One point per patient x treatment x dose and compartment (`log2fc_summary`, "
+        "from `0.calculate_log2_fold_change.py`). **x**: mean absolute difference "
+        "from the patient's DMSO across features (normalized scale, see the module "
+        "note). **y**: `viability_log2fc`, the log2 ratio of % viability to DMSO. "
+        "Rows without a viability measurement are not plotted."
+    ),
+    "Viability by tumor type": (
+        "Viability as % of each patient's DMSO "
+        "(`2.calculate_viability_by_tumor_type.py`). The per-patient table has one row per patient x treatment. The summary "
+        "table has one row per tumor type x treatment, with the number of patients "
+        "and the mean, SD and median. MPNST and Other have only two patients each, "
+        "so their means are very uncertain."
+    ),
+    "Plate position (inner vs outer)": (
+        "Do wells on the outer ring of the plate (rows B and G, columns 2 and 11) "
+        "differ from inner wells? Row B is only present on three of the twelve "
+        "plates, so the row-B part of the outer ring comes from those three. "
+        "Position is compared only within plate x treatment "
+        "x dose groups that contain both, because treatment and position are "
+        "confounded across the plate. Per feature, the effect is mean(outer) - "
+        "mean(inner), averaged over groups. The **global** RMS effect is compared "
+        "with a null from shuffling inner/outer labels within each group (10,000 "
+        "permutations). Per-feature p-values are permutation-based, with "
+        "Benjamini-Hochberg q-values (`4.calculate_plate_position_effects.py`)."
+    ),
+    "DMSO column check": (
+        "A sanity check for the plate-position result. DMSO occupies column 4 and "
+        "column 9 of every plate (eight wells). If position does not matter, DMSO "
+        "wells should be no more similar within a column than between columns. The "
+        "statistic is the mean within-column correlation minus the mean "
+        "between-column correlation, per patient plate; its null shuffles the column "
+        "labels exactly within each plate. The **all plates** row pools the plates "
+        "(`4.calculate_plate_position_effects.py`)."
+    ),
+    "Well correlation to DMSO": (
+        "Pearson correlation of each well's median profile with its plate's DMSO "
+        "reference, using raw QC profiles standardized per plate. DMSO wells are "
+        "compared with the median of the *other* DMSO wells, so they are not "
+        "correlated with themselves. High values mean the well looks like DMSO "
+        "(`6.calculate_well_dmso_correlation.py`)."
+    ),
+    "MEK feature tests": (
+        "Per feature, the MEK response is the mean over the four MEK inhibitors at "
+        "1 and 10 µM. It is tested in three contrasts: vs DMSO, vs Staurosporine and "
+        "vs Digoxin. `mean` is the average contrast; `t` is a one-sample t-test "
+        "across patients (patients are the replicates); `q` is Benjamini-Hochberg "
+        "adjusted within compartment x contrast; `rank` orders features by |t|. "
+        "`frac_patients_same_sign` shows how consistent the sign is across "
+        "patients (`8.calculate_mek_signatures.py`)."
+    ),
+    "MEK significance by level": (
+        "How many features reach q < 0.05 at each level of the MEK tests. **Within "
+        "patient**: over that patient's MEK conditions. **Within tumor type**: patient "
+        "x condition values pooled, which is optimistic because conditions from one "
+        "patient are not independent. **Across patients**: per-patient responses. "
+        "**Across tumor types (shared)**: is the effect shared by the tumor-type "
+        "means? **Across tumor types (differ)**: a one-way ANOVA asks whether the "
+        "effect depends on tumor type. Below, the feature categories (Texture, "
+        "Granularity, Intensity, ...) of the significant features."
+    ),
 }
 
 SUBPANEL_BACKGROUND = {
@@ -227,6 +300,23 @@ SUBPANEL_BACKGROUND = {
         "**Drill-down.** Pick one patient, treatment, and feature to see every "
         "term of that single model: its coefficient, FDR-adjusted p-value, R², "
         "and whether it passes the current hit thresholds."
+    ),
+    "plate_map": (
+        "**Plate map.** One cell per well (rows A-H, columns 1-12). The screen uses "
+        "rows B-G and columns 2-11, so the edge is empty. Row B is only present on "
+        "three of the twelve plates, so most plate maps show rows C-G. Hover for the "
+        "treatment."
+    ),
+    "mek_drug_consistency": (
+        "**Consistency across MEK drugs.** The mean difference from DMSO for each MEK "
+        "drug and dose, for the top features by |t| of the selected contrast. If the "
+        "top features are shared, the columns should agree, rather than one compound "
+        "driving the signature."
+    ),
+    "mek_patient_values": (
+        "**Per patient.** One point per patient for the chosen feature and contrast. "
+        "A large mean that comes from one or two patients is weaker evidence than a "
+        "consistent sign across patients."
     ),
 }
 

@@ -48,6 +48,7 @@ MANIFEST: list[tuple[str, str, str]] = [
         "linear_modeling/variate_importance",
         "dir",
     ),
+    ("5.differential_analysis/results", "differential_analysis", "dir"),
     ("config/platemaps", "platemaps", "dir"),
     (
         "data/viabilities/combined_platemaps.parquet",
