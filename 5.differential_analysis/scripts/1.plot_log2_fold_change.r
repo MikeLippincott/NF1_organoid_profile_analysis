@@ -1,4 +1,4 @@
-list_of_packages <- c("ggplot2", "dplyr", "tidyr", "arrow", "RColorBrewer")
+list_of_packages <- c("ggplot2", "dplyr", "tidyr", "arrow", "RColorBrewer", "ggrepel")
 for (package in list_of_packages) {
     suppressPackageStartupMessages(
         suppressWarnings(
@@ -98,32 +98,6 @@ morphology_heatmap_df <- morphology_df %>%
     )
 
 options(repr.plot.width = 16, repr.plot.height = 7)
-viability_heatmap <- (
-    ggplot(
-        viability_heatmap_df,
-        aes(x = treatment_label, y = Metadata_Biology_PatientTumor, fill = Metadata_Viability_Percentage)
-    )
-    + geom_tile(color = "white", linewidth = 0.5)
-    + geom_text(aes(label = round(Metadata_Viability_Percentage)), size = 3, na.rm = TRUE)
-    + scale_fill_gradient2(
-        low = correlation_diverging_colours[1],
-        mid = correlation_diverging_colours[2],
-        high = correlation_diverging_colours[3],
-        midpoint = viability_midpoint,
-        na.value = "grey85"
-    )
-    + facet_grid(Metadata_Biology_TumorType ~ ., scales = "free_y", space = "free_y")
-    + labs(
-        x = NULL,
-        y = "Patient",
-        fill = "Viability\n(% of DMSO)"
-    )
-    + theme_manuscript(base_size = 14, x_text = "angled")
-    + theme(panel.grid = element_blank())
-)
-viability_heatmap
-
-options(repr.plot.width = 16, repr.plot.height = 7)
 morphology_heatmap <- (
     ggplot(
         morphology_heatmap_df %>% filter(compartment == "Single cell"),
@@ -141,14 +115,13 @@ morphology_heatmap <- (
     + theme(panel.grid = element_blank(), strip.text.y = element_text(angle = 0))
 )
 morphology_heatmap
-
-# Page 1 is the viability heatmap and page 2 is the morphology heatmap.
-save_plots_pdf(
-    list(viability_heatmap, morphology_heatmap),
-    combined_heatmap_path,
-    width = 16,
-    height = 7
-)
+# save the plot as a pdf
+invisible(save_plots_pdf(
+    list(morphology_heatmap),
+    file.path(root_dir, "5.differential_analysis", "figures", "morphology_heatmap.pdf"),
+    width = 8,
+    height = 4
+))
 
 scatter_df <- morphology_df %>% filter(!is.na(viability_log2fc))
 
@@ -174,8 +147,6 @@ scatter_plots <- lapply(levels(scatter_df$compartment), function(compartment_nam
     )
 })
 for (scatter_plot in scatter_plots) print(scatter_plot)
-
-library(ggrepel)
 
 # Outlying treatments are picked from their mean over tumor types, so each is labelled once.
 treatment_outlier_df <- scatter_df %>%

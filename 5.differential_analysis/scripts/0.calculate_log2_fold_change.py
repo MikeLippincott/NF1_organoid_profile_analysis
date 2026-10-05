@@ -35,13 +35,11 @@ import pathlib
 import numpy as np
 import pandas as pd
 from notebook_init_utils import init_notebook
+from tqdm import tqdm
+from tqdm.notebook import tqdm as tqdm_notebook
 
 root_dir, in_notebook = init_notebook()
-
-if in_notebook:
-    from tqdm.notebook import tqdm
-else:
-    from tqdm import tqdm
+progress_bar = tqdm_notebook if in_notebook else tqdm
 
 
 # In[2]:
@@ -145,7 +143,7 @@ for compartment, compartment_info in compartment_dict.items():
     )
 
     delta_list = []
-    for patient in tqdm(patient_ids, desc=f"Calculating {compartment}"):
+    for patient in progress_bar(patient_ids, desc=f"Calculating {compartment}"):
         patient_df = consensus_df.loc[
             consensus_df["Metadata_Biology_PatientTumor"] == patient
         ]
