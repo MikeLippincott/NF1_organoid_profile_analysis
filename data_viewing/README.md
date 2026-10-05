@@ -17,9 +17,23 @@ model fit, UpSet, variate significance), and differential analysis against
 DMSO (morphology and viability, viability by tumor type, plate-position
 checks, MEK signatures).
 
+## Running the app
+
+Run everything from this `data_viewing/` directory with [`just`](https://github.com/casey/just):
+
+```bash
+just --list                # list the recipes
+just run_app_locally       # start the app (http://localhost:8501)
+```
+
+Do not run bare `just`: with no recipe name it runs the first recipe in the
+file, `upload_data_to_hf_bucket`, which pushes to the bucket.
+
+Without `just`, the same thing is:
+
 ```bash
 pip install -r requirements.txt
-bash run_app.sh [port]   # default port 8501
+bash run_app.sh [port]     # default port 8501
 # or: streamlit run app.py
 ```
 
@@ -27,13 +41,37 @@ bash run_app.sh [port]   # default port 8501
 exact filename (e.g. Streamlit Community Cloud); it re-execs `app.py`,
 which holds the real logic.
 
+## Justfile recipes
+
+| Recipe | What it does |
+|---|---|
+| `just upload_data_to_hf_bucket` | Stage the results from the main analysis repo (the parent of this directory) into `data/`, then push `data/` to the HF Bucket. Needs write access to the bucket (`HF_TOKEN`). |
+| `just download_data_from_hf_bucket` | Pull the HF Bucket into `data/`. |
+| `just run_app_locally` | Run `run_app.sh` (Streamlit on port 8501). Blocks until you stop it. |
+| `just all_data` | `upload_data_to_hf_bucket` then `download_data_from_hf_bucket`. |
+| `just all` | `all_data` then `run_app_locally`. |
+
+Notes:
+- Upload reads whatever is in the main repo's `*/results/` folders. A module
+  with no results yet is skipped with a `skip (missing)` line, so the app
+  shows "No results" for it.
+- `all_data` uploads and then downloads the same data back. The round trip is
+  harmless, but it is only useful to confirm the bucket matches `data/`.
+- `all` does not return until the app is stopped (Ctrl+C).
+- Recipes call `uv run python3 sync_data.py ...`, so run `./uv_setup.sh` in the
+  repo root once first so `huggingface_hub` is available in `.venv`.
+
 ## Layout
 - One tab per module: `0.Overview`, `1.EDA`, `4.linear_modeling`,
   `5.differential_analysis`.
   (`3.viability_prediction_models` is implemented in `sections.py` but hidden
   from the tab bar for now -- see the comment in `app.py`.)
 - One section per analysis type (pick it with the radio buttons; only the
-  selected section loads its data).
+  selected section loads its data). `5.differential_analysis` has three:
+  `Viability heatmap` (shared), and `Organoid` and `Single cell`, each with its
+  own morphology heatmap, morphology vs viability scatters, plate-position,
+  well-correlation and MEK plots, using the same plot types as the R figures in
+  `5.differential_analysis/scripts/`.
 - Every plot lets you choose plot type, X, Y, **color**, **facet** and
   (for scatter) **shape** by any column, and **subset** rows by any metadata
   column (keep or exclude values).
@@ -50,8 +88,8 @@ Bucket, not in git (`data/` is `.gitignore`'d on purpose). `sync_data.py`
 moves data between the main analysis repo, `data/`, and that bucket:
 
 ```bash
-python sync_data.py upload    # main repo -> data/ -> bucket (or: just upload_data_to_hf_bucket)
-python sync_data.py download  # bucket -> data/            (or: just download_data_from_hf_bucket)
+just upload_data_to_hf_bucket      # main repo -> data/ -> bucket  (= uv run python3 sync_data.py upload)
+just download_data_from_hf_bucket  # bucket -> data/               (= uv run python3 sync_data.py download)
 ```
 
 `download` is also what the app does automatically the first time it starts
@@ -75,10 +113,11 @@ A section whose results aren't present shows which script, in the main
 repo, produces them -- it never crashes the app.
 
 ## Files
-- `run_app.sh`: local launcher.
+- `justfile`: the recipes above (run `just --list`).
+- `run_app.sh`: local launcher (called by `run_app_locally`).
 - `requirements.txt`: runtime deps.
-- `sync_data.py`, `justfile`: moves the trimmed data above between the main
-  repo, `data/`, and the HF Bucket (both directions).
+- `sync_data.py`: moves the trimmed data above between the main repo,
+  `data/`, and the HF Bucket (both directions); `MANIFEST` lists what is copied.
 - `streamlit_app.py`: alias entry point; re-execs `app.py`.
 - `app.py`: page, sidebar filters, tabs.
 - `sections.py`: one function per analysis type.

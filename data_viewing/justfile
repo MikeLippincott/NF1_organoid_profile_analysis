@@ -6,3 +6,7 @@ download_data_from_hf_bucket:
 
 run_app_locally:
 	bash ./run_app.sh
+
+all_data: upload_data_to_hf_bucket download_data_from_hf_bucket
+
+all: all_data run_app_locally

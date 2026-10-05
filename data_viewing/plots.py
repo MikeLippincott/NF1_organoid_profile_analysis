@@ -229,6 +229,7 @@ def explorer(
         nbins = st.slider("Histogram bins", 5, 200, 50, key=f"{key}_bins")
         background = st.checkbox(
             "Scatter: show all points in every facet (grey), color only that facet's points",
+            value=True,
             key=f"{key}_background",
             disabled=facet == NONE,
         )
