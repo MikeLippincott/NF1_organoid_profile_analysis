@@ -22,7 +22,7 @@ from sections import (  # noqa: F401 -- VIABILITY_SECTIONS kept for the commente
 )
 
 pio.templates.default = "plotly_white"
-st.set_page_config(page_title="NF1 organoid data viewer", layout="wide")
+st.set_page_config(page_title="NF1 organoid profile data viewer", layout="wide")
 st.title("NF1 organoid profile data viewer")
 
 if BUCKET_SYNC_ERROR:

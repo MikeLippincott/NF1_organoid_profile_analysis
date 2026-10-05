@@ -67,8 +67,9 @@ MODULE_BACKGROUND = {
         "kept from the upstream scripts). Viability is `log2(treatment % / DMSO %)` "
         "per patient. MEK signatures pool the four MEK inhibitors (Binimetinib, "
         "Mirdametinib, Selumetinib, Trametinib) at 1 and 10 µM. Results are written "
-        "to `5.differential_analysis/results/` by `scripts/0`-`9`, run through "
-        "`run_all_differential_analyses.sh`.\n" + PROFILE_GLOSSARY
+        "to `5.differential_analysis/results/` by `scripts/0`-`9`, in pipeline "
+        "order (each calculation step is followed by its plotting step).\n"
+        + PROFILE_GLOSSARY
     ),
 }
 

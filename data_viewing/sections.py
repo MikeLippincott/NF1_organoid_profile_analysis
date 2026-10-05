@@ -283,7 +283,7 @@ def pca_section(filters: Filters) -> None:
     y_pc = y_col.selectbox(
         "Y component", pcs, index=min(1, len(pcs) - 1), key="pca_y_pc"
     )
-    fig = explorer(
+    explorer(
         df,
         f"pca_{label}",
         filters,
