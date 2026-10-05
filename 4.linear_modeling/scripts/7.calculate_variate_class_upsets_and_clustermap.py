@@ -173,6 +173,11 @@ def covariate_sds(profile):
         raw["cell_count"] = raw["Metadata_Object_OrganoidSingleCellCount"]
     raw = raw.merge(manhattan_df, on="Metadata_Experiment_Well", how="left")
     raw = raw.loc[raw["Metadata_Biology_PatientTumor"] != "NF0037_T1_CQ1"].copy()
+    # a few upstream placeholder rows have no treatment/dose; they would
+    # become a null treatment label below (same filter as steps 2 and 3)
+    raw = raw.dropna(
+        subset=["Metadata_Experiment_Treatment", "Metadata_Experiment_Dose"]
+    )
     raw["organoid_count"] = raw["Metadata_WellOrganoidCount"]
     raw["cell_per_organoid_count"] = raw["cell_count"] / raw["organoid_count"]
     raw["cell_x_position"] = raw[f"Metadata_Location_{obj}_CenterX"]
@@ -186,7 +191,7 @@ def covariate_sds(profile):
     raw["treatment_full"] = (
         raw["Metadata_Experiment_Treatment"].astype(str)
         + "_"
-        + raw["Metadata_Experiment_Dose"].astype(str)
+        + raw["Metadata_Experiment_Dose"].map("{:g}".format)
         + raw["Metadata_Experiment_Unit"].astype(str)
     )
     dmso = raw.loc[

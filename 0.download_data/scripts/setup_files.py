@@ -4,9 +4,10 @@
 # This notebook unzips the data compressed file and sets up the data directory for analysis.
 # This way all users have the same data directory structure and files for analysis.
 
-# In[1]:
+# In[ ]:
 
 
+import argparse
 import pathlib
 import shutil
 
@@ -18,7 +19,20 @@ root_dir, in_notebook = init_notebook()
 # In[ ]:
 
 
-OVERWRITE = True
+if not in_notebook:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--overwrite", action="store_true", help="Overwrite existing files"
+    )
+    args = parser.parse_args()
+    OVERWRITE = args.overwrite
+else:
+    OVERWRITE = True
+
+
+# In[ ]:
+
+
 shippable_zip_path = pathlib.Path(f"{root_dir}/data/shippable_dir.zip").resolve()
 if not shippable_zip_path.exists():
     print("Shippable zip not found")
@@ -27,7 +41,7 @@ if not shippable_zip_path.exists():
     )
 
 
-# In[ ]:
+# In[3]:
 
 
 unpack_dir = pathlib.Path(f"{root_dir}/data/").resolve(strict=False)

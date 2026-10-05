@@ -257,12 +257,15 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
     df = df.loc[df["patient"] != "NF0037_T1_CQ1"]
     # map each patient to its tumor type via the manually defined lookup
     df["tumor_type"] = df["patient"].map(tumor_type_dict)
+    # a few upstream placeholder rows have no treatment/dose; they would
+    # become a null treatment label (and a null categorical level) below
+    df = df.dropna(subset=["treatment", "Metadata_Experiment_Dose"])
     # combine treatment, dose, and unit into a single column so that
     # different doses of the same treatment are modeled as distinct groups
     df["Metadata_treatment_full"] = (
         df["treatment"].astype(str)
         + "_"
-        + df["Metadata_Experiment_Dose"].astype(str)
+        + df["Metadata_Experiment_Dose"].map("{:g}".format)
         + df["Metadata_Experiment_Unit"].astype(str)
     )
     # map each combined treatment label back to its raw drug name and

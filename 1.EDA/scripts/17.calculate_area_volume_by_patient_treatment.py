@@ -33,8 +33,8 @@ results_dir.mkdir(parents=True, exist_ok=True)
 
 COL_2D = {"organoid": "Organoid_AreaShape_Area", "cell": "Cells_AreaShape_Area"}
 COL_3D = {
-    "organoid": "Organoid_NoChannel_AreaSizeShape_Volume",
-    "cell": "Cell_NoChannel_AreaSizeShape_Volume",
+    "organoid": "Organoid_NoChannel_VolumeSizeShape_Volume",
+    "cell": "Cell_NoChannel_VolumeSizeShape_Volume",
 }
 FILE_2D = {
     "organoid": "max_projected_organoid.parquet",
@@ -104,6 +104,9 @@ for kind, volume_col in COL_3D.items():
                 volume_col,
             ],
         )
+        # upstream QC files carry a few placeholder rows with no patient or
+        # treatment metadata (ObjectID -1/NA); they are not real objects
+        df = df.dropna(subset=["Metadata_Biology_PatientTumor"])
         g = df.rename(
             columns={
                 volume_col: "volume",

@@ -87,7 +87,6 @@ for (scope in names(scopes)) {
         }
     }
     save_plots_pdf(plots, pdf_path, width = widths, height = heights)
-    cat(scope, ":", length(plots), "pages ->", pdf_path, "\n")
 }
 
 lm_results_path <- file.path(root_dir, "4.linear_modeling/results/linear_modeling")
@@ -135,7 +134,6 @@ for (profile in names(lm_files)) {
     }
 }
 save_plots_pdf(pages, cooccurrence_pdf, width = 15, height = 10)
-cat(length(pages), "pages ->", cooccurrence_pdf, "\n")
 arrow::write_parquet(
     bind_rows(occurrence_tables),
     file.path(results_path, "treatment_only_cooccurrence.parquet")
@@ -163,5 +161,3 @@ ht_organoid_notitle <- cooccurrence_heatmap(
 png(file.path(multiresult_figure_subpanels_path, "cooccurrence_organoid_original.png"), width = 15, height = 10, units = "in", res = 600)
 ComplexHeatmap::draw(ht_organoid_notitle)
 dev.off()
-
-cat("multiresult-figure subpanels ->", multiresult_figure_subpanels_path, "\n")

@@ -55,14 +55,13 @@ mean_counts = (
 joined = mean_counts.merge(
     platemaps,
     left_on=["Metadata_patient_tumor", "Metadata_treatment", "Metadata_dose"],
-    right_on=["patient_id", "Treatment", "Dose"],
+    right_on=["Metadata_Biology_PatientTumor", "Treatment", "Dose"],
     how="inner",
 )
 joined.to_parquet(results_dir / "count_viability_joined.parquet", index=False)
-print(f"Wrote {results_dir / 'count_viability_joined.parquet'} ({len(joined)} rows)")
 
 profile_patients = set(mean_counts["Metadata_patient_tumor"].unique())
-platemap_patients = set(platemaps["patient_id"].unique())
+platemap_patients = set(platemaps["Metadata_Biology_PatientTumor"].unique())
 dropped_from_profiles = sorted(profile_patients - platemap_patients)
 dropped_from_platemaps = sorted(platemap_patients - profile_patients)
 
@@ -83,7 +82,6 @@ dropped_patients.to_parquet(
 
 print("Dropped from profiles (no viability/platemap coverage):", dropped_from_profiles)
 print("In platemaps but not in profiles:", dropped_from_platemaps)
-print(f"Wrote {results_dir / 'count_viability_dropped_patients.parquet'}")
 
 
 # In[3]:
@@ -168,11 +166,8 @@ pivoted = pivoted.rename(
 joined_norm = pivoted.merge(
     platemaps,
     left_on=["Metadata_patient_tumor", "Metadata_treatment", "Metadata_dose"],
-    right_on=["patient_id", "Treatment", "Dose"],
+    right_on=["Metadata_Biology_PatientTumor", "Treatment", "Dose"],
     how="inner",
 )
 joined_norm.to_parquet(results_dir / "count_norm_viability_joined.parquet", index=False)
-print(
-    f"Wrote {results_dir / 'count_norm_viability_joined.parquet'} ({len(joined_norm)} rows)"
-)
 print(joined_norm["modality"].value_counts().to_dict())
