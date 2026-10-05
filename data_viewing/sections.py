@@ -176,18 +176,40 @@ def _dimension_of(key: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _default_index(options: list, preferred) -> int:
+    """Position of ``preferred`` in ``options``, or 0 when it isn't there."""
+    return options.index(preferred) if preferred in options else 0
+
+
+# default profile for the UMAP / PCA / correlation tabs: pooled 3D single-cell
+# feature-selected profiles ("combined", i.e. not per patient)
+DEFAULT_UMAP = "3D_scfs_umap"
+DEFAULT_PCA = "3D_1.feature_selected_profiles_sc_norm_fs_profiles_embeddings"
+DEFAULT_PAIRS = "3D_sc_correlation_pairs"
+
+
 def umap_section(filters: Filters) -> None:
     datasets = registry()["umap"]
     dims = sorted({d for d in (_dimension_of(k) for k in datasets) if d})
     if dims:
-        dim = st.radio("Dimensionality", dims, horizontal=True, key="umap_dim")
+        dim = st.radio(
+            "Dimensionality",
+            dims,
+            index=_default_index(dims, "3D"),
+            horizontal=True,
+            key="umap_dim",
+        )
         datasets = {k: v for k, v in datasets.items() if _dimension_of(k) == dim}
     if not datasets:
         missing_notice("umap", "1.EDA/scripts/0.generate_umap.py", EDA_RESULTS / "umap")
         return
 
     label = st.selectbox(
-        "Dataset", list(datasets), key="umap_dataset", format_func=humanize_label
+        "Dataset",
+        list(datasets),
+        index=_default_index(list(datasets), DEFAULT_UMAP),
+        key="umap_dataset",
+        format_func=humanize_label,
     )
     df = load_dataset(str(datasets[label].path))
 
@@ -229,13 +251,23 @@ def pca_section(filters: Filters) -> None:
     datasets = registry()["pca"]
     dims = sorted({d for d in (_dimension_of(k) for k in datasets) if d})
     if dims:
-        dim = st.radio("Dimensionality", dims, horizontal=True, key="pca_dim")
+        dim = st.radio(
+            "Dimensionality",
+            dims,
+            index=_default_index(dims, "3D"),
+            horizontal=True,
+            key="pca_dim",
+        )
         datasets = {k: v for k, v in datasets.items() if _dimension_of(k) == dim}
     if not datasets:
         missing_notice("PCA", "1.EDA/scripts/2.generate_pca.py", EDA_RESULTS / "pca")
         return
     label = st.selectbox(
-        "Dataset", list(datasets), key="pca_dataset", format_func=humanize_label
+        "Dataset",
+        list(datasets),
+        index=_default_index(list(datasets), DEFAULT_PCA),
+        key="pca_dataset",
+        format_func=humanize_label,
     )
     path = datasets[label].path
     df = load_dataset(str(path))
@@ -322,6 +354,7 @@ def _pairs_heatmap(pair_files, filters: Filters) -> None:
     pairs_path = st.selectbox(
         "Pairs file",
         pair_files,
+        index=_default_index([p.stem for p in pair_files], DEFAULT_PAIRS),
         format_func=lambda p: humanize_label(p.stem),
         key="corr_pairs_file",
     )
