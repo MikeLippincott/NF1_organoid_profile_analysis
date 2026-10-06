@@ -1421,8 +1421,8 @@ def lm_model_variates_section(filters: Filters) -> None:
     ``6.plot_variate_importance.r``'s ``cooccurrence_heatmap()`` -- with
     Patient, Tumor type and Treatment column annotations and a Feature type
     row annotation. A toggle switches the criterion between ``treatment``
-    being a hit on its own vs together with at least one term from the
-    chosen covariate group (biological or technical, in any combination);
+    being a hit on its own vs together with at least one biological covariate
+    (cell count / organoid count terms);
     ``hit = pvalue_fdr < threshold & coefficient > min``, matching
     ``5.calculate_variate_importance.py``. A single-model drill-down table
     (its 'unique variate signature') is below the heatmap.
@@ -1444,24 +1444,16 @@ def lm_model_variates_section(filters: Filters) -> None:
         0.1,
         key="lmvar_coef",
     )
-    covariate_group = st.radio(
-        "Covariate group (defines '+ group' below)",
-        ["Biological", "Technical"],
-        horizontal=True,
-        key="lmvar_group",
-    )
-    group_terms = {"Biological": BIOLOGICAL_TERMS, "Technical": TECHNICAL_TERMS}[
-        covariate_group
-    ]
+    # the covariate group is fixed to biological: cell counts (treatment excluded)
     group_terms = [
-        t for t in group_terms if t != "treatment" and t in df["term"].unique()
+        t for t in BIOLOGICAL_TERMS if t != "treatment" and t in df["term"].unique()
     ]
     if not group_terms:
-        st.warning(f"No {covariate_group.lower()} covariates in this dataset.")
+        st.warning("No biological covariates in this dataset.")
         return
     criterion = st.radio(
         "Criterion",
-        ["Treatment only", f"Treatment + {covariate_group.lower()}"],
+        ["Treatment only", "Treatment + biological"],
         horizontal=True,
         key="lmvar_criterion",
     )

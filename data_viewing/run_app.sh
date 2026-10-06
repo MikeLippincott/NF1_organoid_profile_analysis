@@ -7,4 +7,5 @@
 PORT="${1:-8501}"
 GIT_ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
 
+! .venv/bin/plotly_get_chrome
 python -m streamlit run "$GIT_ROOT"/data_viewing/app.py --server.port "${PORT}" --theme.base light
