@@ -149,6 +149,34 @@ SECTION_BACKGROUND = {
         "(`10.calculate_count_viability_join.py`). Patients present in only one of "
         "the profiles or the platemap are dropped and logged by the script."
     ),
+    "Consensus heatmaps": (
+        "The same sample-by-sample correlation matrices as **Correlation heatmaps**, "
+        "preset to the **consensus** profile type (one profile per replicate or "
+        "treatment, summarized from single cells; `4.calculate_correlation_matrix.py`). "
+        "Pick another profile type or normalization in the controls to compare."
+    ),
+    "Correlation vs viability": (
+        "Each point is a pair of samples: their profile **correlation** against the "
+        "viability difference between them "
+        "(`5a.find_correlation_pairs_for_montages.py`). `quadrant` is `middle` unless "
+        "a pair is past both cutoffs: `right`/`left` for correlation above/below its "
+        "cutoffs, and `top`/`bottom` for viability difference above/below its cutoffs. "
+        "Most pairs are `middle`, so the labelled quadrants are rare."
+    ),
+    "Area vs volume": (
+        "Raw organoid area (2D) against raw organoid volume (3D), randomly paired "
+        "within each patient x treatment, because the two come from separate "
+        "pipelines with no shared organoid ID. Read it as the joint range of the two "
+        "distributions, not a per-organoid relationship "
+        "(`17.calculate_area_volume_by_patient_treatment.py`)."
+    ),
+    "Volume & area vs count": (
+        "Mean organoid volume (3D) or area (2D) against mean cells per organoid, one "
+        "point per patient x treatment x dose. Cell counts come from "
+        "`7.generate_cell_counts.py`, and the measures from "
+        "`17.calculate_area_volume_by_patient_treatment.py`. Both are averages, so "
+        "this shows how condition means relate, not individual organoids."
+    ),
     # ---- 3.viability_prediction_models ----
     "Model performance": (
         "Elastic Net performance for each profile type, split method, and shuffle "

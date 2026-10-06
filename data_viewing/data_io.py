@@ -343,6 +343,11 @@ def registry() -> dict[str, dict[str, Dataset]]:
             "*_joined.parquet",
             "1.EDA/scripts/10.calculate_count_viability_join.py",
         ),
+        "correlation_viability": _glob(
+            EDA_RESULTS / "correlation",
+            "*_with_meta_and_viability.parquet",
+            "1.EDA/scripts/5a.find_correlation_pairs_for_montages.py",
+        ),
         "viability_models": _glob(
             VIABILITY_RESULTS,
             "combined_*.parquet",

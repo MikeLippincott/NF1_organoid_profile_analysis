@@ -347,7 +347,9 @@ def correlation_section(filters: Filters) -> None:
         _per_patient_heatmap(matrix_files)
 
 
-def _pairs_heatmap(pair_files, filters: Filters) -> None:
+def _pairs_heatmap(pair_files, filters: Filters, preset: dict | None = None) -> None:
+    """Sample-by-sample heatmap. ``preset`` maps group columns to the value
+    selected by default (e.g. ``{"profile_type": "consensus"}``)."""
     if not pair_files:
         st.info("No `*_correlation_pairs.parquet` files found.")
         return
@@ -370,8 +372,12 @@ def _pairs_heatmap(pair_files, filters: Filters) -> None:
     selection = {}
     cols = st.columns(len(group_cols))
     for col, name in zip(cols, group_cols):
+        options = sorted(pairs[name].unique())
         selection[name] = col.selectbox(
-            name, sorted(pairs[name].unique()), key=f"corr_{name}"
+            name,
+            options,
+            index=_default_index(options, (preset or {}).get(name)),
+            key=f"corr_{name}",
         )
     pair_mask = np.ones(len(pairs), dtype=bool)
     sample_mask = np.ones(len(samples), dtype=bool)
@@ -626,15 +632,205 @@ def count_viability_section(filters: Filters) -> None:
     )
 
 
+def consensus_heatmaps_section(filters: Filters) -> None:
+    corr_dir = EDA_RESULTS / "correlation"
+    pair_files = (
+        sorted(corr_dir.glob("*_correlation_pairs.parquet"))
+        if corr_dir.exists()
+        else []
+    )
+    if not pair_files:
+        missing_notice(
+            "consensus heatmaps",
+            "1.EDA/scripts/4.calculate_correlation_matrix.py",
+            corr_dir,
+        )
+        return
+    subpanel_background("corr_pairs")
+    _pairs_heatmap(pair_files, filters, preset={"profile_type": "consensus"})
+
+
+def correlation_viability_section(filters: Filters) -> None:
+    def defaults(label, df):
+        return {
+            "kind": "scatter",
+            "x": _first(df, "correlation"),
+            "y": _first(df, "group1_group2_viability_diff"),
+            "color": _first(df, "quadrant"),
+        }
+
+    dataset_section(
+        registry()["correlation_viability"],
+        "correlation vs viability",
+        filters,
+        "1.EDA/scripts/5a.find_correlation_pairs_for_montages.py",
+        EDA_RESULTS / "correlation",
+        defaults,
+    )
+
+
+AREA_VOLUME_PAIRS_PER_GROUP = 200
+
+
+@st.cache_data(show_spinner="Pairing area and volume...")
+def _area_volume_pairs(area_path: str, volume_path: str) -> pd.DataFrame:
+    """Random area/volume pairs within each patient x treatment.
+
+    Area and volume come from separate pipelines with no shared organoid ID, so
+    each pair is two independent draws from the same group (the same assumption
+    as 18.plot_area_vs_volume.r). It shows the joint range of the two
+    distributions, not a per-organoid relationship.
+    """
+    keys = ["patient_tumor", "treatment"]
+    area = load_dataset(area_path)
+    volume = load_dataset(volume_path)
+    area = area[np.isfinite(area["area"])]
+    volume = volume[np.isfinite(volume["volume"])]
+    volume_groups = dict(tuple(volume.groupby(keys)))
+    parts = []
+    for key, area_group in area.groupby(keys):
+        volume_group = volume_groups.get(key)
+        if volume_group is None:
+            continue
+        n = min(len(area_group), len(volume_group), AREA_VOLUME_PAIRS_PER_GROUP)
+        parts.append(
+            pd.DataFrame(
+                {
+                    "patient_tumor": key[0],
+                    "treatment": key[1],
+                    "area": area_group["area"].sample(n, random_state=0).to_numpy(),
+                    "volume": volume_group["volume"]
+                    .sample(n, random_state=0)
+                    .to_numpy(),
+                }
+            )
+        )
+    if not parts:
+        return pd.DataFrame(columns=[*keys, "area", "volume"])
+    return pd.concat(parts, ignore_index=True)
+
+
+def area_vs_volume_section(filters: Filters) -> None:
+    raw = registry()["area_vs_volume"]
+    area, volume = raw.get("area_2D_organoid_raw"), raw.get("volume_3D_organoid_raw")
+    if not area or not volume:
+        missing_notice(
+            "area vs volume",
+            "1.EDA/scripts/17.calculate_area_volume_by_patient_treatment.py",
+            EDA_RESULTS / "area_vs_volume",
+        )
+        return
+    pairs = _area_volume_pairs(str(area.path), str(volume.path))
+    if pairs.empty:
+        st.warning("No patient x treatment group has both area and volume.")
+        return
+    st.caption(
+        "Area and volume have no shared organoid ID, so each point pairs a random "
+        "area and a random volume from the same patient x treatment (up to "
+        f"{AREA_VOLUME_PAIRS_PER_GROUP} per group). It shows the joint range of the "
+        "two distributions, not a per-organoid relationship."
+    )
+    explorer(
+        pairs,
+        "area_vs_volume",
+        filters,
+        kinds=["scatter", "histogram", "heatmap"],
+        defaults={
+            "kind": "scatter",
+            "x": "area",
+            "y": "volume",
+            "color": "treatment",
+            "facet": "patient_tumor",
+        },
+        title="Area (2D) vs volume (3D), randomly paired",
+        free_facet_axes=True,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _count_measure_by_condition(
+    counts_path: str, measure_path: str, measure: str
+) -> pd.DataFrame:
+    """One row per patient x treatment x dose: mean cells per organoid (over
+    wells) against the mean organoid ``measure``. The tables share no organoid
+    ID, so this is condition-level rather than per organoid."""
+    keys = ["patient_tumor", "treatment", "dose"]
+    counts = load_dataset(counts_path)
+    cells = counts.groupby(keys, as_index=False).agg(
+        cells_per_organoid=("mean_cells_per_organoid", "mean"),
+        n_wells=("well", "nunique"),
+    )
+    values = load_dataset(measure_path)
+    values = values[np.isfinite(values[measure])]
+    values = values.groupby(keys, as_index=False).agg(
+        **{f"mean_{measure}": (measure, "mean"), "n_organoids": (measure, "size")}
+    )
+    # doses are int in one table and float/Int64 in the other; compare as text
+    for frame in (cells, values):
+        frame["dose"] = frame["dose"].astype(str)
+    return cells.merge(values, on=keys, how="inner")
+
+
+def volume_area_vs_count_section(filters: Filters) -> None:
+    counts = registry()["cell_counts"].get("organoid_cell_counts")
+    raw = registry()["area_vs_volume"]
+    measure = st.radio(
+        "Measure",
+        ["Volume (3D)", "Area (2D)"],
+        horizontal=True,
+        key="vol_area_count_measure",
+    )
+    col = "volume" if measure.startswith("Volume") else "area"
+    source = raw.get(
+        "volume_3D_organoid_raw" if col == "volume" else "area_2D_organoid_raw"
+    )
+    if not counts or not source:
+        missing_notice(
+            "volume/area vs count",
+            "1.EDA/scripts/7.generate_cell_counts.py and "
+            "1.EDA/scripts/17.calculate_area_volume_by_patient_treatment.py",
+            EDA_RESULTS,
+        )
+        return
+    conditions = _count_measure_by_condition(str(counts.path), str(source.path), col)
+    if conditions.empty:
+        st.warning("No patient x treatment x dose has both counts and this measure.")
+        return
+    st.caption(
+        "One point per patient x treatment x dose. Cells per organoid is the mean "
+        "over wells; the measure is the mean over organoids. The two tables share "
+        "no organoid ID, so this is not a per-organoid relationship."
+    )
+    explorer(
+        conditions,
+        f"vol_area_count_{col}",
+        filters,
+        kinds=["scatter", "histogram", "heatmap"],
+        defaults={
+            "kind": "scatter",
+            "x": "cells_per_organoid",
+            "y": f"mean_{col}",
+            "color": "treatment",
+            "facet": "patient_tumor",
+        },
+        title=f"Mean {col} vs mean cells per organoid",
+        free_facet_axes=True,
+    )
+
+
 EDA_SECTIONS = {
     "UMAP": umap_section,
     "PCA": pca_section,
     "Correlation heatmaps": correlation_section,
+    "Consensus heatmaps": consensus_heatmaps_section,
+    "Correlation vs viability": correlation_viability_section,
     "Cell counts": cell_counts_section,
     "Area & volume": area_volume_section,
+    "Area vs volume": area_vs_volume_section,
     "Neighbors": neighbors_section,
     "Intensity": intensity_section,
     "Count vs viability": count_viability_section,
+    "Volume & area vs count": volume_area_vs_count_section,
 }
 
 
