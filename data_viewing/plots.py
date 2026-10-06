@@ -320,7 +320,6 @@ def _palette_kwargs(df: pd.DataFrame, x, color, facet, shape=None) -> dict:
     return kwargs
 
 
-@st.cache_data(show_spinner=False)
 def _build(
     kind,
     df,
@@ -407,7 +406,6 @@ def _build(
 # ---------------------------------------------------------------------------
 # UpSet plot (ported from 6.plot_variate_importance.r's plot_upset())
 # ---------------------------------------------------------------------------
-@st.cache_data(show_spinner=False)
 def regroup_combos_by_identity(
     combos: pd.DataFrame, groups: dict[str, list[str]]
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -448,7 +446,6 @@ def regroup_combos_by_identity(
     return regrouped, sizes
 
 
-@st.cache_data(show_spinner=False)
 def upset_plot(
     sizes: pd.DataFrame,
     combos: pd.DataFrame,
@@ -624,7 +621,6 @@ def upset_plot(
     return fig
 
 
-@st.cache_data(show_spinner=False)
 def _discrete_colorscale(
     categories: list[str], palette: dict[str, str], fallback: str = "#cccccc"
 ) -> tuple[list, dict]:
@@ -645,7 +641,6 @@ def _discrete_colorscale(
     return scale, cat_to_z
 
 
-@st.cache_data(show_spinner=False)
 def _annotation_strip(
     axis_categories: list[str],
     labels: list[str],
@@ -681,7 +676,6 @@ def _annotation_strip(
     )
 
 
-@st.cache_data(show_spinner=False)
 def _hclust(arr: np.ndarray) -> tuple[list[int], np.ndarray | None]:
     """Leaf order and linkage matrix from average-linkage hierarchical
     clustering on binary (Jaccard) distance, matching R's ``hclust(dist(mat,
@@ -702,7 +696,6 @@ def _hclust(arr: np.ndarray) -> tuple[list[int], np.ndarray | None]:
         return list(range(n)), None
 
 
-@st.cache_data(show_spinner=False)
 def _cluster_from_similarity(sim: np.ndarray) -> tuple[list[int], np.ndarray | None]:
     """Average-linkage leaf order and linkage matrix for a symmetric similarity
     matrix (e.g. a correlation matrix), clustered on ``1 - similarity`` as the
@@ -724,7 +717,6 @@ def _cluster_from_similarity(sim: np.ndarray) -> tuple[list[int], np.ndarray | N
         return list(range(n)), None
 
 
-@st.cache_data(show_spinner=False)
 def _dendrogram_traces(
     z: np.ndarray | None, leaf_axis: str, color: str = "#999999"
 ) -> list[go.Scatter]:
@@ -764,7 +756,6 @@ ROW_TRACK_NAMES = ["Compartment", "Channel", "Feature type"]
 COL_TRACK_NAMES = ["Patient", "Tumor type", "Treatment"]
 
 
-@st.cache_data(show_spinner=False)
 def annotated_significance_heatmap(
     sig: pd.DataFrame,
     title: str,
@@ -960,7 +951,6 @@ def annotated_significance_heatmap(
     return fig
 
 
-@st.cache_data(show_spinner=False)
 def platemap_heatmap(
     plate: pd.DataFrame,
     palette: dict[str, str],
@@ -1014,7 +1004,6 @@ def platemap_heatmap(
     return fig
 
 
-@st.cache_data(show_spinner=False)
 def correlation_heatmap(
     matrix: np.ndarray,
     labels: list[str],

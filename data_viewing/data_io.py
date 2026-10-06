@@ -26,6 +26,7 @@ import pathlib
 import pandas as pd
 import pyarrow.parquet as pq
 import streamlit as st
+from memory_trace import trace_memory
 from palettes import TREATMENT_MOA_MAP, TUMOR_TYPE_LOOKUP
 
 DATA_DIR = pathlib.Path(
@@ -185,6 +186,14 @@ def _tidy_dose(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _shrink(df: pd.DataFrame) -> pd.DataFrame:
+    """Halve the size of float columns (float64 -> float32). Text columns are
+    left alone: categorical text breaks string operations such as ``+ " mean"``."""
+    for col in df.select_dtypes("float64").columns:
+        df[col] = df[col].astype("float32")
+    return df
+
+
 def _harmonize(df: pd.DataFrame) -> pd.DataFrame:
     mapping = canonicalize_columns(list(df.columns))
     df = df.rename(columns=mapping)
@@ -192,7 +201,7 @@ def _harmonize(df: pd.DataFrame) -> pd.DataFrame:
     for col in ("dose", "well"):
         if col in df.columns and df[col].dtype == object:
             df[col] = df[col].astype(str)
-    return _exclude_patients(_tidy_dose(_add_derived(df)))
+    return _shrink(_exclude_patients(_tidy_dose(_add_derived(df))))
 
 
 # ---------------------------------------------------------------------------
@@ -218,19 +227,17 @@ def _glob(
     return {f.stem: Dataset(f.stem, f, produced_by) for f in files}
 
 
-@st.cache_data(show_spinner="Loading data...")
 def load_dataset(path: str, columns: tuple[str, ...] | None = None) -> pd.DataFrame:
     """Read a parquet file (optionally a column subset) and harmonize metadata."""
-    df = pd.read_parquet(path, columns=list(columns) if columns else None)
-    return _harmonize(df)
+    with trace_memory(f"load {pathlib.Path(path).name}"):
+        df = pd.read_parquet(path, columns=list(columns) if columns else None)
+        return _harmonize(df)
 
 
-@st.cache_data(show_spinner=False)
 def parquet_columns(path: str) -> list[str]:
     return pq.ParquetFile(path).schema_arrow.names
 
 
-@st.cache_data(show_spinner="Scanning metadata values...")
 def global_filter_options(paths: tuple[str, ...]) -> dict[str, list[str]]:
     """Union of values for each global filter column across the given files."""
     values: dict[str, set[str]] = {c: set() for c in GLOBAL_FILTER_COLUMNS}
@@ -370,7 +377,6 @@ def registry() -> dict[str, dict[str, Dataset]]:
     }
 
 
-@st.cache_data(show_spinner=False)
 def load_platemaps() -> dict[str, pd.DataFrame]:
     """Named well -> treatment layouts (``config/platemaps/platemap*.csv``),
     keyed by file stem (``platemap1``, ``platemap2``, ...)."""
@@ -380,7 +386,6 @@ def load_platemaps() -> dict[str, pd.DataFrame]:
     return {f.stem: pd.read_csv(f) for f in files}
 
 
-@st.cache_data(show_spinner=False)
 def load_barcode_platemap() -> pd.DataFrame:
     """Which named platemap each patient was run on, plus its tumor type."""
     path = PLATEMAP_CONFIG_DIR / "barcode_platemap.csv"

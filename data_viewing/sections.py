@@ -445,14 +445,12 @@ def _pairs_heatmap(pair_files, filters: Filters, preset: dict | None = None) -> 
     png_download(fig, "corr_pairs", "correlation_heatmap")
 
 
-@st.cache_data(show_spinner=False)
 def _per_patient_index(path: str) -> pd.DataFrame:
     """Small (variant, patient, n_samples) table; skips the big matrix columns."""
     df = pd.read_parquet(path, columns=["variant", "patient", "n_samples"])
     return df[~df["patient"].astype(str).isin(EXCLUDED_PATIENTS)].reset_index(drop=True)
 
 
-@st.cache_data(show_spinner="Loading correlation matrix...")
 def _per_patient_row(path: str, variant: str, patient: str) -> dict:
     """Read only the one matrix the user picked, not the whole file."""
     row = pd.read_parquet(
@@ -672,7 +670,6 @@ def correlation_viability_section(filters: Filters) -> None:
 AREA_VOLUME_PAIRS_PER_GROUP = 200
 
 
-@st.cache_data(show_spinner="Pairing area and volume...")
 def _area_volume_pairs(area_path: str, volume_path: str) -> pd.DataFrame:
     """Random area/volume pairs within each patient x treatment.
 
@@ -747,7 +744,6 @@ def area_vs_volume_section(filters: Filters) -> None:
     )
 
 
-@st.cache_data(show_spinner=False)
 def _count_measure_by_condition(
     counts_path: str, measure_path: str, measure: str
 ) -> pd.DataFrame:
@@ -1091,7 +1087,6 @@ UPSET_PROFILE_DATASETS = {
 }
 
 
-@st.cache_data(show_spinner=False)
 def _build_membership(
     hits: pd.DataFrame, terms: list[str], index_cols: list[str]
 ) -> pd.DataFrame:
@@ -1107,7 +1102,6 @@ def _build_membership(
     )
 
 
-@st.cache_data(show_spinner=False)
 def _upset_combinations(membership: pd.DataFrame, terms: list[str]) -> pd.DataFrame:
     """Features per exact term combination, largest first. Ported from
     ``5.calculate_variate_importance.py``'s ``upset_combinations()``."""
@@ -1136,7 +1130,6 @@ def _upset_combinations(membership: pd.DataFrame, terms: list[str]) -> pd.DataFr
     return combos.rename(columns={t: f"in_{t}" for t in terms})
 
 
-@st.cache_data(show_spinner=False)
 def _set_sizes(membership: pd.DataFrame, terms: list[str]) -> pd.DataFrame:
     return pd.DataFrame({"term": terms, "set_size": membership[terms].sum().to_numpy()})
 
@@ -2020,7 +2013,6 @@ def _plate_position(comp: str, filters: Filters) -> None:
     _show(fig, f"{comp}_dmso_pair", f"{comp}_dmso_by_well_pair")
 
 
-@st.cache_data(show_spinner=False)
 def _plate_maps(wells: pd.DataFrame) -> go.Figure:
     """One 8 x 12 plate per patient, outlined DMSO wells (R script 7, facet_wrap)."""
     patients = (

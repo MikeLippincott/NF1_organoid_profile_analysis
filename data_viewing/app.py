@@ -13,6 +13,7 @@ from data_io import (
     all_filterable_paths,
     global_filter_options,
 )
+from memory_trace import sidebar_memory, trace_memory
 from sections import (  # noqa: F401 -- VIABILITY_SECTIONS kept for the commented-out tab below
     DIFFERENTIAL_SECTIONS,
     EDA_SECTIONS,
@@ -76,4 +77,8 @@ for tab, (module, sections) in zip(tabs, MODULES.items()):
         )
         st.subheader(section)
         section_background(section)
-        sections[section](filters)
+        with trace_memory(f"{module} / {section}"):
+            sections[section](filters)
+
+# shown last so the readout reflects memory after the section has rendered
+sidebar_memory()
