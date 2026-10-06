@@ -439,28 +439,50 @@ def _pairs_heatmap(pair_files, filters: Filters) -> None:
     png_download(fig, "corr_pairs", "correlation_heatmap")
 
 
+@st.cache_data(show_spinner=False)
+def _per_patient_index(path: str) -> pd.DataFrame:
+    """Small (variant, patient, n_samples) table; skips the big matrix columns."""
+    df = pd.read_parquet(path, columns=["variant", "patient", "n_samples"])
+    return df[~df["patient"].astype(str).isin(EXCLUDED_PATIENTS)].reset_index(drop=True)
+
+
+@st.cache_data(show_spinner="Loading correlation matrix...")
+def _per_patient_row(path: str, variant: str, patient: str) -> dict:
+    """Read only the one matrix the user picked, not the whole file."""
+    row = pd.read_parquet(
+        path,
+        columns=["n_samples", "correlation", "treatment"],
+        filters=[("variant", "==", variant), ("patient", "==", patient)],
+    ).iloc[0]
+    return {
+        "n": int(row["n_samples"]),
+        "correlation": np.asarray(row["correlation"]),
+        "treatment": np.asarray(row["treatment"]),
+    }
+
+
 def _per_patient_heatmap(matrix_files) -> None:
     if not matrix_files:
         st.info("No per-patient correlation matrix file found.")
         return
-    df = pd.read_parquet(matrix_files[0])
-    df = df[~df["patient"].astype(str).isin(EXCLUDED_PATIENTS)]
+    path = str(matrix_files[0])
+    index = _per_patient_index(path)
     c1, c2 = st.columns(2)
     variant = c1.selectbox(
         "Normalization variant",
-        sorted(df["variant"].unique()),
+        sorted(index["variant"].unique()),
         key="corr_variant",
         format_func=humanize_label,
     )
     patient = c2.selectbox(
         "Patient",
-        sorted(df.loc[df["variant"] == variant, "patient"].unique()),
+        sorted(index.loc[index["variant"] == variant, "patient"].unique()),
         key="corr_patient",
     )
-    row = df[(df["variant"] == variant) & (df["patient"] == patient)].iloc[0]
-    n = int(row["n_samples"])
-    matrix = np.asarray(row["correlation"]).reshape(n, n)
-    treatments = np.asarray(row["treatment"])
+    row = _per_patient_row(path, variant, patient)
+    n = row["n"]
+    matrix = row["correlation"].reshape(n, n)
+    treatments = row["treatment"]
     order_treatments = st.multiselect(
         "Keep treatments", sorted(set(treatments)), key="corr_pp_treat"
     )
@@ -873,6 +895,7 @@ UPSET_PROFILE_DATASETS = {
 }
 
 
+@st.cache_data(show_spinner=False)
 def _build_membership(
     hits: pd.DataFrame, terms: list[str], index_cols: list[str]
 ) -> pd.DataFrame:
@@ -888,6 +911,7 @@ def _build_membership(
     )
 
 
+@st.cache_data(show_spinner=False)
 def _upset_combinations(membership: pd.DataFrame, terms: list[str]) -> pd.DataFrame:
     """Features per exact term combination, largest first. Ported from
     ``5.calculate_variate_importance.py``'s ``upset_combinations()``."""
@@ -916,6 +940,7 @@ def _upset_combinations(membership: pd.DataFrame, terms: list[str]) -> pd.DataFr
     return combos.rename(columns={t: f"in_{t}" for t in terms})
 
 
+@st.cache_data(show_spinner=False)
 def _set_sizes(membership: pd.DataFrame, terms: list[str]) -> pd.DataFrame:
     return pd.DataFrame({"term": terms, "set_size": membership[terms].sum().to_numpy()})
 
@@ -1799,6 +1824,7 @@ def _plate_position(comp: str, filters: Filters) -> None:
     _show(fig, f"{comp}_dmso_pair", f"{comp}_dmso_by_well_pair")
 
 
+@st.cache_data(show_spinner=False)
 def _plate_maps(wells: pd.DataFrame) -> go.Figure:
     """One 8 x 12 plate per patient, outlined DMSO wells (R script 7, facet_wrap)."""
     patients = (
