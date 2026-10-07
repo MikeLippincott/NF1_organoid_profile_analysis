@@ -4,11 +4,15 @@ __pycache__/
 *$py.class
 *.DS_Store
 
+# VSCode
+.vscode/
+
 # C extensions
 *.so
 
 # Distribution / packaging
 .Python
+.Rprofile
 build/
 develop-eggs/
 dist/
@@ -51,7 +55,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-
+settings.json
+.Rprofile
 # Translations
 *.mo
 *.pot
@@ -125,6 +130,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.uvr/
 env/
 venv/
 ENV/
@@ -162,12 +168,15 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-data/*
+data/profiles_2D*
+data/profiles_3D*
+shippable_dir.zip
 *Rplots.pdf
+1.EDA/results/
 1.EDA/figures/consensus_heatmaps/
-1.EDA/figures/correlation_heatmaps/
 1.EDA/figures/distance_metrics/
 1.EDA/figures/heatmaps/
+1.EDA/figures/pca/
 1.EDA/figures/linear_modeling/
 1.EDA/figures/montages/
 2.2d_vs_3d_analysis/results/

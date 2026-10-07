@@ -20,6 +20,7 @@ dependencies:
   - conda-forge::r-reshape2
   - conda-forge::r-cowplot
   - conda-forge::r-patchwork
+  - conda-forge::r-ggrastr
   - conda-forge::r-magick
   - conda-forge::r-platetools
   - conda-forge::r-arrow
