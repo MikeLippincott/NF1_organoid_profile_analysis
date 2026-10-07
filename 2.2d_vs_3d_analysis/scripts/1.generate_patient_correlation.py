@@ -248,6 +248,7 @@ def compute_and_save_correlation(
     features_2d_cols = list(features_2d.columns)
     features_3d_cols = list(features_3d.columns)
 
+    # Profiles were normalized at the single-cell level before aggregation, so re-standardize within this cohort's matched wells.
     arr_2d_z = standardize(features_2d.values)
     arr_3d_z = standardize(features_3d.values)
 
@@ -281,8 +282,8 @@ def compute_and_save_correlation(
 # ## Save correlations and matching summaries
 
 # %%
-# Profiles are cached because the same file is reused across profile types
-profile_cache = {}
+# Profiles are loaded fresh for each comparison; each file's cleanup summary is recorded once, the first time it is loaded
+summarized_paths = set()
 feature_summaries = []
 matching_summaries = []
 manifest = []
@@ -292,13 +293,15 @@ for projection in PROJECTIONS:
         path_2d = input_2d_dir / projection / f"{resolution}_agg_profiles.parquet"
         path_3d = input_3d_dir / f"{prefix}_norm_sc_agg_profiles.parquet"
 
+        profiles = {}
         for path, dimension in ((path_2d, "2D"), (path_3d, "3D")):
-            if path not in profile_cache:
-                profile_cache[path], summary = load_profile(path, dimension)
+            profiles[path], summary = load_profile(path, dimension)
+            if path not in summarized_paths:
+                summarized_paths.add(path)
                 feature_summaries.append(summary)
 
         aligned_2d, aligned_3d, audit = match_profiles(
-            profile_cache[path_2d], profile_cache[path_3d]
+            profiles[path_2d], profiles[path_3d]
         )
 
         # Save the well-matching audit next to this comparison's correlations
