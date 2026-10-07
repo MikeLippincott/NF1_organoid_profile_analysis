@@ -80,7 +80,7 @@ SECTION_BACKGROUND = {
     ),
     "Drugs": (
         "Every drug (excluding the DMSO control), with its dose(s) and "
-        "mechanism of action, deduplicated across both platemaps."
+        "mechanism of action."
     ),
     "Patients & tumor manifestations": (
         "Every patient tumor sample screened, which platemap it ran on, and "
