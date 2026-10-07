@@ -60,15 +60,13 @@ MODULE_BACKGROUND = {
         "is the contrast against DMSO. Scripts: `4.linear_modeling/scripts/2-5.*`."
     ),
     "5.differential_analysis": (
-        "Each treatment compared with its own patient's DMSO control, plus checks "
-        "that the comparisons are not driven by where a well sits on the plate. "
-        "Morphology is the **mean absolute difference from DMSO** across features "
-        "on the normalized scale (not a log2 fold change; the `log2fc` names are "
-        "kept from the upstream scripts). Viability is `log2(treatment % / DMSO %)` "
-        "per patient. MEK signatures pool the four MEK inhibitors (Binimetinib, "
-        "Mirdametinib, Selumetinib, Trametinib) at 1 and 10 µM. Results are written "
-        "to `5.differential_analysis/results/` by `scripts/0`-`9`, in pipeline "
-        "order (each calculation step is followed by its plotting step).\n"
+        "Comparing treatment vs DMSO control per patient. We also check "
+        "that the comparisons are not driven by where the well sits on the plate. "
+        "We measure morphology differences as the **mean absolute difference from DMSO**  "
+        "across features (using the normalized scale). We compute viability as "
+        "`log2(treatment % / DMSO %)`per patient. MEK signatures pool the "
+        "four MEK inhibitors (Binimetinib, Mirdametinib, Selumetinib, Trametinib) "
+        "at 1 and 10 µM. We write results to `5.differential_analysis/results/`.\n"
         + PROFILE_GLOSSARY
     ),
 }
