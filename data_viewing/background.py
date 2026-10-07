@@ -154,8 +154,8 @@ SECTION_BACKGROUND = {
         "Pick another profile type or normalization in the controls to compare."
     ),
     "Correlation vs viability": (
-        "Each point is a pair of samples: their profile **correlation** against the "
-        "viability difference between them "
+        "Each point is a **pair** of samples, showing their morphology profile "
+        "**correlation** and difference in viability."
         "(`5a.find_correlation_pairs_for_montages.py`). `quadrant` is `middle` unless "
         "a pair is past both cutoffs: `right`/`left` for correlation above/below its "
         "cutoffs, and `top`/`bottom` for viability difference above/below its cutoffs. "
