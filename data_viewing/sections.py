@@ -1636,8 +1636,8 @@ LEVEL_LABELS = {
     "within_patient": "Within patient",
     "within_tumor_type": "Within tumor type",
     "across_patients": "Across patients",
-    "across_tumor_types_shared": "Across tumor types (shared)",
-    "across_tumor_types_differ": "Across tumor types (differ)",
+    "across_tumor_types_shared": "Across same tumor types",
+    "across_tumor_types_differ": "Across different tumor types",
 }
 POOLED_GROUP_LABELS = {
     "across_patients": "All patients",

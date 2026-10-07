@@ -20,7 +20,7 @@ PROFILE_GLOSSARY = """
 
 MODULE_BACKGROUND = {
     "0.Overview": (
-        "Static experiment design, read directly from `config/platemaps/` (not "
+        "Experiment design, read directly from `config/platemaps/` (not "
         "computed): which drugs were plated where, and which patient tumor "
         "samples were screened on each platemap."
     ),

@@ -63,8 +63,8 @@ MODULES = {
     # pass); the module import and its sections.py code are kept intact -- restore
     # this tab by uncommenting the line below.
     # "3.viability_prediction_models": VIABILITY_SECTIONS,
-    "4.linear_modeling": LINEAR_MODELING_SECTIONS,
-    "5.differential_analysis": DIFFERENTIAL_SECTIONS,
+    "4.Linear_modeling": LINEAR_MODELING_SECTIONS,
+    "5.Differential_analysis_of_features": DIFFERENTIAL_SECTIONS,
 }
 
 tabs = st.tabs(list(MODULES))
