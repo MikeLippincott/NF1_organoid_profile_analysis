@@ -183,7 +183,4 @@ shippable_dir.zip
 3.viability_prediction_models/logs/
 3.viability_prediction_models/model_results/
 3.viability_prediction_models/trained_models/
-3.viability_prediction_models/data/
-4.linear_modeling/data
-4.linear_modeling/figures/variate_class_plots/
-4.linear_modeling/results/
+2.2d_vs_3d_analysis/figures/correlation/
