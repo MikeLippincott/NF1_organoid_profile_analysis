@@ -8,7 +8,7 @@ This repo contains analysis code of profiles generated in multiple image-based p
 ## Repo modules
 - `0.download_data`: Download image-based profiles from the internet (not yet available)
 - `1.EDA`: Exploratory data analysis of image-based profiles
-- `data_viewing`: Interactive Streamlit app to explore results from `1.EDA`, `3.viability_prediction_models` and `4.linear_modeling` (see `data_viewing/README.md`)
+- `interactive_dashboard`: Interactive Streamlit app to explore results from `1.EDA`, `3.viability_prediction_models`, `4.linear_modeling` and `5.differential_analysis` (see `interactive_dashboard/README.md`)
 - `2.2d_vs_3d_analysis`: Comparison of 2D and 3D profiles (patient correlation, mAP, drug hits, entropy, kBET, sparse CCA)
 - `3.viability_prediction_models`: Viability prediction models trained on the profiles
 - `4.linear_modeling`: Per-patient linear models of every feature on treatment plus count and technical covariates, and the variance, variate-importance and hit analyses built on them (see [`4.linear_modeling/README.md`](4.linear_modeling/README.md))

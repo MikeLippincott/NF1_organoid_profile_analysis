@@ -1,0 +1,10 @@
+# System libraries headless Chrome needs to actually run (not just download),
+# for Kaleido's PNG export on a minimal container such as Streamlit Community
+# Cloud. Streamlit Cloud apt-get installs these automatically on deploy; a
+# host that ignores this file is unaffected.
+libnss3
+libatk-bridge2.0-0
+libxkbcommon0
+libgtk-3-0
+libxss1
+libasound2
