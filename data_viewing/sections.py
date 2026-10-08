@@ -538,26 +538,6 @@ def cell_counts_section(filters: Filters) -> None:
     )
 
 
-def area_volume_section(filters: Filters) -> None:
-    def defaults(label, df):
-        return {
-            "kind": "violin",
-            "x": "treatment",
-            "y": _first(df, "volume", "area"),
-            "color": _first(df, "treatment"),
-            "facet": _first(df, "patient_tumor"),
-        }
-
-    dataset_section(
-        registry()["area_vs_volume"],
-        "area and volume",
-        filters,
-        "1.EDA/scripts/17.calculate_area_volume_by_patient_treatment.py",
-        EDA_RESULTS / "area_vs_volume",
-        defaults,
-    )
-
-
 def neighbors_section(filters: Filters) -> None:
     def defaults(label, df):
         measure = next(
@@ -667,153 +647,6 @@ def correlation_viability_section(filters: Filters) -> None:
     )
 
 
-AREA_VOLUME_PAIRS_PER_GROUP = 200
-
-
-def _area_volume_pairs(area_path: str, volume_path: str) -> pd.DataFrame:
-    """Random area/volume pairs within each patient x treatment.
-
-    Area and volume come from separate pipelines with no shared organoid ID, so
-    each pair is two independent draws from the same group (the same assumption
-    as 18.plot_area_vs_volume.r). It shows the joint range of the two
-    distributions, not a per-organoid relationship.
-    """
-    keys = ["patient_tumor", "treatment"]
-    area = load_dataset(area_path)
-    volume = load_dataset(volume_path)
-    area = area[np.isfinite(area["area"])]
-    volume = volume[np.isfinite(volume["volume"])]
-    volume_groups = dict(tuple(volume.groupby(keys)))
-    parts = []
-    for key, area_group in area.groupby(keys):
-        volume_group = volume_groups.get(key)
-        if volume_group is None:
-            continue
-        n = min(len(area_group), len(volume_group), AREA_VOLUME_PAIRS_PER_GROUP)
-        parts.append(
-            pd.DataFrame(
-                {
-                    "patient_tumor": key[0],
-                    "treatment": key[1],
-                    "area": area_group["area"].sample(n, random_state=0).to_numpy(),
-                    "volume": volume_group["volume"]
-                    .sample(n, random_state=0)
-                    .to_numpy(),
-                }
-            )
-        )
-    if not parts:
-        return pd.DataFrame(columns=[*keys, "area", "volume"])
-    return pd.concat(parts, ignore_index=True)
-
-
-def area_vs_volume_section(filters: Filters) -> None:
-    raw = registry()["area_vs_volume"]
-    area, volume = raw.get("area_2D_organoid_raw"), raw.get("volume_3D_organoid_raw")
-    if not area or not volume:
-        missing_notice(
-            "area vs volume",
-            "1.EDA/scripts/17.calculate_area_volume_by_patient_treatment.py",
-            EDA_RESULTS / "area_vs_volume",
-        )
-        return
-    pairs = _area_volume_pairs(str(area.path), str(volume.path))
-    if pairs.empty:
-        st.warning("No patient x treatment group has both area and volume.")
-        return
-    st.caption(
-        "Area and volume have no shared organoid ID, so each point pairs a random "
-        "area and a random volume from the same patient x treatment (up to "
-        f"{AREA_VOLUME_PAIRS_PER_GROUP} per group). It shows the joint range of the "
-        "two distributions, not a per-organoid relationship."
-    )
-    explorer(
-        pairs,
-        "area_vs_volume",
-        filters,
-        kinds=["scatter", "histogram", "heatmap"],
-        defaults={
-            "kind": "scatter",
-            "x": "area",
-            "y": "volume",
-            "color": "treatment",
-            "facet": "patient_tumor",
-        },
-        title="Area (2D) vs volume (3D), randomly paired",
-        free_facet_axes=True,
-    )
-
-
-def _count_measure_by_condition(
-    counts_path: str, measure_path: str, measure: str
-) -> pd.DataFrame:
-    """One row per patient x treatment x dose: mean cells per organoid (over
-    wells) against the mean organoid ``measure``. The tables share no organoid
-    ID, so this is condition-level rather than per organoid."""
-    keys = ["patient_tumor", "treatment", "dose"]
-    counts = load_dataset(counts_path)
-    cells = counts.groupby(keys, as_index=False).agg(
-        cells_per_organoid=("mean_cells_per_organoid", "mean"),
-        n_wells=("well", "nunique"),
-    )
-    values = load_dataset(measure_path)
-    values = values[np.isfinite(values[measure])]
-    values = values.groupby(keys, as_index=False).agg(
-        **{f"mean_{measure}": (measure, "mean"), "n_organoids": (measure, "size")}
-    )
-    # doses are int in one table and float/Int64 in the other; compare as text
-    for frame in (cells, values):
-        frame["dose"] = frame["dose"].astype(str)
-    return cells.merge(values, on=keys, how="inner")
-
-
-def volume_area_vs_count_section(filters: Filters) -> None:
-    counts = registry()["cell_counts"].get("organoid_cell_counts")
-    raw = registry()["area_vs_volume"]
-    measure = st.radio(
-        "Measure",
-        ["Volume (3D)", "Area (2D)"],
-        horizontal=True,
-        key="vol_area_count_measure",
-    )
-    col = "volume" if measure.startswith("Volume") else "area"
-    source = raw.get(
-        "volume_3D_organoid_raw" if col == "volume" else "area_2D_organoid_raw"
-    )
-    if not counts or not source:
-        missing_notice(
-            "volume/area vs count",
-            "1.EDA/scripts/7.generate_cell_counts.py and "
-            "1.EDA/scripts/17.calculate_area_volume_by_patient_treatment.py",
-            EDA_RESULTS,
-        )
-        return
-    conditions = _count_measure_by_condition(str(counts.path), str(source.path), col)
-    if conditions.empty:
-        st.warning("No patient x treatment x dose has both counts and this measure.")
-        return
-    st.caption(
-        "One point per patient x treatment x dose. Cells per organoid is the mean "
-        "over wells; the measure is the mean over organoids. The two tables share "
-        "no organoid ID, so this is not a per-organoid relationship."
-    )
-    explorer(
-        conditions,
-        f"vol_area_count_{col}",
-        filters,
-        kinds=["scatter", "histogram", "heatmap"],
-        defaults={
-            "kind": "scatter",
-            "x": "cells_per_organoid",
-            "y": f"mean_{col}",
-            "color": "treatment",
-            "facet": "patient_tumor",
-        },
-        title=f"Mean {col} vs mean cells per organoid",
-        free_facet_axes=True,
-    )
-
-
 EDA_SECTIONS = {
     "UMAP": umap_section,
     "PCA": pca_section,
@@ -821,12 +654,9 @@ EDA_SECTIONS = {
     "Consensus heatmaps": consensus_heatmaps_section,
     "Correlation vs viability": correlation_viability_section,
     "Cell counts": cell_counts_section,
-    "Area & volume": area_volume_section,
-    "Area vs volume": area_vs_volume_section,
     "Neighbors": neighbors_section,
     "Intensity": intensity_section,
     "Count vs viability": count_viability_section,
-    "Volume & area vs count": volume_area_vs_count_section,
 }
 
 
@@ -2127,6 +1957,120 @@ def _well_correlation(comp: str, filters: Filters) -> None:
     _show(fig, f"{comp}_wells_box", f"{comp}_well_correlation_by_treatment")
 
 
+def _mek_feature_tests(comp: str, filters: Filters) -> None:
+    """Per-feature MEK-inhibitor test (volcano), cross-drug consistency for the
+    top features, and per-patient values for one chosen feature (R script 8)."""
+    tests = _differential("mek_contrast_feature_tests")
+    if tests is None:
+        return
+    tests = tests.loc[tests["compartment"] == comp]
+    if tests.empty:
+        st.info("No MEK feature tests for this compartment.")
+        return
+
+    contrast = st.selectbox("Contrast", CONTRASTS, key=f"{comp}_mek_feat_contrast")
+    sub = tests.loc[tests["contrast"] == contrast].assign(
+        neg_log10_q=lambda d: -np.log10(d["q"].clip(lower=1e-300)),
+        significant=lambda d: np.where(d["q"] < Q_THRESHOLD, "q < 0.05", "q >= 0.05"),
+    )
+    if sub.empty:
+        st.info("No rows for this contrast.")
+        return
+
+    fig = px.scatter(
+        sub,
+        x="t",
+        y="neg_log10_q",
+        color="frac_patients_same_sign",
+        color_continuous_scale="Viridis",
+        symbol="significant",
+        symbol_map={"q < 0.05": "circle", "q >= 0.05": "circle-open"},
+        hover_data=["feature", "mean", "rank"],
+        labels={
+            "t": "t: one-sample t-test of the mean contrast across patients",
+            "neg_log10_q": "-log10(q): significance, FDR-adjusted within compartment x contrast",
+            "frac_patients_same_sign": "frac_patients_same_sign: share of patients agreeing on direction",
+        },
+        title=(
+            f"{COMPARTMENTS[comp]} | {contrast}: per-feature MEK test -- "
+            "mean = average contrast per feature, rank = features ordered by |t|"
+        ),
+    )
+    fig.add_hline(y=-np.log10(Q_THRESHOLD), line_dash="dash", line_color="grey")
+    fig.update_layout(template="plotly_white", height=480)
+    _show(fig, f"{comp}_mek_feat_volcano", f"{comp}_mek_feature_tests_{contrast}")
+
+    top_n = st.slider("Top features by |t|", 5, 50, 15, key=f"{comp}_mek_feat_topn")
+    top = sub.sort_values("rank").head(top_n)
+    st.dataframe(
+        top[["rank", "feature", "mean", "t", "q", "frac_patients_same_sign"]],
+        hide_index=True,
+        width="stretch",
+    )
+
+    means = _differential("mek_condition_feature_means")
+    if means is not None:
+        subpanel_background("mek_drug_consistency")
+        m = apply_global_filters(
+            means.loc[
+                (means["compartment"] == comp) & means["feature"].isin(top["feature"])
+            ],
+            filters,
+        ).assign(
+            drug_dose=lambda d: (
+                d["treatment"] + " " + d["dose"].astype(int).astype(str) + " uM"
+            )
+        )
+        fig = px.bar(
+            m,
+            x="mean_log2fc",
+            y="feature",
+            color="drug_dose",
+            barmode="group",
+            category_orders={"feature": top["feature"].tolist()},
+            labels={"mean_log2fc": "Mean log2 fold change vs DMSO"},
+            title=f"{COMPARTMENTS[comp]}: consistency across MEK drugs, top {top_n} features by |t|",
+        )
+        fig.update_layout(template="plotly_white", height=max(360, 26 * top_n + 160))
+        _show(fig, f"{comp}_mek_consistency", f"{comp}_mek_drug_consistency_{contrast}")
+
+    patient_values = _differential("mek_contrast_patient_values")
+    if patient_values is not None:
+        subpanel_background("mek_patient_values")
+        feature = st.selectbox(
+            "Feature", top["feature"].tolist(), key=f"{comp}_mek_feat_pick"
+        )
+        pv = apply_global_filters(
+            patient_values.loc[
+                (patient_values["compartment"] == comp)
+                & (patient_values["contrast"] == contrast)
+                & (patient_values["feature"] == feature)
+            ],
+            filters,
+        )
+        if pv.empty:
+            st.info("No per-patient values for this feature/contrast.")
+        else:
+            fig = px.strip(
+                pv,
+                x="tumor_type",
+                y="value",
+                color="tumor_type",
+                category_orders={"tumor_type": TUMOR_TYPES},
+                color_discrete_map=TUMOR_TYPE_PALETTE,
+                hover_data=["patient_tumor"],
+                labels={"value": f"Per-patient contrast value ({contrast})"},
+                title=f"{COMPARTMENTS[comp]} | {feature}: one point per patient",
+            )
+            fig.add_hline(y=0, line_dash="dash", line_color="grey")
+            fig.update_layout(template="plotly_white", height=420)
+            _show(
+                fig,
+                f"{comp}_mek_patient",
+                f"{comp}_mek_patient_values_{contrast}_{feature}",
+            )
+
+
 def _mek(comp: str, filters: Filters) -> None:
     """Count tiles, UpSet and category bars, and recurrence bars (R script 9)."""
     tests = _differential("mek_contrast_level_tests")
@@ -2328,6 +2272,8 @@ def _compartment_section(comp: str, filters: Filters) -> None:
     _plate_position(comp, filters)
     st.markdown("#### Well correlation to DMSO")
     _well_correlation(comp, filters)
+    st.markdown("#### MEK feature tests")
+    _mek_feature_tests(comp, filters)
     st.markdown("#### MEK signatures")
     _mek(comp, filters)
 

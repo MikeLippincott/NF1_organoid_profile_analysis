@@ -52,8 +52,8 @@ Notes:
 - Recipes call `uv run python3 sync_data.py ...`, so run `./uv_setup.sh` in the repo root once first so `huggingface_hub` is available in `.venv`.
 
 ## Layout
-- One tab per module: `0.Overview`, `1.EDA`, `4.linear_modeling`, `5.differential_analysis`. (`3.viability_prediction_models` is implemented in `sections.py` but hidden from the tab bar for now -- see the comment in `app.py`.)
-- One section per analysis type (pick it with the radio buttons; only the selected section loads its data). `5.differential_analysis` has three: `Viability heatmap` (shared), and `Organoid` and `Single cell`, each with its own morphology heatmap, morphology vs viability scatters, plate-position, well-correlation and MEK plots, using the same plot types as the R figures in `5.differential_analysis/scripts/`.
+- One tab per module: `Overview`, `EDA`, `Linear modeling`, `Treatment vs DMSO`. (`Viability prediction` is implemented in `sections.py` but hidden from the tab bar for now -- see the comment in `app.py`.)
+- One section per analysis type (pick it with the radio buttons; only the selected section loads its data). `Treatment vs DMSO` has three: `Viability heatmap` (shared), and `Organoid` and `Single cell`, each with its own morphology heatmap, morphology vs viability scatters, plate-position, well-correlation and MEK plots, using the same plot types as the R figures in `5.differential_analysis/scripts/`.
 - Every plot lets you choose plot type, X, Y and **color** by any column, and **facet** by any categorical column. **Shape** (scatter only) is limited to `dose` and `tumor_type`. You can also **subset** rows by any metadata column (keep or exclude values).
 - Scatter plots that are faceted have "show all points in every facet (grey)" checked by default, under **Appearance**. Untick it to show only each facet's own points.
 - The sidebar holds shared subset filters (patient, treatment, dose, class, target, therapeutic category, MoA, tumor type, well, image mode, modality) that apply to every plot whose table has that column.
@@ -72,11 +72,11 @@ just download_data_from_hf_bucket  # bucket -> data/               (= uv run pyt
 
 | Module | Read from |
 |---|---|
-| 0.Overview | `data/platemaps/*` |
-| 1.EDA | `data/eda/{umap,pca,correlation,cell_counts,area_vs_volume,neighbors,intensity}` |
-| 3.viability_prediction_models | `data/viability_models/combined_*.parquet` |
-| 4.linear_modeling | `data/linear_modeling/{models,variate_importance}` |
-| 5.differential_analysis | `data/differential_analysis/*.parquet` (all tables from `5.differential_analysis/results/`) |
+| Overview | `data/platemaps/*` |
+| EDA | `data/eda/{umap,pca,correlation,cell_counts,neighbors,intensity}` |
+| Viability prediction | `data/viability_models/combined_*.parquet` |
+| Linear modeling | `data/linear_modeling/{models,variate_importance}` |
+| Treatment vs DMSO | `data/differential_analysis/*.parquet` (all tables from `5.differential_analysis/results/`) |
 
 A section whose results aren't present shows which script, in the main repo, produces them -- it never crashes the app.
 

@@ -1,67 +1,72 @@
 """Background text for every module tab, section, and sub-panel of the viewer.
 
-Each entry says what the data are and how they are derived, and names the
-script that produces them. Text is plain markdown shown in a collapsed expander.
+Each entry says what the data are and how we derive them. Text is plain
+markdown shown in a collapsed expander.
 """
 
 import streamlit as st
 
 PROFILE_GLOSSARY = """
 **Profile types used throughout**
-- **sc** (single-cell): one row per segmented cell/nucleus.
-- **organoid**: one row per segmented organoid.
-- **fs** (feature-selected): normalized profiles after pycytominer feature selection.
+- **sc** (single-cell): one row per cell or nucleus the image analysis finds.
+- **organoid**: one row per organoid the image analysis finds.
+- **fs** (feature-selected): standardized measurements that remain after
+  `pycytominer` drops the least useful ones.
 - **agg** / **consensus**: summaries of the feature-selected profiles, one row per
   replicate or per treatment (not per cell).
-- **2D** profiles come from a slice strategy (max projection, middle slice);
-  **3D** profiles come from the full z-stack.
-- `NF0037_T1_CQ1` is excluded from every EDA result (it is a separate analysis).
+- **2D** profiles come from a single image slice (either the sharpest point in
+  the stack or the middle slice); **3D** profiles come from the full stack of
+  depth images.
+- We exclude `NF0037_T1_CQ1` from every EDA result (it is a separate analysis).
 """
 
 MODULE_BACKGROUND = {
-    "0.Overview": (
+    "Overview": (
         "Experiment design, read directly from `config/platemaps/` (not "
-        "computed): which drugs were plated where, and which patient tumor "
-        "samples were screened on each platemap."
+        "computed): which drug went into which well, and which patient tumor "
+        "samples ran on each platemap."
     ),
-    "1.EDA": (
-        "Exploratory analysis of the image-based morphology profiles of NF1 patient "
-        "tumor organoids treated with drugs at one or more doses (DMSO is the "
-        "control). Every table here is precomputed by a script in "
-        "`1.EDA/scripts/` and read from `1.EDA/results/`; nothing is recomputed in "
-        "the viewer.\n" + PROFILE_GLOSSARY
+    "EDA": (
+        "Exploratory analysis of the image-based shape and appearance measurements of NF1 "
+        "patient tumor organoids treated with drugs at one or more doses (DMSO is the "
+        "control). Every table here comes precomputed from `1.EDA/results/`; "
+        "the viewer never recomputes anything.\n" + PROFILE_GLOSSARY
     ),
-    "3.viability_prediction_models": (
-        "Can organoid morphology predict cell viability? An Elastic Net regression "
-        "is trained on image-based profiles to predict per-well viability "
-        "(`3.viability_prediction_models/scripts/1.viability_prediction.py`). The "
-        "target is the **per-patient min-max scaled viability**, computed fold-safe "
-        "(the min and max come only from the training rows of each split, so no "
-        "information leaks from the test set). Features are standardized inside the "
-        "model, and `alpha` / `l1_ratio` are tuned with ElasticNetCV.\n\n"
-        "Three split strategies are used:\n"
+    "Viability prediction": (
+        "Can organoid shape and appearance predict cell viability? An Elastic Net "
+        "regression (a statistical model that predicts an outcome from many measurements "
+        "at once, while automatically ignoring the least useful ones) learns from "
+        "image-based profiles to predict per-well viability. The "
+        "target is the **per-patient min-max scaled viability**: we scale it so that no "
+        "information leaks from the test data (the min and max come only from the "
+        "training rows of each split). The model puts features on the same scale, "
+        "and `ElasticNetCV` automatically chooses its two tuning settings "
+        "(`alpha` and `l1_ratio`) by trying many combinations.\n\n"
+        "We split the data into training and test sets three ways:\n"
         "- **LOPO**: leave one patient out (train on the other patients).\n"
         "- **LOTO**: leave one treatment out.\n"
         "- **Random split**: repeated random train/test splits.\n\n"
-        "Each model is also fit with **shuffled** labels (`shuffle_status`) as a "
-        "null baseline. A useful model beats its shuffled control."
+        "We also fit each model with **shuffled** (randomly scrambled) labels "
+        "(`shuffle_status`) as a baseline for comparison. A useful model should do "
+        "better than this scrambled-label version."
     ),
-    "4.linear_modeling": (
-        "Per-feature linear models that ask which morphology features change with "
-        "treatment. One OLS model is fit per **(patient, treatment/dose, feature)** "
-        "on 3D normalized profiles:\n\n"
+    "Linear modeling": (
+        "Per-feature linear models that ask which shape and appearance measurements change "
+        "with treatment. We fit one linear regression model per "
+        "**(patient, treatment/dose, feature)** on 3D standardized profiles:\n\n"
         "`feature ~ treatment + cell_count + organoid_count + cell_per_organoid_count`\n\n"
-        "The **technical** model set adds spatial covariates: well distance from "
-        "the plate center (Manhattan distance), cell x/y/z position and z depth. "
-        "The **original** model set has no spatial covariates. Models are fit on "
-        "organoid and single-cell profiles, and on well-level aggregates "
-        "(median, `*_agg`). p-values are FDR-corrected (`pvalue_fdr`). "
-        "The `coefficient` is the effect in feature-SD units; for `treatment` it "
-        "is the contrast against DMSO. Scripts: `4.linear_modeling/scripts/2-5.*`."
+        "The **technical** model set adds location-related factors: well distance "
+        "from the plate center, cell x/y/z position and depth in the image stack. "
+        "The **original** model set leaves those out. We fit models on "
+        "organoid and single-cell profiles, and on well-level averages "
+        "(median, `*_agg`). We adjust the p-values to account for testing many "
+        "features at once (`pvalue_fdr`). "
+        "The `coefficient` is the size of the effect, measured in standard "
+        "deviations of the feature; for `treatment` it is the difference from DMSO."
     ),
-    "5.differential_analysis": (
-        "Comparing treatment vs DMSO control per patient. We also check "
-        "that the comparisons are not driven by where the well sits on the plate. "
+    "Treatment vs DMSO": (
+        "We compare treatment vs DMSO control per patient. We also check "
+        "that where the well sits on the plate doesn't drive the comparisons. "
         "We measure morphology differences as the **mean absolute difference from DMSO**  "
         "across features (using the normalized scale). We compute viability as "
         "`log2(treatment % / DMSO %)`per patient. MEK signatures pool the "
@@ -75,12 +80,12 @@ SECTION_BACKGROUND = {
     # ---- 0.Overview ----
     "Platemap": (
         "The well -> treatment/dose layout of each named platemap "
-        "(`config/platemaps/platemap*.csv`). Two layouts were used across the "
-        "screen; pick one to see its grid and which patient samples ran on it."
+        "(`config/platemaps/platemap*.csv`). The screen used two layouts; "
+        "pick one to see its grid and which patient samples ran on it."
     ),
     "Drugs": (
         "Every drug (excluding the DMSO control), with its dose(s) and "
-        "mechanism of action."
+        "mechanism of action (how it works in the cell)."
     ),
     "Patients & tumor manifestations": (
         "Every patient tumor sample screened, which platemap it ran on, and "
@@ -89,209 +94,194 @@ SECTION_BACKGROUND = {
     ),
     # ---- 1.EDA ----
     "UMAP": (
-        "2D UMAP embeddings of single-cell morphology profiles "
-        "(`0.generate_umap.py`). **Pooled** embeddings use all patients together, "
-        "per projection (2D max, 2D middle, 3D) and profile variant. **Per-patient** "
-        "embeddings are an independent UMAP fit for each patient, so UMAP1/UMAP2 "
+        "2D UMAP layouts of single-cell shape and appearance measurements. UMAP is a "
+        "technique that takes many measurements per cell and arranges them on a 2D "
+        "plot so that similar cells end up near each other. "
+        "**Pooled** layouts use all patients together, "
+        "per projection (2D max, 2D middle, 3D) and profile variant. We build "
+        "**Per-patient** layouts separately for each patient, so UMAP1/UMAP2 "
         "are comparable only *within* a patient, never across patients. "
     ),
     "PCA": (
-        "PCA embeddings of the pooled (all-patient) feature-selected, aggregated, "
-        "and consensus profiles for 2D and 3D (`2.generate_pca.py`). Columns "
-        "`PC0…PCn` are component scores; the caption and scree plot show each "
-        "component's explained variance ratio. Use the X/Y component selectors to "
-        "move between components."
+        "PCA layouts of the pooled (all-patient) feature-selected, aggregated, "
+        "and consensus profiles for 2D and 3D. PCA "
+        "(Principal Component Analysis) finds the few main patterns that explain "
+        "most of the variation across many measurements. Columns "
+        "`PC0…PCn` are a sample's score on each of these patterns; the caption and "
+        "scree plot show how much of the total variation each pattern captures. "
+        "Use the X/Y component selectors to move between patterns."
     ),
     "Correlation heatmaps": (
         "Sample-by-sample **Pearson correlation** matrices of profiles "
-        "(`4.calculate_correlation_matrix.py`). A high value means two samples have "
-        "similar morphology profiles."
+        "(a standard way of measuring how similar two sets of numbers are). A high "
+        "value means two samples have similar shape and appearance measurements."
     ),
     "Cell counts": (
         "Number of cells segmented per organoid, patient, and treatment, counted "
-        "from the single-cell profiles for each profile type and split by 2D and 3D "
-        "(`7.generate_cell_counts.py`). Use it to check whether a treatment changes "
-        "cell number, which is also a covariate in the linear models."
-    ),
-    "Area & volume": (
-        "**Raw** (not z-scored) organoid and single-cell size: area from 2D "
-        "(max projection only) and volume from 3D "
-        "(`17.calculate_area_volume_by_patient_treatment.py`). Raw values are used "
-        "because area and volume come from separate pipelines with different "
-        "normalization (area was z-scored per patient upstream, volume was not), "
-        "so normalized values would not be comparable. One row per record, "
-        "with no aggregation."
+        "from the single-cell profiles for each profile type and split by 2D and 3D. "
+        "Use it to check whether a treatment changes "
+        "cell number; the linear models also account for this factor."
     ),
     "Neighbors": (
-        "How closely nuclei and organoids pack (`13.calculate_neighbor_features.py`). "
+        "How closely nuclei and organoids pack together. "
         "**2D**: `Nuclei_Neighbors_*` (nearest and second-nearest distance, number "
         "of neighbors, percent touching, angle between neighbors) and "
         "`Organoid_Neighbors_NumberOfNeighbors_Adjacent`. **3D** has no equivalent "
         "columns, so it reports different measures: neighbors adjacent in the local "
         "shell, distance from the organoid center and exterior, and nucleus volume. "
-        "3D organoid neighbor counts are approximated: two organoids in the same "
-        "well/FOV are adjacent if their bounding spheres (centroid + mean "
-        "half-extent radius, in µm) touch. Do not compare 2D and 3D columns directly."
+        "We approximate 3D organoid neighbor counts: two organoids in the same "
+        "well/field of view count as adjacent if their enclosing spheres "
+        "(center point plus average outer radius, in µm) touch. Do not compare 2D "
+        "and 3D columns directly."
     ),
     "Intensity": (
-        "Mean and median fluorescence intensity per channel and compartment "
-        "(`15.calculate_intensity_values.py`). The whole-organoid compartment comes "
+        "Mean and median fluorescence intensity per channel and compartment. "
+        "The whole-organoid compartment comes "
         "from organoid tables; cell and nucleus compartments come from "
-        "single-cell tables. `value` is **z-scored per patient** (within patient × "
+        "single-cell tables. We standardize `value` **per patient** (within patient × "
         "compartment × channel × statistic, across all treatments), so panels "
-        "share one scale and treatments are read relative to that patient."
+        "share one scale and you read each treatment relative to that patient."
     ),
     "Count vs viability": (
         "Mean cells per organoid (3D) joined with measured viability from the "
-        "platemap, per patient × treatment × dose "
-        "(`10.calculate_count_viability_join.py`). Patients present in only one of "
-        "the profiles or the platemap are dropped and logged by the script."
+        "platemap, per patient × treatment × dose. We drop and log patients "
+        "present in only one of the profiles or the platemap."
     ),
     "Consensus heatmaps": (
         "The same sample-by-sample correlation matrices as **Correlation heatmaps**, "
         "preset to the **consensus** profile type (one profile per replicate or "
-        "treatment, summarized from single cells; `4.calculate_correlation_matrix.py`). "
+        "treatment, summarized from single cells). "
         "Pick another profile type or normalization in the controls to compare."
     ),
     "Correlation vs viability": (
-        "Each point is a **pair** of samples, showing their morphology profile "
-        "**correlation** and difference in viability."
-        "(`5a.find_correlation_pairs_for_montages.py`). `quadrant` is `middle` unless "
+        "Each point is a **pair** of samples, showing how similar their shape and "
+        "appearance measurements are (**correlation**) and their difference in "
+        "viability. `quadrant` is `middle` unless "
         "a pair is past both cutoffs: `right`/`left` for correlation above/below its "
         "cutoffs, and `top`/`bottom` for viability difference above/below its cutoffs. "
         "Most pairs are `middle`, so the labelled quadrants are rare."
-    ),
-    "Area vs volume": (
-        "Raw organoid area (2D) against raw organoid volume (3D), randomly paired "
-        "within each patient x treatment, because the two come from separate "
-        "pipelines with no shared organoid ID. Read it as the joint range of the two "
-        "distributions, not a per-organoid relationship "
-        "(`17.calculate_area_volume_by_patient_treatment.py`)."
-    ),
-    "Volume & area vs count": (
-        "Mean organoid volume (3D) or area (2D) against mean cells per organoid, one "
-        "point per patient x treatment x dose. Cell counts come from "
-        "`7.generate_cell_counts.py`, and the measures from "
-        "`17.calculate_area_volume_by_patient_treatment.py`. Both are averages, so "
-        "this shows how condition means relate, not individual organoids."
     ),
     # ---- 3.viability_prediction_models ----
     "Model performance": (
         "Elastic Net performance for each profile type, split method, and shuffle "
         "status. **Fold metrics** are one row per train/test fold; **summary "
-        "metrics** aggregate over folds. Metrics are R² (variance explained; can "
-        "be negative if worse than predicting the mean), MSE, and MAE. Compare each "
-        "real model to its shuffled-label control."
+        "metrics** average over folds. Metrics are R² (the share of variation the "
+        "model explains; can be negative if it does worse than just "
+        "guessing the average), and MSE and MAE (two measures of average prediction "
+        "error, where lower is better). Compare each real model to its "
+        "shuffled-label control."
     ),
     "Predicted vs actual": (
         "Held-out predictions from the models: each row is a sample with its "
         "`Actual_Viability` (per-patient min-max scaled) and `Predicted_Viability` "
         "from a model that did not see it in training. Points on the diagonal "
-        "are perfect predictions. The wide feature columns are not loaded here."
+        "are perfect predictions. The viewer doesn't load the wide feature columns here."
     ),
     "Feature importances": (
         "Elastic Net coefficients per feature, split by profile type, split method, "
-        "shuffle status, and image mode. Features are standardized before "
+        "shuffle status, and image mode. The model puts features on the same scale before "
         "fitting, so coefficient size is comparable across features. Zero means "
-        "the feature was dropped by the L1 penalty. Sign shows the direction "
-        "(a positive coefficient means higher viability)."
+        "the model dropped the feature as unhelpful. The "
+        "sign shows the direction (a positive coefficient means higher viability)."
     ),
     # ---- 4.linear_modeling ----
     "Volcano (effects vs significance)": (
-        "One point per model term: `coefficient` (effect size) against "
-        "`-log10(pvalue_fdr)`. A point is *significant* when `pvalue_fdr < 0.05`. "
-        "Facet by `term` to separate treatment from the covariates. Pick a "
+        "One point per model term: `coefficient` (effect size) against a "
+        "transformed version of the adjusted p-value (`-log10(pvalue_fdr)`) "
+        "where taller points are more statistically significant. A point is "
+        "*significant* when `pvalue_fdr < 0.05`. "
+        "Split by `term` to separate treatment from the other factors. Pick a "
         "model result file (organoid or sc; original or technical; agg or not) first."
     ),
     "Effect sizes": (
         "Distribution of model `coefficient` values by treatment or therapeutic "
-        "category. For the `treatment` term this is the change versus DMSO in "
-        "feature-SD units. Covariate terms (counts, position) are per-unit slopes "
-        "and are not on the same scale."
+        "category. For the `treatment` term this is the change versus DMSO, "
+        "measured in standard deviations of that feature. The other terms "
+        "(counts, position) are per-unit slopes and are not on the same scale."
     ),
     "Model fit": (
-        "How well each model fits: `rsquared` and `rsquared_adj` per "
-        "(patient, treatment, feature) model, split by feature type and "
-        "compartment. Most variance is usually residual "
-        "(`residual_pct = (1 - R²) × 100`), so low values are expected."
+        "How well each model fits: `rsquared` and `rsquared_adj` (the share of "
+        "variation the model explains, with and without a penalty for the number "
+        "of terms used) per (patient, treatment, feature) model, split by feature "
+        "type and compartment. Most of the variation usually stays unexplained "
+        "(`residual_pct = (1 - R²) × 100`), so expect low values."
     ),
     "UpSet (variate combinations)": (
         "A feature is a **hit** for a model term when `pvalue_fdr < threshold` "
-        "and `coefficient > minimum` (increases only). Each feature is assigned "
+        "and `coefficient > minimum` (increases only). We assign each feature "
         "to the set of terms it is a hit for; bars show how many features share "
-        "each exact combination (computed live, ported from "
-        "`5.calculate_variate_importance.py`). *Scope* sets the grouping "
-        "(all models, per patient, per treatment, per tumor type, …). The overlap "
-        "matrix below counts features shared between every pair of groups."
+        "each exact combination, which the viewer computes live. *Scope* sets the "
+        "grouping (all models, per patient, per treatment, per tumor type, …). The "
+        "overlap matrix below counts how many features every pair of groups shares."
     ),
     "Unique variates per model": (
         "A feature × (patient, treatment) yes/no heatmap of where treatment is a "
         "hit on its own versus together with at least one term from the chosen "
-        "covariate group (biological or technical). Hit = `pvalue_fdr < threshold "
-        "and coefficient > minimum`, as in `5.calculate_variate_importance.py`. The "
-        "drill-down table below lists every term of one model and which ones are "
-        "hits (its *unique variate signature*)."
+        "comparison group (biological or technical factors). Hit = `pvalue_fdr < "
+        "threshold and coefficient > minimum`. The drill-down table below lists "
+        "every term of one model and which ones are hits."
     ),
     # ---- 5.differential_analysis ----
     "Morphology vs viability": (
-        "One point per patient x treatment x dose and compartment (`log2fc_summary`, "
-        "from `0.calculate_log2_fold_change.py`). **x**: mean absolute difference "
-        "from the patient's DMSO across features (normalized scale, see the module "
-        "note). **y**: `viability_log2fc`, the log2 ratio of % viability to DMSO. "
-        "Rows without a viability measurement are not plotted."
+        "Does a bigger change in organoid appearance go along with a bigger change "
+        "in viability? One point per patient, treatment, dose, and compartment. "
+        "**x**: how different the treated organoids look from that patient's own "
+        "DMSO control, averaged across features. **y**: how much viability changed "
+        "relative to DMSO. We leave out points with no viability measurement."
     ),
     "Viability by tumor type": (
-        "Viability as % of each patient's DMSO "
-        "(`2.calculate_viability_by_tumor_type.py`). The per-patient table has one row per patient x treatment. The summary "
-        "table has one row per tumor type x treatment, with the number of patients "
-        "and the mean, SD and median. MPNST and Other have only two patients each, "
-        "so their means are very uncertain."
+        "Does viability change differently by tumor type? We show viability as a "
+        "percent of each patient's own DMSO control. The per-patient table has one "
+        "row per patient and treatment; the summary table groups those by tumor "
+        "type, with the number of patients and the mean, standard deviation, and "
+        "median. MPNST and Other have only two patients each, so treat their "
+        "averages with caution."
     ),
     "Plate position (inner vs outer)": (
         "Do wells on the outer ring of the plate (rows B and G, columns 2 and 11) "
         "differ from inner wells? Row B is only present on three of the twelve "
         "plates, so the row-B part of the outer ring comes from those three. "
-        "Position is compared only within plate x treatment "
-        "x dose groups that contain both, because treatment and position are "
-        "confounded across the plate. Per feature, the effect is mean(outer) - "
-        "mean(inner), averaged over groups. The **global** RMS effect is compared "
-        "with a null from shuffling inner/outer labels within each group (10,000 "
-        "permutations). Per-feature p-values are permutation-based, with "
-        "Benjamini-Hochberg q-values (`4.calculate_plate_position_effects.py`)."
+        "We compare position only within plate x treatment "
+        "x dose groups that contain both, because treatment and position overlap "
+        "too much across the plate otherwise. Per feature, the effect is "
+        "mean(outer) - mean(inner), averaged over groups. We compare the "
+        "**global** effect (a root-mean-square summary across all features) "
+        "against a chance baseline: we randomly reshuffle inner/outer well labels "
+        "within each group 10,000 times to estimate that baseline. "
+        "Per-feature p-values come from this same reshuffling approach; we then "
+        "adjust them for testing many features at once (Benjamini-Hochberg q-values)."
     ),
     "DMSO column check": (
         "A sanity check for the plate-position result. DMSO occupies column 4 and "
         "column 9 of every plate (eight wells). If position does not matter, DMSO "
         "wells should be no more similar within a column than between columns. The "
         "statistic is the mean within-column correlation minus the mean "
-        "between-column correlation, per patient plate; its null shuffles the column "
-        "labels exactly within each plate. The **all plates** row pools the plates "
-        "(`4.calculate_plate_position_effects.py`)."
+        "between-column correlation, per patient plate; the comparison baseline comes "
+        "from randomly reshuffling the column labels within each plate. The "
+        "**all plates** row pools the plates."
     ),
     "Well correlation to DMSO": (
-        "Pearson correlation of each well's median profile with its plate's DMSO "
-        "reference, using raw QC profiles standardized per plate. DMSO wells are "
-        "compared with the median of the *other* DMSO wells, so they are not "
-        "correlated with themselves. High values mean the well looks like DMSO "
-        "(`6.calculate_well_dmso_correlation.py`)."
+        "How closely each well matches DMSO: correlation between a well's profile "
+        "and the median of the plate's *other* DMSO wells (we never compare a DMSO "
+        "well to itself). Higher = more DMSO-like."
     ),
     "MEK feature tests": (
-        "Per feature, the MEK response is the mean over the four MEK inhibitors at "
-        "1 and 10 µM. It is tested in three contrasts: vs DMSO, vs Staurosporine and "
-        "vs Digoxin. `mean` is the average contrast; `t` is a one-sample t-test "
-        "across patients (patients are the replicates); `q` is Benjamini-Hochberg "
-        "adjusted within compartment x contrast; `rank` orders features by |t|. "
-        "`frac_patients_same_sign` shows how consistent the sign is across "
-        "patients (`8.calculate_mek_signatures.py`)."
+        "Per feature, this test compares the average MEK-inhibitor response (all "
+        "four drugs, 1 and 10 µM pooled) against DMSO, Staurosporine, and Digoxin.\n"
+        "- `mean`: average difference from the reference\n"
+        "- `t` / `q`: significance of that difference across patients, FDR-adjusted\n"
+        "- `rank`: features ordered by effect size (|t|)\n"
+        "- `frac_patients_same_sign`: how many patients agree on direction"
     ),
     "MEK significance by level": (
         "How many features reach q < 0.05 at each level of the MEK tests. **Within "
-        "patient**: over that patient's MEK conditions. **Within tumor type**: patient "
-        "x condition values pooled, which is optimistic because conditions from one "
+        "patient**: over that patient's MEK conditions. **Within tumor type**: we pool "
+        "patient x condition values, which is optimistic because conditions from one "
         "patient are not independent. **Across patients**: per-patient responses. "
-        "**Across tumor types (shared)**: is the effect shared by the tumor-type "
-        "means? **Across tumor types (differ)**: a one-way ANOVA asks whether the "
-        "effect depends on tumor type. Below, the feature categories (Texture, "
+        "**Across tumor types (shared)**: do the tumor-type means share the "
+        "effect? **Across tumor types (differ)**: a one-way ANOVA (a test for "
+        "comparing averages across more than two groups) asks whether the effect "
+        "depends on tumor type. Below, the feature categories (Texture, "
         "Granularity, Intensity, ...) of the significant features."
     ),
 }
@@ -300,32 +290,32 @@ SUBPANEL_BACKGROUND = {
     "corr_pairs": (
         "**Replicate/treatment-level (pairs).** Correlations between aggregate or "
         "consensus profiles (one row per replicate or treatment, summarized "
-        "from single cells). Stored as a long table with one row per unique sample "
-        "pair (upper triangle only, since correlation is symmetric), with a "
+        "from single cells). We store it as a long table with one row per unique "
+        "sample pair (upper triangle only, since correlation is symmetric), plus a "
         "companion table of patient/treatment/dose metadata for annotation. "
         "Files exist for 2D (3 slice strategies) and 3D (4 normalization variants)."
     ),
     "corr_per_patient": (
-        "**Per-patient single-cell.** Correlation matrices of 3D single-cell "
-        "feature-selected profiles, computed separately for each patient (one "
+        "**Per-patient single-cell.** We compute correlation matrices of 3D "
+        "single-cell feature-selected profiles separately for each patient (one "
         "row per cell before correlating, unlike the pairs view). Choose a "
-        "normalization variant and patient. Only variants that are truly "
-        "single-cell are included."
+        "normalization variant and patient. We include only variants that are "
+        "truly single-cell."
     ),
     "pca_scree": (
-        "**Scree plot.** Explained variance ratio of each principal component "
-        "(saved with the embeddings). A steep drop means a few components "
+        "**Scree plot.** Explained variance ratio of each principal component; "
+        "we save it with the embeddings. A steep drop means a few components "
         "capture most of the variation."
     ),
     "lm_upset_profile": (
-        "**Profile** sets the unit that was modeled: `organoid` (one row per "
+        "**Profile** sets the unit the model used: `organoid` (one row per "
         "organoid) or `sc` (one row per cell). **Model set**: `original` uses "
-        "treatment and count covariates only; `technical` adds spatial covariates "
-        "(plate position, cell x/y/z, z depth)."
+        "only treatment and count factors; `technical` adds location-related "
+        "factors (plate position, cell x/y/z, depth in the image stack)."
     ),
     "lm_variates_drilldown": (
         "**Drill-down.** Pick one patient, treatment, and feature to see every "
-        "term of that single model: its coefficient, FDR-adjusted p-value, R², "
+        "term of that single model: its coefficient, adjusted p-value, R², "
         "and whether it passes the current hit thresholds."
     ),
     "plate_map": (
@@ -336,14 +326,14 @@ SUBPANEL_BACKGROUND = {
     ),
     "mek_drug_consistency": (
         "**Consistency across MEK drugs.** The mean difference from DMSO for each MEK "
-        "drug and dose, for the top features by |t| of the selected contrast. If the "
-        "top features are shared, the columns should agree, rather than one compound "
-        "driving the signature."
+        "drug and dose, for the top features by |t| of the selected comparison. If "
+        "the top features overlap, the columns should agree, rather than one "
+        "compound driving the pattern."
     ),
     "mek_patient_values": (
-        "**Per patient.** One point per patient for the chosen feature and contrast. "
-        "A large mean that comes from one or two patients is weaker evidence than a "
-        "consistent sign across patients."
+        "**Per patient.** One point per patient for the chosen feature and "
+        "comparison. A large mean that comes from one or two patients is weaker "
+        "evidence than a consistent sign across patients."
     ),
 }
 

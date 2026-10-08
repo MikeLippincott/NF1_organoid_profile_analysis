@@ -33,7 +33,6 @@ MANIFEST: list[tuple[str, str, str]] = [
     ("1.EDA/results/pca", "eda/pca", "dir"),
     ("1.EDA/results/correlation", "eda/correlation", "dir"),
     ("1.EDA/results/cell_counts", "eda/cell_counts", "dir"),
-    ("1.EDA/results/area_vs_volume", "eda/area_vs_volume", "dir"),
     ("1.EDA/results/neighbors", "eda/neighbors", "dir"),
     ("1.EDA/results/intensity", "eda/intensity", "dir"),
     ("1.EDA/results/count_viability", "eda/count_viability", "dir"),

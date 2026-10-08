@@ -20,6 +20,9 @@ CONTINUOUS_MIN_UNIQUE = 12
 PNG_DPI = 600
 CSS_DPI = 96  # plotly lays figures out at 96 px per inch
 PLOT_KINDS = ["scatter", "box", "violin", "histogram", "bar", "heatmap"]
+FONT_SIZE = 16
+MARKER_SIZE = 16
+FACET_SPACING = 0.06
 
 
 # ---------------------------------------------------------------------------

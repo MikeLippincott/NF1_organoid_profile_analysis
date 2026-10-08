@@ -57,14 +57,14 @@ if st.sidebar.button("Clear all filters"):
 # One tab per module, one selectable section per analysis type
 # ---------------------------------------------------------------------------
 MODULES = {
-    "0.Overview": OVERVIEW_SECTIONS,
-    "1.EDA": EDA_SECTIONS,
-    # "3.viability_prediction_models" is hidden for now (its results need another
+    "Overview": OVERVIEW_SECTIONS,
+    "EDA": EDA_SECTIONS,
+    # "Viability prediction" is hidden for now (its results need another
     # pass); the module import and its sections.py code are kept intact -- restore
     # this tab by uncommenting the line below.
-    # "3.viability_prediction_models": VIABILITY_SECTIONS,
-    "4.Linear_modeling": LINEAR_MODELING_SECTIONS,
-    "5.Differential_analysis_of_features": DIFFERENTIAL_SECTIONS,
+    # "Viability prediction": VIABILITY_SECTIONS,
+    "Linear modeling": LINEAR_MODELING_SECTIONS,
+    "Treatment vs DMSO": DIFFERENTIAL_SECTIONS,
 }
 
 tabs = st.tabs(list(MODULES))

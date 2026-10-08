@@ -327,14 +327,6 @@ def registry() -> dict[str, dict[str, Dataset]]:
             "*.parquet",
             "1.EDA/scripts/7.generate_cell_counts.py",
         ),
-        "area_vs_volume": {
-            k: v
-            for k, v in _glob(
-                EDA_RESULTS / "area_vs_volume",
-                "*_raw.parquet",
-                "1.EDA/scripts/17.calculate_area_volume_by_patient_treatment.py",
-            ).items()
-        },
         "neighbors": _glob(
             EDA_RESULTS / "neighbors",
             "*.parquet",
@@ -404,7 +396,6 @@ def all_filterable_paths() -> tuple[str, ...]:
     for group in (
         "umap",
         "cell_counts",
-        "area_vs_volume",
         "neighbors",
         "count_viability",
     ):
