@@ -22,15 +22,14 @@ PROFILE_GLOSSARY = """
 
 MODULE_BACKGROUND = {
     "Overview": (
-        "Experiment design, read directly from `config/platemaps/` (not "
-        "computed): which drug went into which well, and which patient tumor "
-        "samples ran on each platemap."
+        "Experiment design (not computed): which drug went into which well, and "
+        "which patient tumor samples ran on each platemap."
     ),
     "EDA": (
         "Exploratory analysis of the image-based shape and appearance measurements of NF1 "
         "patient tumor organoids treated with drugs at one or more doses (DMSO is the "
-        "control). Every table here comes precomputed from `1.EDA/results/`; "
-        "the viewer never recomputes anything.\n" + PROFILE_GLOSSARY
+        "control). Every table here comes precomputed; the viewer never recomputes "
+        "anything.\n" + PROFILE_GLOSSARY
     ),
     "Viability prediction": (
         "Can organoid shape and appearance predict cell viability? An Elastic Net "
@@ -71,17 +70,16 @@ MODULE_BACKGROUND = {
         "across features (using the normalized scale). We compute viability as "
         "`log2(treatment % / DMSO %)`per patient. MEK signatures pool the "
         "four MEK inhibitors (Binimetinib, Mirdametinib, Selumetinib, Trametinib) "
-        "at 1 and 10 µM. We write results to `5.differential_analysis/results/`.\n"
-        + PROFILE_GLOSSARY
+        "at 1 and 10 µM.\n" + PROFILE_GLOSSARY
     ),
 }
 
 SECTION_BACKGROUND = {
     # ---- 0.Overview ----
     "Platemap": (
-        "The well -> treatment/dose layout of each named platemap "
-        "(`config/platemaps/platemap*.csv`). The screen used two layouts; "
-        "pick one to see its grid and which patient samples ran on it."
+        "The well -> treatment/dose layout of each named platemap. The screen "
+        "used two layouts; pick one to see its grid and which patient samples "
+        "ran on it."
     ),
     "Drugs": (
         "Every drug (excluding the DMSO control), with its dose(s) and "
@@ -89,8 +87,7 @@ SECTION_BACKGROUND = {
     ),
     "Patients & tumor manifestations": (
         "Every patient tumor sample screened, which platemap it ran on, and "
-        "its tumor manifestation (cNF, pNF, MPNST or Other) "
-        "(`config/platemaps/barcode_platemap.csv`)."
+        "its tumor manifestation (cNF, pNF, MPNST or Other)."
     ),
     # ---- 1.EDA ----
     "UMAP": (

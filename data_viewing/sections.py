@@ -9,8 +9,6 @@ import plotly.graph_objects as go
 import streamlit as st
 from background import subpanel_background
 from data_io import (
-    DIFFERENTIAL_PRODUCED_BY,
-    DIFFERENTIAL_RESULTS,
     EDA_RESULTS,
     EXCLUDED_PATIENTS,
     Dataset,
@@ -59,8 +57,6 @@ def dataset_section(
     datasets: dict[str, Dataset],
     key: str,
     filters: Filters,
-    produced_by: str,
-    directory,
     defaults_for=None,
     kinds=None,
     columns: tuple[str, ...] | None = None,
@@ -68,7 +64,7 @@ def dataset_section(
 ) -> None:
     """Pick one of several result files and explore it."""
     if not datasets:
-        missing_notice(key.replace("_", " "), produced_by, directory)
+        missing_notice(key.replace("_", " "))
         return
     label = st.selectbox(
         "Dataset", list(datasets), key=f"{key}_dataset", format_func=humanize_label
@@ -91,7 +87,7 @@ def _first(df: pd.DataFrame, *names: str) -> str | None:
 def platemap_section(filters: Filters) -> None:
     plates = load_platemaps()
     if not plates:
-        missing_notice("platemaps", "(none)", "config/platemaps")
+        missing_notice("platemaps")
         return
     barcodes = load_barcode_platemap()
     name = st.selectbox(
@@ -112,7 +108,7 @@ def platemap_section(filters: Filters) -> None:
 def drugs_section(filters: Filters) -> None:
     plates = load_platemaps()
     if not plates:
-        missing_notice("platemaps", "(none)", "config/platemaps")
+        missing_notice("platemaps")
         return
     combined = pd.concat(plates.values(), ignore_index=True)
     drugs = (
@@ -144,7 +140,7 @@ def drugs_section(filters: Filters) -> None:
 def patients_section(filters: Filters) -> None:
     barcodes = load_barcode_platemap()
     if barcodes.empty:
-        missing_notice("patients", "(none)", "config/platemaps/barcode_platemap.csv")
+        missing_notice("patients")
         return
     st.caption(f"{len(barcodes)} patient tumor samples")
     st.dataframe(
@@ -201,7 +197,7 @@ def umap_section(filters: Filters) -> None:
         )
         datasets = {k: v for k, v in datasets.items() if _dimension_of(k) == dim}
     if not datasets:
-        missing_notice("umap", "1.EDA/scripts/0.generate_umap.py", EDA_RESULTS / "umap")
+        missing_notice("umap")
         return
 
     label = st.selectbox(
@@ -260,7 +256,7 @@ def pca_section(filters: Filters) -> None:
         )
         datasets = {k: v for k, v in datasets.items() if _dimension_of(k) == dim}
     if not datasets:
-        missing_notice("PCA", "1.EDA/scripts/2.generate_pca.py", EDA_RESULTS / "pca")
+        missing_notice("PCA")
         return
     label = st.selectbox(
         "Dataset",
@@ -325,11 +321,7 @@ def correlation_section(filters: Filters) -> None:
         else []
     )
     if not pair_files and not matrix_files:
-        missing_notice(
-            "correlation matrices",
-            "1.EDA/scripts/4.calculate_correlation_matrix.py",
-            corr_dir,
-        )
+        missing_notice("correlation matrices")
         return
 
     mode = st.radio(
@@ -532,8 +524,6 @@ def cell_counts_section(filters: Filters) -> None:
         registry()["cell_counts"],
         "cell counts",
         filters,
-        "1.EDA/scripts/7.generate_cell_counts.py",
-        EDA_RESULTS / "cell_counts",
         defaults,
     )
 
@@ -560,8 +550,6 @@ def neighbors_section(filters: Filters) -> None:
         registry()["neighbors"],
         "neighbors",
         filters,
-        "1.EDA/scripts/13.calculate_neighbor_features.py",
-        EDA_RESULTS / "neighbors",
         defaults,
     )
 
@@ -580,8 +568,6 @@ def intensity_section(filters: Filters) -> None:
         registry()["intensity"],
         "intensity",
         filters,
-        "1.EDA/scripts/15.calculate_intensity_values.py",
-        EDA_RESULTS / "intensity",
         defaults,
     )
 
@@ -604,8 +590,6 @@ def count_viability_section(filters: Filters) -> None:
         registry()["count_viability"],
         "count vs viability",
         filters,
-        "1.EDA/scripts/10.calculate_count_viability_join.py",
-        EDA_RESULTS / "count_viability",
         defaults,
     )
 
@@ -618,11 +602,7 @@ def consensus_heatmaps_section(filters: Filters) -> None:
         else []
     )
     if not pair_files:
-        missing_notice(
-            "consensus heatmaps",
-            "1.EDA/scripts/4.calculate_correlation_matrix.py",
-            corr_dir,
-        )
+        missing_notice("consensus heatmaps")
         return
     subpanel_background("corr_pairs")
     _pairs_heatmap(pair_files, filters, preset={"profile_type": "consensus"})
@@ -641,8 +621,6 @@ def correlation_viability_section(filters: Filters) -> None:
         registry()["correlation_viability"],
         "correlation vs viability",
         filters,
-        "1.EDA/scripts/5a.find_correlation_pairs_for_montages.py",
-        EDA_RESULTS / "correlation",
         defaults,
     )
 
@@ -687,8 +665,6 @@ def model_performance_section(filters: Filters) -> None:
         datasets,
         "model performance",
         filters,
-        "3.viability_prediction_models/scripts/1.viability_prediction.py",
-        "3.viability_prediction_models/model_results",
         defaults,
     )
 
@@ -696,11 +672,7 @@ def model_performance_section(filters: Filters) -> None:
 def predicted_vs_actual_section(filters: Filters) -> None:
     ds = _viability_dataset("combined_predicted_viabilities")
     if ds is None:
-        missing_notice(
-            "predicted viabilities",
-            "3.viability_prediction_models/scripts/1.viability_prediction.py",
-            "3.viability_prediction_models/model_results",
-        )
+        missing_notice("predicted viabilities")
         return
     # the file has ~23k feature columns; read only the metadata and target columns
     keep = tuple(
@@ -729,11 +701,7 @@ def predicted_vs_actual_section(filters: Filters) -> None:
 def feature_importance_section(filters: Filters) -> None:
     ds = _viability_dataset("combined_feature_importances")
     if ds is None:
-        missing_notice(
-            "feature importances",
-            "3.viability_prediction_models/scripts/1.viability_prediction.py",
-            "3.viability_prediction_models/model_results",
-        )
+        missing_notice("feature importances")
         return
     df = load_dataset(str(ds.path))
     df = apply_global_filters(df, filters)
@@ -816,11 +784,7 @@ def _normalize_lm_df(df: pd.DataFrame) -> pd.DataFrame:
 def _linear_model_data(key: str, extra_defaults=None):
     datasets = registry()["linear_modeling"]
     if not datasets:
-        missing_notice(
-            "linear-model results",
-            "4.linear_modeling/scripts/0.linear_modeling.py",
-            "4.linear_modeling/results/linear_modeling",
-        )
+        missing_notice("linear-model results")
         return None, None
     label = st.selectbox(
         "Model results",
@@ -984,11 +948,7 @@ def lm_upset_section(filters: Filters) -> None:
     dataset_key = UPSET_PROFILE_DATASETS[(profile, model_set)]
     ds = registry()["linear_modeling"].get(dataset_key)
     if ds is None:
-        missing_notice(
-            f"{profile} ({model_set}) linear-model results",
-            "4.linear_modeling/scripts/0.linear_modeling.py",
-            "4.linear_modeling/results/linear_modeling",
-        )
+        missing_notice(f"{profile} ({model_set}) linear-model results")
         return
     df = _normalize_lm_df(load_dataset(str(ds.path)))
     df = apply_global_filters(df, filters)
@@ -1481,11 +1441,7 @@ def _differential(key: str) -> pd.DataFrame | None:
     """Load one 5.differential_analysis table, or say which script writes it."""
     ds = registry()["differential"].get(key)
     if ds is None:
-        missing_notice(
-            humanize_label(key),
-            DIFFERENTIAL_PRODUCED_BY[key],
-            DIFFERENTIAL_RESULTS / f"{key}.parquet",
-        )
+        missing_notice(humanize_label(key))
         return None
     return load_dataset(str(ds.path))
 
@@ -2256,6 +2212,7 @@ def _mek(comp: str, filters: Filters) -> None:
         title=f"{COMPARTMENTS[comp]}: recurrence of significant features",
     )
     fig.update_layout(template="plotly_white", height=560)
+    fig.update_xaxes(tickangle=-90)
     fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
     _show(fig, f"{comp}_mek_recur", f"{comp}_mek_recurrence")
 

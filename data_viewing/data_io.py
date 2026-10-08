@@ -208,23 +208,20 @@ def _harmonize(df: pd.DataFrame) -> pd.DataFrame:
 # Dataset registry
 # ---------------------------------------------------------------------------
 class Dataset:
-    """A parquet file plus the script that produces it (shown when missing)."""
+    """A parquet file this viewer can load."""
 
-    def __init__(self, label: str, path: pathlib.Path, produced_by: str):
+    def __init__(self, label: str, path: pathlib.Path):
         self.label = label
         self.path = path
-        self.produced_by = produced_by
 
     @property
     def exists(self) -> bool:
         return self.path.exists()
 
 
-def _glob(
-    directory: pathlib.Path, pattern: str, produced_by: str
-) -> dict[str, Dataset]:
+def _glob(directory: pathlib.Path, pattern: str) -> dict[str, Dataset]:
     files = sorted(directory.glob(pattern)) if directory.exists() else []
-    return {f.stem: Dataset(f.stem, f, produced_by) for f in files}
+    return {f.stem: Dataset(f.stem, f) for f in files}
 
 
 def load_dataset(path: str, columns: tuple[str, ...] | None = None) -> pd.DataFrame:
@@ -266,39 +263,33 @@ def _natural_key(value: str):
         return (1, 0.0, value)
 
 
-# 5.differential_analysis: results file stem -> the script that writes it
-_DIFF_SCRIPTS = "5.differential_analysis/scripts"
-_LOG2FC = f"{_DIFF_SCRIPTS}/0.calculate_log2_fold_change.py"
-_VIABILITY = f"{_DIFF_SCRIPTS}/2.calculate_viability_by_tumor_type.py"
-_PLATE = f"{_DIFF_SCRIPTS}/4.calculate_plate_position_effects.py"
-_WELL = f"{_DIFF_SCRIPTS}/6.calculate_well_dmso_correlation.py"
-_MEK = f"{_DIFF_SCRIPTS}/8.calculate_mek_signatures.py"
-DIFFERENTIAL_PRODUCED_BY = {
-    "organoid_log2fc": _LOG2FC,
-    "single_cell_log2fc": _LOG2FC,
-    "log2fc_summary": _LOG2FC,
-    "viability_log2fc": _LOG2FC,
-    "viability_log2fc_by_patient_tumor_type": _VIABILITY,
-    "viability_log2fc_by_tumor_type": _VIABILITY,
-    "plate_position_wells": _PLATE,
-    "plate_position_global_test": _PLATE,
-    "plate_position_null": _PLATE,
-    "plate_position_feature_tests": _PLATE,
-    "dmso_column_pair_correlations": _PLATE,
-    "dmso_column_tests": _PLATE,
-    "well_dmso_correlation": _WELL,
-    "mek_contrast_feature_tests": _MEK,
-    "mek_contrast_level_tests": _MEK,
-    "mek_contrast_patient_values": _MEK,
-    "mek_condition_feature_means": _MEK,
-}
+# 5.differential_analysis: the result file stems this viewer knows how to load
+DIFFERENTIAL_STEMS = [
+    "organoid_log2fc",
+    "single_cell_log2fc",
+    "log2fc_summary",
+    "viability_log2fc",
+    "viability_log2fc_by_patient_tumor_type",
+    "viability_log2fc_by_tumor_type",
+    "plate_position_wells",
+    "plate_position_global_test",
+    "plate_position_null",
+    "plate_position_feature_tests",
+    "dmso_column_pair_correlations",
+    "dmso_column_tests",
+    "well_dmso_correlation",
+    "mek_contrast_feature_tests",
+    "mek_contrast_level_tests",
+    "mek_contrast_patient_values",
+    "mek_condition_feature_means",
+]
 
 
 def _differential_datasets() -> dict[str, Dataset]:
     """The 5.differential_analysis tables that exist, keyed by file stem."""
     return {
-        stem: Dataset(stem, DIFFERENTIAL_RESULTS / f"{stem}.parquet", script)
-        for stem, script in DIFFERENTIAL_PRODUCED_BY.items()
+        stem: Dataset(stem, DIFFERENTIAL_RESULTS / f"{stem}.parquet")
+        for stem in DIFFERENTIAL_STEMS
         if (DIFFERENTIAL_RESULTS / f"{stem}.parquet").exists()
     }
 
@@ -308,63 +299,25 @@ def registry() -> dict[str, dict[str, Dataset]]:
     return {
         "differential": _differential_datasets(),
         "umap": {
-            **_glob(
-                EDA_RESULTS / "umap", "*.parquet", "1.EDA/scripts/0.generate_umap.py"
-            ),
-            **_glob(
-                EDA_RESULTS / "umap" / "patient_specific",
-                "*.parquet",
-                "1.EDA/scripts/0.generate_umap.py",
-            ),
+            **_glob(EDA_RESULTS / "umap", "*.parquet"),
+            **_glob(EDA_RESULTS / "umap" / "patient_specific", "*.parquet"),
         },
-        "pca": _glob(
-            EDA_RESULTS / "pca",
-            "*_embeddings.parquet",
-            "1.EDA/scripts/2.generate_pca.py",
-        ),
-        "cell_counts": _glob(
-            EDA_RESULTS / "cell_counts",
-            "*.parquet",
-            "1.EDA/scripts/7.generate_cell_counts.py",
-        ),
-        "neighbors": _glob(
-            EDA_RESULTS / "neighbors",
-            "*.parquet",
-            "1.EDA/scripts/13.calculate_neighbor_features.py",
-        ),
-        "intensity": _glob(
-            EDA_RESULTS / "intensity",
-            "*.parquet",
-            "1.EDA/scripts/15.calculate_intensity_values.py",
-        ),
-        "count_viability": _glob(
-            EDA_RESULTS / "count_viability",
-            "*_joined.parquet",
-            "1.EDA/scripts/10.calculate_count_viability_join.py",
-        ),
+        "pca": _glob(EDA_RESULTS / "pca", "*_embeddings.parquet"),
+        "cell_counts": _glob(EDA_RESULTS / "cell_counts", "*.parquet"),
+        "neighbors": _glob(EDA_RESULTS / "neighbors", "*.parquet"),
+        "intensity": _glob(EDA_RESULTS / "intensity", "*.parquet"),
+        "count_viability": _glob(EDA_RESULTS / "count_viability", "*_joined.parquet"),
         "correlation_viability": _glob(
-            EDA_RESULTS / "correlation",
-            "*_with_meta_and_viability.parquet",
-            "1.EDA/scripts/5a.find_correlation_pairs_for_montages.py",
+            EDA_RESULTS / "correlation", "*_with_meta_and_viability.parquet"
         ),
-        "viability_models": _glob(
-            VIABILITY_RESULTS,
-            "combined_*.parquet",
-            "3.viability_prediction_models/scripts/1.viability_prediction.py",
-        ),
+        "viability_models": _glob(VIABILITY_RESULTS, "combined_*.parquet"),
         "linear_modeling": {
             k: v
-            for k, v in _glob(
-                LINEAR_MODELING_RESULTS,
-                "*.parquet",
-                "4.linear_modeling/scripts/0.linear_modeling.py",
-            ).items()
+            for k, v in _glob(LINEAR_MODELING_RESULTS, "*.parquet").items()
             if "feature_name_mapping" not in k
         },
         "variate_importance": _glob(
-            VARIATE_IMPORTANCE_RESULTS,
-            "variate_hit_*_all_scopes.parquet",
-            "4.linear_modeling/scripts/5.calculate_variate_importance.py",
+            VARIATE_IMPORTANCE_RESULTS, "variate_hit_*_all_scopes.parquet"
         ),
     }
 

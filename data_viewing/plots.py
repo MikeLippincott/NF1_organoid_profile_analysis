@@ -1,7 +1,6 @@
 """Generic interactive plot explorer: subset, color and facet by any column."""
 
 import math
-import pathlib
 
 import numpy as np
 import pandas as pd
@@ -139,13 +138,8 @@ def png_download(fig: go.Figure, key: str, filename: str) -> None:
     )
 
 
-def missing_notice(dataset_label: str, produced_by: str, path) -> None:
-    # only the file or folder name: the full path would expose the machine's layout
-    name = pathlib.PurePath(str(path)).name
-    st.info(
-        f"No results for **{dataset_label}** yet. Run `{produced_by}` to generate "
-        f"`{name}`."
-    )
+def missing_notice(dataset_label: str) -> None:
+    st.info(f"No results for **{dataset_label}** yet.")
 
 
 # ---------------------------------------------------------------------------
