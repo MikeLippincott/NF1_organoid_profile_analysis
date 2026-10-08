@@ -1,4 +1,4 @@
-"""Dataset registry, loading and metadata harmonization for the data_viewing app.
+"""Dataset registry, loading and metadata harmonization for the interactive_dashboard app.
 
 Every results table the app can show is registered here with its path. Metadata
 columns are renamed to canonical names (e.g. ``Metadata_Experiment_Treatment``
@@ -115,7 +115,7 @@ CANONICAL_COLUMNS = {
     "Dose": "dose",
 }
 
-# NF0037_T1_CQ1 is a separate analysis (see data_viewing/background.py's
+# NF0037_T1_CQ1 is a separate analysis (see interactive_dashboard/background.py's
 # PROFILE_GLOSSARY) and must never show up alongside the pooled patients, in
 # any module -- dropped here so every table is covered, not just the ones an
 # upstream script already excludes it from.

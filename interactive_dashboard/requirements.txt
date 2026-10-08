@@ -1,4 +1,4 @@
-# Minimal, pinned runtime deps for the data_viewing Streamlit app -- deliberately
+# Minimal, pinned runtime deps for the interactive_dashboard Streamlit app -- deliberately
 # separate from the repo's root pyproject.toml, which pulls in CUDA torch wheels,
 # notebook tooling, and other pipeline-only packages the viewer never imports.
 streamlit==1.64.0

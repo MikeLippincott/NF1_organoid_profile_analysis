@@ -1,7 +1,7 @@
 """NF1 organoid profile viewer.
 
 Run from anywhere inside the repo with:
-    streamlit run data_viewing/app.py
+    streamlit run interactive_dashboard/app.py
 """
 
 import plotly.io as pio

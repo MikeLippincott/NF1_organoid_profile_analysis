@@ -14,7 +14,7 @@ Interactive dashboard for exploring the NF1 organoid profiling analysis: drug/pl
 
 ## Running the app
 
-Run everything from this `data_viewing/` directory with [`just`](https://github.com/casey/just):
+Run everything from this `interactive_dashboard/` directory with [`just`](https://github.com/casey/just):
 
 ```bash
 just --list                # list the recipes
