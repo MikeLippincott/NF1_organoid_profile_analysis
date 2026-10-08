@@ -10,7 +10,7 @@ pinned: false
 
 # NF1 organoid profile data viewer
 
-Interactive Streamlit app for exploring the NF1 organoid profiling analysis: drug/plate layout, EDA (UMAP, PCA, correlation, cell counts, area & volume, neighbors, intensity), linear-modeling results (volcano, effect sizes, model fit, UpSet, variate significance), and differential analysis against DMSO (morphology and viability, viability by tumor type, plate-position checks, MEK signatures).
+Interactive dashboard for exploring the NF1 organoid profiling analysis: drug/plate layout, EDA (UMAP, PCA, correlation, cell counts, area & volume, neighbors, intensity), linear-modeling results (volcano, effect sizes, model fit, UpSet, variate significance), and differential analysis against DMSO (morphology and viability, viability by tumor type, plate-position checks, MEK signatures).
 
 ## Running the app
 
