@@ -664,11 +664,21 @@ def consensus_heatmaps_section(filters: Filters) -> None:
         if corr_dir.exists()
         else []
     )
-    if not pair_files:
+    # only offer files that actually have a consensus profile_type -- otherwise
+    # _pairs_heatmap's preset silently falls back to that file's first
+    # profile_type instead, rendering the wrong data under this heading
+    consensus_files = [
+        p
+        for p in pair_files
+        if "profile_type" in parquet_columns(str(p))
+        and "consensus"
+        in pd.read_parquet(p, columns=["profile_type"])["profile_type"].unique()
+    ]
+    if not consensus_files:
         missing_notice("consensus heatmaps")
         return
     subpanel_background("corr_pairs")
-    _pairs_heatmap(pair_files, filters, preset={"profile_type": "consensus"})
+    _pairs_heatmap(consensus_files, filters, preset={"profile_type": "consensus"})
 
 
 def correlation_viability_section(filters: Filters) -> None:
@@ -1830,13 +1840,13 @@ def _plate_position(comp: str, filters: Filters) -> None:
 
     st.markdown("**DMSO column check**")
     st.dataframe(
-        tests.loc[tests["compartment"] == comp].rename(
+        apply_global_filters(tests.loc[tests["compartment"] == comp], filters).rename(
             columns={"within_minus_between": "within minus between"}
         ),
         hide_index=True,
         width="stretch",
     )
-    dmso = pairs.loc[pairs["compartment"] == comp]
+    dmso = apply_global_filters(pairs.loc[pairs["compartment"] == comp], filters)
     fig = px.box(
         dmso,
         x="patient_tumor",
@@ -2111,6 +2121,9 @@ def _mek(comp: str, filters: Filters) -> None:
             default=d["level"].map(POOLED_GROUP_LABELS),
         ),
     )
+    if lv.empty:
+        st.info("No MEK signature tests for this compartment.")
+        return
     lv["tumor_type"] = lv["tumor_type"].astype(str)
     type_rank = {t: i for i, t in enumerate(TUMOR_TYPES)}
     level_rank = {k: i for i, k in enumerate(LEVEL_LABELS)}

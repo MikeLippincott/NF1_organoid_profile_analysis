@@ -92,6 +92,8 @@ def stage_from_main_repo(source_root: Path, data_dir: Path) -> None:
                 continue
             pattern = kind.removeprefix("glob:")
             dest.mkdir(parents=True, exist_ok=True)
+            for stale in dest.glob(pattern):
+                stale.unlink()
             matches = sorted(src.glob(pattern))
             for match in matches:
                 shutil.copy2(match, dest / match.name)
