@@ -175,14 +175,28 @@ def _exclude_patients(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _tidy_dose(df: pd.DataFrame) -> pd.DataFrame:
-    """Whole-number float doses (``1.0``) become ``Int64`` (``1``).
+    """Whole-number doses become ``Int64`` (``1`` instead of ``1.0``).
 
     The sidebar dose filter compares values as strings, and the other tables
-    store doses as int64, so a float column would silently match nothing.
+    store doses as int64, so a float (or object-dtype, e.g. from a parquet
+    column with mixed int/float/NaN) column would otherwise silently match
+    nothing, or display as "1.0" instead of "1".
     """
-    if "dose" in df.columns and pd.api.types.is_float_dtype(df["dose"]):
-        if (df["dose"].dropna() % 1 == 0).all():
-            df["dose"] = df["dose"].astype("Int64")
+    if "dose" not in df.columns:
+        return df
+    dose = df["dose"]
+    if dose.dtype == object:
+        numeric = pd.to_numeric(dose, errors="coerce")
+        if numeric.notna().sum() == dose.notna().sum():
+            # every non-null value parsed as a number: safe to use it as such
+            dose = numeric
+        else:
+            # genuinely mixed (e.g. a real text annotation) -- mixed-type
+            # object columns break filtering/plotting, so fall back to text
+            dose = dose.astype(str)
+    if pd.api.types.is_float_dtype(dose) and (dose.dropna() % 1 == 0).all():
+        dose = dose.astype("Int64")
+    df["dose"] = dose
     return df
 
 
@@ -197,10 +211,10 @@ def _shrink(df: pd.DataFrame) -> pd.DataFrame:
 def _harmonize(df: pd.DataFrame) -> pd.DataFrame:
     mapping = canonicalize_columns(list(df.columns))
     df = df.rename(columns=mapping)
-    # mixed-type object columns (e.g. dose) break filtering/plotting
-    for col in ("dose", "well"):
-        if col in df.columns and df[col].dtype == object:
-            df[col] = df[col].astype(str)
+    # mixed-type object columns break filtering/plotting; dose gets its own
+    # numeric-aware handling in _tidy_dose (below) so "1.0" collapses to "1"
+    if "well" in df.columns and df["well"].dtype == object:
+        df["well"] = df["well"].astype(str)
     return _shrink(_exclude_patients(_tidy_dose(_add_derived(df))))
 
 
