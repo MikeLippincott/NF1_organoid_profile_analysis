@@ -15,6 +15,7 @@ from data_io import (
 )
 from memory_trace import sidebar_memory, trace_memory
 from sections import (  # noqa: F401 -- VIABILITY_SECTIONS kept for the commented-out tab below
+    DIFFERENTIAL_QC_SECTIONS,
     DIFFERENTIAL_SECTIONS,
     EDA_SECTIONS,
     LINEAR_MODELING_SECTIONS,
@@ -39,15 +40,16 @@ if BUCKET_SYNC_ERROR:
 # ---------------------------------------------------------------------------
 BIOLOGICAL_MODULES = {
     "Overview": OVERVIEW_SECTIONS,
+    "EDA": EDA_SECTIONS,
+    "Linear modeling": LINEAR_MODELING_SECTIONS,
     "Treatment vs DMSO": DIFFERENTIAL_SECTIONS,
 }
 TECHNICAL_MODULES = {
-    "EDA": EDA_SECTIONS,
     # "Viability prediction" is hidden for now (its results need another
     # pass); the module import and its sections.py code are kept intact -- restore
     # this tab by uncommenting the line below.
     # "Viability prediction": VIABILITY_SECTIONS,
-    "Linear modeling": LINEAR_MODELING_SECTIONS,
+    "QC checks": DIFFERENTIAL_QC_SECTIONS,
 }
 
 

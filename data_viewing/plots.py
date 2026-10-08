@@ -113,6 +113,24 @@ def _global_columns_in(df: pd.DataFrame) -> list[str]:
 # ---------------------------------------------------------------------------
 # Export
 # ---------------------------------------------------------------------------
+_CHROME_INSTALL_ATTEMPTED = False
+
+
+def _install_chrome_for_kaleido() -> None:
+    """Download Kaleido's headless Chrome once per process (idempotent: a no-op
+    if it's already present). Hosts like Streamlit Community Cloud never run
+    the repo's ``run_app.sh``/``plotly_get_chrome`` setup step, so the first PNG
+    export there would otherwise fail with no way to open a terminal and fix it.
+    """
+    global _CHROME_INSTALL_ATTEMPTED
+    if _CHROME_INSTALL_ATTEMPTED:
+        return
+    _CHROME_INSTALL_ATTEMPTED = True
+    import kaleido
+
+    kaleido.get_chrome_sync()
+
+
 def png_download(fig: go.Figure, key: str, filename: str) -> None:
     """Render a 600 dpi PNG on demand (only PNG is offered, per project convention)."""
     if not st.button("Prepare PNG (600 dpi)", key=f"{key}_png_prep"):
@@ -124,11 +142,19 @@ def png_download(fig: go.Figure, key: str, filename: str) -> None:
             png = fig.to_image(
                 format="png", width=width, height=height, scale=PNG_DPI / CSS_DPI
             )
-    except Exception as err:  # kaleido needs a Chrome install
-        st.error(
-            f"PNG export failed: {err}. Run `plotly_get_chrome` once to install Chrome."
-        )
-        return
+    except Exception as first_err:  # most likely: kaleido has no Chrome yet
+        try:
+            with st.spinner("First PNG export: installing Chrome for Kaleido..."):
+                _install_chrome_for_kaleido()
+                png = fig.to_image(
+                    format="png", width=width, height=height, scale=PNG_DPI / CSS_DPI
+                )
+        except Exception as retry_err:
+            st.error(
+                f"PNG export failed: {first_err}\n\nTried installing Chrome for "
+                f"Kaleido automatically, but that also failed: {retry_err}"
+            )
+            return
     st.download_button(
         "Download PNG",
         png,
@@ -154,6 +180,7 @@ def explorer(
     title: str = "",
     height: int = 650,
     free_facet_axes: bool = False,
+    lock_xy: bool = False,
 ) -> go.Figure | None:
     """Interactive plot with plot-type, axis, color, facet and subset controls.
 
@@ -168,6 +195,11 @@ def explorer(
     free_facet_axes : give each facet panel its own x/y range instead of a
         shared one (e.g. per-patient UMAPs, whose coordinates are independent
         fits and aren't comparable across panels).
+    lock_xy : hide the X/Y pickers and use ``defaults["x"]``/``["y"]`` as-is.
+        For a fixed embedding (UMAP) or one with its own dedicated component
+        picker (PCA), letting X/Y range over every raw column -- including
+        per-cell QC flags and pixel coordinates that leak through from the
+        upstream profiles -- is more confusing than useful.
     """
     kinds = kinds or PLOT_KINDS
     defaults = defaults or {}
@@ -187,19 +219,26 @@ def explorer(
         idx = opts.index(default) if default in opts else 0
         return col.selectbox(label, opts, index=idx, key=f"{key}_{label}")
 
-    c1, c2, c3 = st.columns(3)
-    kind = pick(
-        "Plot type", kinds, defaults.get("kind", kinds[0]), c1, allow_none=False
-    )
-    x = pick(
-        "X",
-        all_cols,
-        defaults.get("x"),
-        c2,
-        allow_none=kind in ("histogram", "box", "violin", "bar"),
-    )
-    y_options = numeric if kind in ("box", "violin", "bar") else all_cols
-    y = pick("Y", y_options, defaults.get("y"), c3, allow_none=kind == "histogram")
+    if lock_xy:
+        c1 = st.columns(3)[0]
+        kind = pick(
+            "Plot type", kinds, defaults.get("kind", kinds[0]), c1, allow_none=False
+        )
+        x, y = defaults.get("x"), defaults.get("y")
+    else:
+        c1, c2, c3 = st.columns(3)
+        kind = pick(
+            "Plot type", kinds, defaults.get("kind", kinds[0]), c1, allow_none=False
+        )
+        x = pick(
+            "X",
+            all_cols,
+            defaults.get("x"),
+            c2,
+            allow_none=kind in ("histogram", "box", "violin", "bar"),
+        )
+        y_options = numeric if kind in ("box", "violin", "bar") else all_cols
+        y = pick("Y", y_options, defaults.get("y"), c3, allow_none=kind == "histogram")
 
     c4, c5, c6, c7 = st.columns(4)
     color = pick("Color", all_cols, defaults.get("color"), c4)

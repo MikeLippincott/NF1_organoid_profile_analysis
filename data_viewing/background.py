@@ -64,13 +64,18 @@ MODULE_BACKGROUND = {
         "deviations of the feature; for `treatment` it is the difference from DMSO."
     ),
     "Treatment vs DMSO": (
-        "We compare treatment vs DMSO control per patient. We also check "
-        "that where the well sits on the plate doesn't drive the comparisons. "
-        "We measure morphology differences as the **mean absolute difference from DMSO**  "
-        "across features (using the normalized scale). We compute viability as "
+        "We compare treatment vs DMSO control per patient. We measure morphology "
+        "differences as the **mean absolute difference from DMSO** across features "
+        "(using the normalized scale). We compute viability as "
         "`log2(treatment % / DMSO %)`per patient. MEK signatures pool the "
         "four MEK inhibitors (Binimetinib, Mirdametinib, Selumetinib, Trametinib) "
         "at 1 and 10 µM.\n" + PROFILE_GLOSSARY
+    ),
+    "QC checks": (
+        "Do the Treatment vs DMSO comparisons hold up against the plate itself, "
+        "rather than the biology? We check that where a well sits on the plate "
+        "doesn't drive the morphology comparisons, and that each well's profile "
+        "still looks like DMSO when it should."
     ),
 }
 
@@ -83,11 +88,13 @@ SECTION_BACKGROUND = {
     ),
     "Drugs": (
         "Every drug (excluding the DMSO control), with its dose(s) and "
-        "mechanism of action (how it works in the cell)."
+        "mechanism of action (how it works in the cell). The chart shows each "
+        "drug's FDA approval status, colored by mechanism of action."
     ),
     "Patients & tumor manifestations": (
         "Every patient tumor sample screened, which platemap it ran on, and "
-        "its tumor manifestation (cNF, pNF, MPNST or Other)."
+        "its tumor manifestation (cNF, pNF, MPNST or Other). The chart shows "
+        "how many patients fall into each manifestation."
     ),
     # ---- 1.EDA ----
     "UMAP": (
@@ -151,12 +158,15 @@ SECTION_BACKGROUND = {
         "Pick another profile type or normalization in the controls to compare."
     ),
     "Correlation vs viability": (
-        "Each point is a **pair** of samples, showing how similar their shape and "
-        "appearance measurements are (**correlation**) and their difference in "
-        "viability. `quadrant` is `middle` unless "
-        "a pair is past both cutoffs: `right`/`left` for correlation above/below its "
-        "cutoffs, and `top`/`bottom` for viability difference above/below its cutoffs. "
-        "Most pairs are `middle`, so the labelled quadrants are rare."
+        "Each point is a **pair** of samples. **x**: how similar their shape and "
+        "appearance measurements are (correlation). **y**: how much their "
+        "viability differs (a magnitude, not signed -- high means the pair's "
+        "viabilities are very different, not that either one is high or low). "
+        "Most pairs are an unremarkable **Typical pair**. The labelled corners are "
+        "rare pairs past both cutoffs: blue means morphology and viability agree "
+        "(similar/similar or different/different, as expected if morphology "
+        "tracks viability); red means they disagree (similar morphology but "
+        "different viability, or the reverse) -- the surprising cases."
     ),
     # ---- 3.viability_prediction_models ----
     "Model performance": (

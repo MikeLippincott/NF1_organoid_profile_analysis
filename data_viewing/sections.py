@@ -20,6 +20,9 @@ from data_io import (
 )
 from palettes import (
     BIOLOGICAL_TERMS,
+    FDA_STATUS_MAP,
+    FDA_STATUS_ORDER,
+    QUADRANT_LABELS,
     TECHNICAL_TERMS,
     TERM_ORDER,
     TREATMENT_CLASS_DEFAULT,
@@ -28,6 +31,7 @@ from palettes import (
     TUMOR_TYPE_LOOKUP,
     TUMOR_TYPE_PALETTE,
     humanize_label,
+    order_for,
     palette_for,
 )
 from plotly.subplots import make_subplots
@@ -134,6 +138,40 @@ def drugs_section(filters: Filters) -> None:
         drugs[["treatment", "class", "moa", "dose", "unit"]], "overview_drugs"
     )
     st.caption(f"{drugs['treatment'].nunique()} drugs across {len(plates)} platemap(s)")
+
+    approval = (
+        drugs.drop_duplicates("treatment")
+        .assign(fda_status=lambda d: d["treatment"].map(FDA_STATUS_MAP))
+        .dropna(subset=["fda_status"])
+    )
+    if not approval.empty:
+        moa_levels = approval["moa"].tolist()
+        fig = px.scatter(
+            approval,
+            x="fda_status",
+            y="treatment",
+            color="moa",
+            category_orders={
+                "fda_status": [
+                    s for s in FDA_STATUS_ORDER if s in set(approval["fda_status"])
+                ],
+                "moa": order_for("moa", moa_levels) or sorted(set(moa_levels)),
+            },
+            color_discrete_map=palette_for("moa", moa_levels) or {},
+            labels={
+                "fda_status": "FDA approval status",
+                "treatment": "Drug",
+                "moa": "Mechanism of action",
+            },
+            title="FDA approval status of drugs used in organoid treatments",
+        )
+        fig.update_traces(marker=dict(size=14, line=dict(color="black", width=1)))
+        fig.update_layout(
+            template="plotly_white",
+            height=max(360, 28 * approval["treatment"].nunique() + 160),
+        )
+        st.plotly_chart(fig, width="stretch", key="overview_drugs_fda_chart")
+
     st.dataframe(drugs, width="stretch", hide_index=True)
 
 
@@ -143,6 +181,30 @@ def patients_section(filters: Filters) -> None:
         missing_notice("patients")
         return
     st.caption(f"{len(barcodes)} patient tumor samples")
+
+    counts = (
+        barcodes["tumor_type"]
+        .value_counts()
+        .reindex(TUMOR_TYPES, fill_value=0)
+        .rename_axis("tumor_type")
+        .reset_index(name="n_patients")
+    )
+    fig = px.bar(
+        counts,
+        x="tumor_type",
+        y="n_patients",
+        color="tumor_type",
+        category_orders={"tumor_type": TUMOR_TYPES},
+        color_discrete_map=TUMOR_TYPE_PALETTE,
+        labels={
+            "tumor_type": "Tumor manifestation",
+            "n_patients": "Patient tumor samples",
+        },
+        title="Patient tumor samples by tumor manifestation",
+    )
+    fig.update_layout(template="plotly_white", height=380, showlegend=False)
+    st.plotly_chart(fig, width="stretch", key="overview_patients_chart")
+
     st.dataframe(
         barcodes.rename(
             columns={"platemap_number": "platemap", "tumor_type": "tumor manifestation"}
@@ -240,6 +302,7 @@ def umap_section(filters: Filters) -> None:
         defaults=defaults,
         title=label,
         free_facet_axes=facet_by_patient,
+        lock_xy=True,
     )
 
 
@@ -291,6 +354,7 @@ def pca_section(filters: Filters) -> None:
             "color": _first(df, "treatment", "patient_tumor"),
         },
         title=label,
+        lock_xy=True,
     )
     if variance is not None:
         explained = variance.rename(lambda n: n.replace("_explained_variance", ""))
@@ -530,14 +594,13 @@ def cell_counts_section(filters: Filters) -> None:
 
 def neighbors_section(filters: Filters) -> None:
     def defaults(label, df):
-        measure = next(
-            (
-                c
-                for c in df.columns
-                if c.startswith(("Organoid_", "Nuclei_"))
-                and pd.api.types.is_numeric_dtype(df[c])
-            ),
-            None,
+        numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+        # prefer an actual neighbor metric (e.g. nuclei_neighbors_3D's own
+        # measures are named "Neighbors_...", not "Nuclei_..."/"Organoid_...",
+        # so without this the generic prefix check below would default to that
+        # file's one non-neighbor column, Volume, instead)
+        measure = next((c for c in numeric if "neighbor" in c.lower()), None) or next(
+            (c for c in numeric if c.startswith(("Organoid_", "Nuclei_"))), None
         )
         return {
             "kind": "box",
@@ -609,6 +672,11 @@ def consensus_heatmaps_section(filters: Filters) -> None:
 
 
 def correlation_viability_section(filters: Filters) -> None:
+    def prepare(df, label):
+        return df.assign(
+            quadrant=df["quadrant"].map(QUADRANT_LABELS).fillna(df["quadrant"])
+        )
+
     def defaults(label, df):
         return {
             "kind": "scatter",
@@ -622,6 +690,8 @@ def correlation_viability_section(filters: Filters) -> None:
         "correlation vs viability",
         filters,
         defaults,
+        kinds=["scatter", "histogram", "heatmap"],
+        prepare=prepare,
     )
 
 
@@ -2218,6 +2288,8 @@ def _mek(comp: str, filters: Filters) -> None:
 
 
 def _compartment_section(comp: str, filters: Filters) -> None:
+    """Biological findings: morphology and MEK-signature effects of treatment
+    (the plate/batch QC checks for this compartment live under QC checks)."""
     summary = _differential("log2fc_summary")
     if summary is None:
         return
@@ -2225,18 +2297,28 @@ def _compartment_section(comp: str, filters: Filters) -> None:
     _morphology_heatmap(summary, comp, filters)
     st.markdown("#### Morphology vs viability")
     _morphology_vs_viability(summary, comp, filters)
-    st.markdown("#### Plate position")
-    _plate_position(comp, filters)
-    st.markdown("#### Well correlation to DMSO")
-    _well_correlation(comp, filters)
     st.markdown("#### MEK feature tests")
     _mek_feature_tests(comp, filters)
     st.markdown("#### MEK signatures")
     _mek(comp, filters)
 
 
+def _compartment_qc_section(comp: str, filters: Filters) -> None:
+    """Plate/batch QC checks for this compartment: do results hold up against
+    plate position and column effects, and does a well still look like DMSO?"""
+    st.markdown("#### Plate position")
+    _plate_position(comp, filters)
+    st.markdown("#### Well correlation to DMSO")
+    _well_correlation(comp, filters)
+
+
 DIFFERENTIAL_SECTIONS = {
     "Viability heatmap": viability_heatmap_section,
     "Organoid": lambda filters: _compartment_section("organoid", filters),
     "Single cell": lambda filters: _compartment_section("single_cell", filters),
+}
+
+DIFFERENTIAL_QC_SECTIONS = {
+    "Organoid": lambda filters: _compartment_qc_section("organoid", filters),
+    "Single cell": lambda filters: _compartment_qc_section("single_cell", filters),
 }

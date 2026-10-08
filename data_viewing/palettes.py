@@ -58,6 +58,43 @@ TREATMENT_CLASS_MAP = {
 }
 TREATMENT_CLASS_DEFAULT = "Small Molecule"
 
+# ported from figures/drugs_figure/scripts/drugs_figure.py's hand-curated
+# drugs_dict; DMSO (the control) has no FDA status since it isn't a drug
+FDA_STATUS_MAP = {
+    "ARV-825": "Investigational",
+    "Binimetinib": "Approved",
+    "Cabozantinib": "Approved",
+    "Copanlisib": "Withdrawn",
+    "Digoxin": "Approved",
+    "Everolimus": "Approved",
+    "Fimepinostat": "Phase 1/2",
+    "Imatinib": "Approved",
+    "Ketotifen": "Approved",
+    "Linsitinib": "Phase 3",
+    "Mirdametinib": "NF1 Approved",
+    "Nilotinib": "Approved",
+    "Onalespib": "Approved",
+    "Panobinostat": "Approved",
+    "Rapamycin": "Approved",
+    "Sapanisertib": "Phase 2",
+    "Selumetinib": "NF1 Approved",
+    "Staurosporine": "Withdrawn",
+    "Trabectedin": "Approved",
+    "Trametinib": "Approved",
+    "Vistusertib": "Withdrawn",
+}
+# clinical-progress order, low to high (Withdrawn and Investigational are both
+# not in active/approved use, so they sit together at the low end)
+FDA_STATUS_ORDER = [
+    "Withdrawn",
+    "Investigational",
+    "Phase 1/2",
+    "Phase 2",
+    "Phase 3",
+    "Approved",
+    "NF1 Approved",
+]
+
 MOA_ORDER = [
     "Control",
     "BRD4 inhibitor",
@@ -238,6 +275,34 @@ NORMALIZATION_VARIANT_LABELS = {
     "sammed_nucleocentric_norm": "Nucleocentric (SAM-med)",
 }
 
+# correlation-vs-viability quadrant codes -> what that corner of the plot means.
+# "viability_diff" is a magnitude (0-1), not a signed difference, so "top" means
+# the pair's viabilities differ a lot and "bottom" means they're alike -- not
+# "high"/"low" viability. The diagonal (similar+similar / different+different)
+# is the "expected" pattern where morphology tracks viability; the off-diagonal
+# is the surprising one, where they decouple.
+QUADRANT_LABELS = {
+    "middle": "Typical pair",
+    "bottom_right": "Similar morphology, similar viability",
+    "top_left": "Different morphology, different viability",
+    "bottom_left": "Different morphology, similar viability",
+    "top_right": "Similar morphology, different viability",
+}
+QUADRANT_ORDER = [
+    "Typical pair",
+    "Similar morphology, similar viability",
+    "Different morphology, different viability",
+    "Different morphology, similar viability",
+    "Similar morphology, different viability",
+]
+QUADRANT_PALETTE = {
+    "Typical pair": "#999999",
+    "Similar morphology, similar viability": "#2166ac",
+    "Different morphology, different viability": "#2166ac",
+    "Different morphology, similar viability": "#d73027",
+    "Similar morphology, different viability": "#d73027",
+}
+
 _PALETTES = {
     "treatment": TREATMENT_PALETTE,
     "moa": MOA_PALETTE,
@@ -246,12 +311,14 @@ _PALETTES = {
     "compartment": COMPARTMENT_PALETTE,
     "feature_type": FEATURE_TYPE_PALETTE,
     "tumor_type": TUMOR_TYPE_PALETTE,
+    "quadrant": QUADRANT_PALETTE,
 }
 # columns whose legend/facet/axis levels are sorted alphabetically (case-insensitive)
 _ALPHABETICAL = {"treatment", "patient_tumor", "held_out_group", "patient"}
 _ORDERS = {
     "moa": MOA_ORDER,
     "tumor_type": TUMOR_TYPE_ORDER,
+    "quadrant": QUADRANT_ORDER,
 }
 # levels that have no defined color (e.g. doses other than 1/10) get these
 _FALLBACK = TAB20_PALETTE
