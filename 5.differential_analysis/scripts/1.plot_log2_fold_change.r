@@ -109,7 +109,7 @@ morphology_heatmap <- (
     + labs(
         x = NULL,
         y = "Patient",
-        fill = "Single-cell\nmorphology\nmean |log2FC|\nvs DMSO"
+        fill = "Single-cell\nmorphology\nmean |normalized\ndifference|\nvs DMSO"
     )
     + theme_manuscript(base_size = 14, x_text = "angled")
     + theme(panel.grid = element_blank(), strip.text.y = element_text(angle = 0))
@@ -119,8 +119,8 @@ morphology_heatmap
 invisible(save_plots_pdf(
     list(morphology_heatmap),
     file.path(root_dir, "5.differential_analysis", "figures", "morphology_heatmap.pdf"),
-    width = 8,
-    height = 4
+    width = 14,
+    height = 5
 ))
 
 scatter_df <- morphology_df %>% filter(!is.na(viability_log2fc))
@@ -139,7 +139,7 @@ scatter_plots <- lapply(levels(scatter_df$compartment), function(compartment_nam
         + labs(
             title = paste0(compartment_name, "\none point per patient x treatment"),
             x = "Viability log2FC vs DMSO",
-            y = "Morphology mean |log2FC| vs DMSO",
+            y = "Morphology mean |normalized difference| vs DMSO",
             color = "Tumor type",
             shape = "Treatment"
         )
@@ -219,7 +219,7 @@ treatment_mean_plots <- lapply(levels(treatment_mean_df$compartment), function(c
         + labs(
             title = paste0(compartment_name, "\none point per treatment x tumor type, mean over patients"),
             x = "Mean viability log2FC vs DMSO",
-            y = "Mean morphology mean |log2FC| vs DMSO",
+            y = "Mean morphology mean |normalized difference| vs DMSO",
             color = "Tumor type",
             shape = "Treatment"
         )
