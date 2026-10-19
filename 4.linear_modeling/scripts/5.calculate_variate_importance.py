@@ -26,7 +26,7 @@ results_path.mkdir(parents=True, exist_ok=True)
 pd.set_option("display.max_columns", 50)
 
 
-# In[ ]:
+# In[2]:
 
 
 df = pd.read_parquet(
@@ -85,7 +85,7 @@ feature_term_hit_counts
 #
 # The tables are saved to `variate_hit_venn_regions_all_scopes.parquet`, `variate_hit_upset_counts_all_scopes.parquet` and `variate_hit_set_sizes_all_scopes.parquet`, and plotted in `6.plot_variate_importance` (R / ggplot2).
 
-# In[ ]:
+# In[4]:
 
 
 technical_path = pathlib.Path(
@@ -182,7 +182,7 @@ def set_sizes(membership, terms):
     )
 
 
-# In[ ]:
+# In[5]:
 
 
 # every scope: the columns that define one Venn + UpSet pair. tumor_type = TUMOR_TYPE_DICT lookup by patient id

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[29]:
 
 
 import pathlib
@@ -26,7 +26,7 @@ else:
     from tqdm import tqdm
 
 
-# In[2]:
+# In[30]:
 
 
 profile_dict = {
@@ -127,7 +127,7 @@ profile_dict = {
 # Positional (`CMI`) columns are dropped, the `NF0037_T1_CQ1` patient is excluded, and the dose and unit are appended to the treatment (for example `Trametinib_1uM`) so each dose is its own model. Models are fit in parallel (`joblib`), and a profile whose output file already exists is skipped.
 #
 
-# In[4]:
+# In[31]:
 
 
 def fit_combo(
@@ -211,7 +211,7 @@ def fit_combo(
     return rows
 
 
-# In[5]:
+# In[ ]:
 
 
 for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
@@ -224,10 +224,7 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
         continue  # skip if the output already exists
 
     df = pd.read_parquet(profile_dict[profile]["input_profile_path"])
-    # if the column contains CMI then drop the column since
-    # it is a postitional marker and not a feature
-    cmi_columns = [col for col in df.columns if "CMI" in col]
-    df = df.drop(columns=cmi_columns)
+
     df = df.rename(
         columns={
             "Metadata_Biology_PatientTumor": "patient",

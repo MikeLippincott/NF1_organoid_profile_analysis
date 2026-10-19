@@ -142,7 +142,34 @@ lm_equation_terms = (
 )
 
 
+# In[6]:
+
+
+linear_modeling_results_df["feature"]
+
+
+# In[9]:
+
+
+[x for x in df.columns if "Metadata" in x]
+
+
+# In[10]:
+
+
+df["Metadata_Location_Organoid_CenterX"]
+
+
+# In[5]:
+
+
+linear_modeling_results_df["feature"].str.split("_", n=3, expand=True)
+
+
 # In[ ]:
+
+
+# In[4]:
 
 
 # number of processes for the joblib fan-out (-1 = all cores) and how many
@@ -293,10 +320,11 @@ for profile in tqdm(profile_dict.keys(), desc="Loading profiles"):
         continue  # skip if the output already exists
 
     df = pd.read_parquet(profile_dict[profile]["input_profile_path"])
-    # if the column contains CMI then drop the column since
-    # it is a positional marker and not a feature
-    cmi_columns = [col for col in df.columns if "CMI" in col]
-    df = df.drop(columns=cmi_columns)
+
+    print(df.shape)
+    df = df.dropna(subset=["Metadata_Experiment_Treatment"], how="any")
+    print(df.shape)
+
     df = pd.merge(
         left=df,
         right=manhattan_distance_df,
