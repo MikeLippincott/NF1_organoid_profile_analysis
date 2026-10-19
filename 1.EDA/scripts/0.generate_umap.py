@@ -11,7 +11,7 @@
 #
 # The notebook saves results (`UMAP1` coordinate, `UMAP2` coordinate, plus the original metadata columns) as parquet files under `1.EDA/results/umap/`.
 
-# In[ ]:
+# In[1]:
 
 
 import pathlib
@@ -24,7 +24,7 @@ from pycytominer.cyto_utils import infer_cp_features
 root_dir, in_notebook = init_notebook()
 
 
-# In[2]:
+# In[4]:
 
 
 # Data Paths
@@ -67,31 +67,43 @@ pooled_profile_paths = {
             ).resolve(),
         },
     },
-    "3D": {
-        "sc_fs": {
-            "input": pathlib.Path(
-                f"{root_dir}/data/profiles_3D/all_patients/1.feature_selected_profiles/sc_norm_fs_profiles.parquet"
-            ).resolve(strict=True),
-            "output": pathlib.Path(
-                f"{root_dir}/1.EDA/results/umap/3D_scfs_umap.parquet"
-            ).resolve(),
-        },
-        "sc_consensus": {
-            "input": pathlib.Path(
-                f"{root_dir}/data/profiles_3D/all_patients/3.consensus_profiles/sc_norm_sc_consensus_profiles.parquet"
-            ).resolve(strict=True),
-            "output": pathlib.Path(
-                f"{root_dir}/1.EDA/results/umap/3D_scconsensus_umap.parquet"
-            ).resolve(),
-        },
-    },
+    # "3D": {
+    #     "sc_fs": {
+    #         "input": pathlib.Path(
+    #             f"{root_dir}/data/profiles_3D/all_patients/1.feature_selected_profiles/sc_norm_fs_profiles.parquet"
+    #         ).resolve(strict=True),
+    #         "output": pathlib.Path(
+    #             f"{root_dir}/1.EDA/results/umap/3D_scfs_umap.parquet"
+    #         ).resolve(),
+    #     },
+    #     "sc_consensus": {
+    #         "input": pathlib.Path(
+    #             f"{root_dir}/data/profiles_3D/all_patients/3.consensus_profiles/sc_norm_sc_consensus_profiles.parquet"
+    #         ).resolve(strict=True),
+    #         "output": pathlib.Path(
+    #             f"{root_dir}/1.EDA/results/umap/3D_scconsensus_umap.parquet"
+    #         ).resolve(),
+    #     },
+    # },
 }
 
 # Create output directory
 pathlib.Path(f"{root_dir}/1.EDA/results/umap").mkdir(parents=True, exist_ok=True)
 
 
+# In[7]:
+
+
+pd.read_parquet(pooled_profile_paths["2D_max_projection"]["sc_consensus"]["input"])
+pd.read_parquet(pooled_profile_paths["2D_max_projection"]["sc_fs"]["input"])[
+    "Metadata_patient"
+]
+
+
 # In[ ]:
+
+
+# In[3]:
 
 
 for projection_key in pooled_profile_paths:

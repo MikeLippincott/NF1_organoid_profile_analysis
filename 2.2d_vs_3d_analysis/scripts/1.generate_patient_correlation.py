@@ -15,7 +15,7 @@ from scipy.stats import pearsonr
 root_dir, in_notebook = init_notebook()
 
 
-# In[2]:
+# In[ ]:
 
 
 # Define input paths

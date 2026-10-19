@@ -121,7 +121,10 @@ for dimension in paths_dict.keys():
             df[["Metadata_Experiment_ViabilityPercentage"]]
         )
         features_columns = [
-            col for col in df.columns if not col.startswith("Metadata_")
+            col
+            for col in df.columns
+            if not col.startswith("Metadata_")
+            and pd.api.types.is_numeric_dtype(df[col])
         ]
         consensus_df = aggregate(
             population_df=df,

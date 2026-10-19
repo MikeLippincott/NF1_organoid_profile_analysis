@@ -9,6 +9,7 @@
 # In[1]:
 
 
+import pathlib
 import warnings
 
 import pandas as pd
@@ -26,9 +27,6 @@ root_dir, in_notebook = init_notebook()
 results_dir = root_dir / "1.EDA" / "results"
 cell_counts = pd.read_parquet(
     results_dir / "cell_counts" / "organoid_cell_counts.parquet"
-)
-platemaps = pd.read_parquet(
-    root_dir / "data" / "viabilities" / "combined_platemaps.parquet"
 )
 
 # Mean cells per organoid, per patient x treatment x dose (3D only; across all wells)
@@ -51,37 +49,43 @@ mean_counts = (
         }
     )
 )
-
-joined = mean_counts.merge(
-    platemaps,
-    left_on=["Metadata_patient_tumor", "Metadata_treatment", "Metadata_dose"],
-    right_on=["Metadata_Biology_PatientTumor", "Treatment", "Dose"],
-    how="inner",
-)
-joined.to_parquet(results_dir / "count_viability_joined.parquet", index=False)
-
-profile_patients = set(mean_counts["Metadata_patient_tumor"].unique())
-platemap_patients = set(platemaps["Metadata_Biology_PatientTumor"].unique())
-dropped_from_profiles = sorted(profile_patients - platemap_patients)
-dropped_from_platemaps = sorted(platemap_patients - profile_patients)
-
-dropped_patients = pd.DataFrame(
-    [
-        {"patient_id": p, "reason": "missing_from_platemap"}
-        for p in dropped_from_profiles
-    ]
-    + [
-        {"patient_id": p, "reason": "missing_from_profiles"}
-        for p in dropped_from_platemaps
+# get the viability data
+consensus_viability = pd.read_parquet(
+    pathlib.Path(
+        f"{root_dir}/data/profiles_3D/all_patients/1.feature_selected_profiles/sc_norm_fs_profiles.parquet"
+    ),
+    columns=[
+        "Metadata_Biology_PatientTumor",
+        "Metadata_Experiment_Treatment",
+        "Metadata_Experiment_Dose",
+        "Metadata_Experiment_ViabilityPercentage",
     ],
-    columns=["patient_id", "reason"],
 )
-dropped_patients.to_parquet(
-    results_dir / "count_viability_dropped_patients.parquet", index=False
+mean_counts = (
+    mean_counts.merge(
+        consensus_viability,
+        left_on=["Metadata_patient_tumor", "Metadata_treatment", "Metadata_dose"],
+        right_on=[
+            "Metadata_Biology_PatientTumor",
+            "Metadata_Experiment_Treatment",
+            "Metadata_Experiment_Dose",
+        ],
+        how="left",
+    )
+    .drop(
+        columns=[
+            "Metadata_Biology_PatientTumor",
+            "Metadata_Experiment_Treatment",
+            "Metadata_Experiment_Dose",
+        ]
+    )
+    .drop_duplicates()
 )
 
-print("Dropped from profiles (no viability/platemap coverage):", dropped_from_profiles)
-print("In platemaps but not in profiles:", dropped_from_platemaps)
+mean_counts.to_parquet(
+    results_dir / "cell_counts" / "count_viability_dropped_patients.parquet",
+    index=False,
+)
 
 
 # In[3]:
@@ -162,12 +166,14 @@ pivoted = pivoted.rename(
         "organoid": "total_organoid_count_norm",
     }
 )
-
-joined_norm = pivoted.merge(
-    platemaps,
+pivoted = pivoted.merge(
+    mean_counts,
     left_on=["Metadata_patient_tumor", "Metadata_treatment", "Metadata_dose"],
-    right_on=["Metadata_Biology_PatientTumor", "Treatment", "Dose"],
-    how="inner",
+    right_on=["Metadata_patient_tumor", "Metadata_treatment", "Metadata_dose"],
+    how="left",
+).drop_duplicates()
+
+pivoted.to_parquet(
+    results_dir / "cell_counts" / "count_viability_joined.parquet", index=False
 )
-joined_norm.to_parquet(results_dir / "count_norm_viability_joined.parquet", index=False)
-print(joined_norm["modality"].value_counts().to_dict())
+print(pivoted["modality"].value_counts().to_dict())

@@ -37,4 +37,4 @@ drugs-figure:
     bash misc_figures/drugs_figure/run_drugs_figure_local.sh
 
 # Run every module end to end. Pass clean=true to wipe outputs first.
-all clean="false": (clean clean) setup download-data eda twod-vs-threed viability linear-modeling drugs-figure
+all clean="false": (clean clean) setup download-data eda viability linear-modeling drugs-figure

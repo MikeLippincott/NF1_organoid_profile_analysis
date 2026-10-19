@@ -1,3 +1,4 @@
+library(RColorBrewer)
 # set custom colors for each MOA
 custom_MOA_palette <- c(
     'BRD4 inhibitor' = "#93152A",  # Dark red

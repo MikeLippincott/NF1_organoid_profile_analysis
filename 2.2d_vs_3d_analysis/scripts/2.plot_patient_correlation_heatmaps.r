@@ -60,7 +60,6 @@ plot_correlation_heatmap <- function(
     #' @param profile_type character - Profile label (e.g., "organoid_agg", "sc_agg").
     #' @param output_path character - File path to save the output PNG.
 
-    ...
     # Filter to patient
     patient_data <- corr_long_df
 
@@ -85,7 +84,7 @@ plot_correlation_heatmap <- function(
     # Color scale from blue (-1) to white (0) to red (1)
     col_fun <- colorRamp2(
         c(-1, 0, 1),
-        c("#2166AC", "white", "#B2182B")
+        c("#B2182B", "white", "#2166AC")
     )
 
     # Create the heatmap
