@@ -27,16 +27,6 @@ root_dir <- find_git_root()
 source(file.path(root_dir, "utils", "r_plot_themes.r"))
 source(file.path(root_dir, "utils", "r_plot_funcs.r"))
 
-results_dir <- file.path(root_dir, "5.differential_analysis", "results")
-figures_dir <- file.path(root_dir, "5.differential_analysis", "figures")
-dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
-
-patient_viability_path <- file.path(results_dir, "viability_log2fc_by_patient_tumor_type.parquet")
-tumor_type_viability_path <- file.path(results_dir, "viability_log2fc_by_tumor_type.parquet")
-figure_path <- file.path(figures_dir, "viability_percent_by_tumor_type.pdf")
-
-tumor_type_levels <- c("cNF", "pNF", "MPNST", "Other")
-
 add_treatment_label <- function(df) {
     df %>%
         mutate(
@@ -51,18 +41,6 @@ add_treatment_label <- function(df) {
             )
         )
 }
-
-patient_viability_df <- add_treatment_label(read_parquet(patient_viability_path))
-tumor_type_viability_df <- add_treatment_label(read_parquet(tumor_type_viability_path))
-
-treatment_label_levels <- patient_viability_df %>%
-    distinct(Metadata_Experiment_Treatment, Metadata_Experiment_Dose, treatment_label) %>%
-    arrange(match(Metadata_Experiment_Treatment, custom_treatment_order), Metadata_Experiment_Dose) %>%
-    pull(treatment_label)
-patient_viability_df$treatment_label <- factor(patient_viability_df$treatment_label, levels = treatment_label_levels)
-tumor_type_viability_df$treatment_label <- factor(tumor_type_viability_df$treatment_label, levels = treatment_label_levels)
-head(tumor_type_viability_df)
-
 heatmap_df_from_tables <- function(patient_df, tumor_type_df) {
     bind_rows(
         patient_df %>%
@@ -117,6 +95,31 @@ make_viability_heatmap <- function(heatmap_df, title) {
         )
     )
 }
+
+results_dir <- file.path(root_dir, "5.differential_analysis", "results")
+figures_dir <- file.path(root_dir, "5.differential_analysis", "figures")
+dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
+
+patient_viability_path <- file.path(results_dir, "viability_log2fc_by_patient_tumor_type.parquet")
+tumor_type_viability_path <- file.path(results_dir, "viability_log2fc_by_tumor_type.parquet")
+figure_path <- file.path(figures_dir, "viability_percent_by_tumor_type.pdf")
+
+tumor_type_levels <- c("cNF", "pNF", "MPNST", "Other")
+
+
+
+patient_viability_df <- add_treatment_label(read_parquet(patient_viability_path))
+tumor_type_viability_df <- add_treatment_label(read_parquet(tumor_type_viability_path))
+
+treatment_label_levels <- patient_viability_df %>%
+    distinct(Metadata_Experiment_Treatment, Metadata_Experiment_Dose, treatment_label) %>%
+    arrange(match(Metadata_Experiment_Treatment, custom_treatment_order), Metadata_Experiment_Dose) %>%
+    pull(treatment_label)
+patient_viability_df$treatment_label <- factor(patient_viability_df$treatment_label, levels = treatment_label_levels)
+tumor_type_viability_df$treatment_label <- factor(tumor_type_viability_df$treatment_label, levels = treatment_label_levels)
+head(tumor_type_viability_df)
+
+
 
 # page 1: every patient, including those without viability data (grey tiles)
 all_heatmap_df <- heatmap_df_from_tables(patient_viability_df, tumor_type_viability_df)
