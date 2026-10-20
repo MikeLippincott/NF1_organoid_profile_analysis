@@ -1,0 +1,31 @@
+# Bare `just` lists the recipes; it must not run an upload by default.
+
+default:
+	@just --list
+
+# Streamlit Community Cloud mounts the repo under /mount/src. On that system the
+# app only pulls data from the bucket; anywhere else, sync_data uploads.
+on_streamlit := if path_exists("/mount/src") == "true" { "true" } else { "false" }
+
+upload_data_to_hf_bucket:
+	uv run python3 sync_data.py upload
+
+download_data_from_hf_bucket:
+	uv run python3 sync_data.py download
+
+# Local machine: upload to the bucket. Streamlit: download only.
+sync_data:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	if [ "{{on_streamlit}}" = "true" ]; then
+		uv run python3 sync_data.py download
+	else
+		uv run python3 sync_data.py upload
+	fi
+
+run_app_locally:
+	bash ./run_app.sh
+
+all_data: sync_data
+
+all: all_data run_app_locally
