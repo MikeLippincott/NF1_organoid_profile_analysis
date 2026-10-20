@@ -38,6 +38,140 @@ else:
     from tqdm import tqdm
 
 
+# In[ ]:
+
+
+def bh_fdr(p_values: np.ndarray) -> np.ndarray:
+    """
+    Benjamini-Hochberg adjusted p-values.
+
+    Parameters
+    ----------
+    p_values : np.ndarray
+        Array of raw p-values.
+
+    Returns
+    -------
+    np.ndarray
+        Array of Benjamini-Hochberg adjusted p-values.
+    """
+    p_values = np.asarray(p_values, dtype=float)
+    order = np.argsort(p_values)
+    ranked = p_values[order] * len(p_values) / np.arange(1, len(p_values) + 1)
+    adjusted = np.minimum.accumulate(ranked[::-1])[::-1]
+    q_values = np.empty_like(adjusted)
+    q_values[order] = np.minimum(adjusted, 1)
+    return q_values
+
+
+def load_wells(profile_path: pathlib.Path) -> tuple[pd.DataFrame, list]:
+    """
+    Load well profiles for the analysis patients and annotate plate position.
+
+    Parameters
+    ----------
+    profile_path : pathlib.Path
+        Path to the parquet file containing well profiles.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, list]
+        DataFrame of well profiles and list of feature columns.
+    """
+    df = pd.read_parquet(profile_path)
+    df = df.loc[df["Metadata_Biology_PatientTumor"].isin(patient_ids)].dropna(
+        subset=["Metadata_Experiment_Well", "Metadata_Experiment_Treatment"]
+    )
+    df = df.reset_index(drop=True)
+    df["Metadata_Plate_Row"] = df["Metadata_Experiment_Well"].str[0]
+    df["Metadata_Plate_Column"] = df["Metadata_Experiment_Well"].str[1:].astype(int)
+    df["Metadata_Plate_Position"] = np.where(
+        df["Metadata_Plate_Row"].isin(OUTER_ROWS)
+        | df["Metadata_Plate_Column"].isin(OUTER_COLUMNS),
+        "outer",
+        "inner",
+    )
+    feature_cols = [col for col in df.columns if not col.startswith("Metadata_")]
+    return df, feature_cols
+
+
+def mixed_position_groups(df: pd.DataFrame, feature_cols: list) -> list:
+    """
+    Profiles and outer-minus-inner contrast weights for groups with both positions.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame of well profiles.
+    feature_cols : list
+        List of feature columns to consider.
+
+    Returns
+    -------
+    list
+        List of dictionaries containing group key, profiles, and weights.
+    """
+    groups = []
+    for key, group_df in df.groupby(group_cols):
+        is_outer = (group_df["Metadata_Plate_Position"] == "outer").to_numpy()
+        if is_outer.all() or not is_outer.any():
+            continue
+        weights = np.where(is_outer, 1 / is_outer.sum(), -1 / (~is_outer).sum())
+        groups.append(
+            {
+                "key": key,
+                "profiles": group_df[feature_cols].to_numpy(),
+                "weights": weights,
+            }
+        )
+    return groups
+
+
+def mean_contrast(groups: list, permute: bool = False) -> np.ndarray:
+    """
+    Mean over groups of mean(outer) - mean(inner), per feature.
+
+    Parameters
+    ----------
+    groups : list
+        List of dictionaries containing group key, profiles, and weights.
+    permute : bool, optional
+        Whether to permute the weights within each group, by default False.
+
+    Returns
+    -------
+    np.ndarray
+        Array of mean contrasts per feature.
+    """
+    total = np.zeros(groups[0]["profiles"].shape[1])
+    for group in groups:
+        weights = rng.permutation(group["weights"]) if permute else group["weights"]
+        total += weights @ group["profiles"]
+    return total / len(groups)
+
+
+def within_minus_between(correlations: np.ndarray, labels: np.ndarray) -> float:
+    """
+    Mean correlation of same-label pairs minus mean of different-label pairs.
+
+    Parameters
+    ----------
+    correlations : np.ndarray
+        Square matrix of correlations between profiles.
+    labels : np.ndarray
+        Array of labels corresponding to each profile.
+
+    Returns
+    -------
+    float
+        Difference between mean correlation of same-label pairs and mean correlation of different-label pairs.
+    """
+    upper = np.triu_indices(len(labels), k=1)
+    same = (labels[:, None] == labels[None, :])[upper]
+    values = correlations[upper]
+    return values[same].mean() - values[~same].mean()
+
+
 # In[2]:
 
 
@@ -80,74 +214,6 @@ group_cols = [
 
 rng = np.random.default_rng(SEED)
 patient_ids = patient_ids_path.read_text().split()
-
-
-# In[3]:
-
-
-def bh_fdr(p_values: np.ndarray) -> np.ndarray:
-    """Benjamini-Hochberg adjusted p-values."""
-    p_values = np.asarray(p_values, dtype=float)
-    order = np.argsort(p_values)
-    ranked = p_values[order] * len(p_values) / np.arange(1, len(p_values) + 1)
-    adjusted = np.minimum.accumulate(ranked[::-1])[::-1]
-    q_values = np.empty_like(adjusted)
-    q_values[order] = np.minimum(adjusted, 1)
-    return q_values
-
-
-def load_wells(profile_path: pathlib.Path) -> tuple[pd.DataFrame, list]:
-    """Load well profiles for the analysis patients and annotate plate position."""
-    df = pd.read_parquet(profile_path)
-    df = df.loc[df["Metadata_Biology_PatientTumor"].isin(patient_ids)].dropna(
-        subset=["Metadata_Experiment_Well", "Metadata_Experiment_Treatment"]
-    )
-    df = df.reset_index(drop=True)
-    df["Metadata_Plate_Row"] = df["Metadata_Experiment_Well"].str[0]
-    df["Metadata_Plate_Column"] = df["Metadata_Experiment_Well"].str[1:].astype(int)
-    df["Metadata_Plate_Position"] = np.where(
-        df["Metadata_Plate_Row"].isin(OUTER_ROWS)
-        | df["Metadata_Plate_Column"].isin(OUTER_COLUMNS),
-        "outer",
-        "inner",
-    )
-    feature_cols = [col for col in df.columns if not col.startswith("Metadata_")]
-    return df, feature_cols
-
-
-def mixed_position_groups(df: pd.DataFrame, feature_cols: list) -> list:
-    """Profiles and outer-minus-inner contrast weights for groups with both positions."""
-    groups = []
-    for key, group_df in df.groupby(group_cols):
-        is_outer = (group_df["Metadata_Plate_Position"] == "outer").to_numpy()
-        if is_outer.all() or not is_outer.any():
-            continue
-        weights = np.where(is_outer, 1 / is_outer.sum(), -1 / (~is_outer).sum())
-        groups.append(
-            {
-                "key": key,
-                "profiles": group_df[feature_cols].to_numpy(),
-                "weights": weights,
-            }
-        )
-    return groups
-
-
-def mean_contrast(groups: list, permute: bool = False) -> np.ndarray:
-    """Mean over groups of mean(outer) - mean(inner), per feature."""
-    total = np.zeros(groups[0]["profiles"].shape[1])
-    for group in groups:
-        weights = rng.permutation(group["weights"]) if permute else group["weights"]
-        total += weights @ group["profiles"]
-    return total / len(groups)
-
-
-def within_minus_between(correlations: np.ndarray, labels: np.ndarray) -> float:
-    """Mean correlation of same-label pairs minus mean of different-label pairs."""
-    upper = np.triu_indices(len(labels), k=1)
-    same = (labels[:, None] == labels[None, :])[upper]
-    values = correlations[upper]
-    return values[same].mean() - values[~same].mean()
 
 
 # ## Load wells

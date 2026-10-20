@@ -27,6 +27,10 @@ root_dir <- find_git_root()
 source(file.path(root_dir, "utils", "r_plot_themes.r"))
 source(file.path(root_dir, "utils", "r_plot_funcs.r"))
 
+label_compartment <- function(df) {
+    df %>% mutate(compartment = factor(compartment_labels[compartment], levels = compartment_labels))
+}
+
 results_dir <- file.path(root_dir, "5.differential_analysis", "results")
 figures_dir <- file.path(root_dir, "5.differential_analysis", "figures")
 dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
@@ -49,9 +53,7 @@ pair_type_palette <- c(
 )
 dodge_width <- 0.7
 
-label_compartment <- function(df) {
-    df %>% mutate(compartment = factor(compartment_labels[compartment], levels = compartment_labels))
-}
+
 position_global_df <- label_compartment(read_parquet(position_global_path))
 position_null_df <- label_compartment(read_parquet(position_null_path))
 position_feature_df <- label_compartment(read_parquet(position_feature_path))
@@ -72,7 +74,7 @@ null_plots <- lapply(levels(position_null_df$compartment), function(compartment_
         )
         + labs(
             title = compartment_name,
-            x = "RMS outer - inner effect across features\n(grey: inner/outer labels shuffled within plate x treatment; red: observed)",
+            x = "Root mean square outer - inner effect across features\n(grey: inner/outer labels shuffled within plate x treatment; red: observed)",
             y = "Permutations"
         )
         + theme_manuscript(base_size = 14)
