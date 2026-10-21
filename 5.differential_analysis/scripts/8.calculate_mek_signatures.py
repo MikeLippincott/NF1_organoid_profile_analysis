@@ -69,22 +69,42 @@ TUMOR_TYPES = ["cNF", "pNF", "MPNST", "Other"]
 
 
 def bh_fdr(p_values: np.ndarray) -> np.ndarray:
-    """Benjamini-Hochberg adjusted p-values (NaN kept as NaN)."""
+    """
+    Benjamini-Hochberg adjusted p-values (NaN kept as NaN).
+
+    Parameters
+    ----------
+    p_values : np.ndarray
+        Array of p-values.
+
+    Returns
+    -------
+    np.ndarray
+        Benjamini-Hochberg adjusted p-values (q-values). NaNs are preserved.
+    """
     p_values = np.asarray(p_values, dtype=float)
     q_values = np.full_like(p_values, np.nan)
     valid = ~np.isnan(p_values)
-    ordered = p_values[valid]
-    order = np.argsort(ordered)
-    ranked = ordered[order] * len(ordered) / np.arange(1, len(ordered) + 1)
-    adjusted = np.minimum.accumulate(ranked[::-1])[::-1]
-    valid_q = np.empty_like(adjusted)
-    valid_q[order] = np.minimum(adjusted, 1)
-    q_values[valid] = valid_q
+    q_values[valid] = stats.false_discovery_control(p_values[valid], method="bh")
     return q_values
 
 
 def patient_contrasts(log2fc_df: pd.DataFrame, feature_cols: list) -> pd.DataFrame:
-    """Long table of per-patient contrast values (MEKi vs DMSO / comparator)."""
+    """
+    Long table of per-patient contrast values (MEKi vs DMSO / comparator).
+
+    Parameters
+    ----------
+    log2fc_df : pd.DataFrame
+        DataFrame containing log2 fold change values for each patient and treatment.
+    feature_cols : list
+        List of feature columns to consider for contrasts.
+
+    Returns
+    -------
+    pd.DataFrame
+        Long table of per-patient contrast values (MEKi vs DMSO / comparator).
+    """
     contrast_list = []
     for patient, patient_df in log2fc_df.groupby("Metadata_Biology_PatientTumor"):
         treatment = patient_df["Metadata_Experiment_Treatment"]
@@ -111,8 +131,40 @@ def patient_contrasts(log2fc_df: pd.DataFrame, feature_cols: list) -> pd.DataFra
     return pd.concat(contrast_list, ignore_index=True)
 
 
+def wilcoxon_signed_rank(values: np.ndarray) -> tuple:
+    """
+    Wilcoxon signed-rank test vs 0 (NaN when fewer than 2 non-zero differences).
+
+    Parameters
+    ----------
+    values : np.ndarray
+        Array of per-patient contrast values.
+
+    Returns
+    -------
+    tuple
+        (statistic, p-value) from the Wilcoxon signed-rank test, or (nan, nan)
+        when there are fewer than 2 non-zero differences.
+    """
+    if (values != 0).sum() < 2:
+        return np.nan, np.nan
+    return stats.wilcoxon(values)
+
+
 def feature_tests(contrast_df: pd.DataFrame) -> pd.DataFrame:
-    """Per contrast x feature: mean, t-test across patients, sign agreement, tumor type means."""
+    """
+    Per contrast x feature: mean, t-test and Wilcoxon signed-rank across patients, sign agreement, tumor type means.
+
+    Parameters
+    ----------
+    contrast_df : pd.DataFrame
+        Long table of per-patient contrast values (MEKi vs DMSO / comparator).
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing per contrast x feature statistics, including mean, t-test, Wilcoxon signed-rank, sign agreement, and tumor type means.
+    """
     rows = []
     for (contrast, feature), block in contrast_df.dropna(subset=["value"]).groupby(
         ["contrast", "feature"]
@@ -120,7 +172,8 @@ def feature_tests(contrast_df: pd.DataFrame) -> pd.DataFrame:
         values = block["value"].to_numpy()
         mean = values.mean()
         sd = values.std(ddof=1)
-        t = mean / (sd / np.sqrt(len(values))) if sd > 0 else np.nan
+        t, p = stats.ttest_1samp(values, 0)
+        wilcoxon_stat, wilcoxon_p = wilcoxon_signed_rank(values)
         row = {
             "contrast": contrast,
             "feature": feature,
@@ -129,7 +182,9 @@ def feature_tests(contrast_df: pd.DataFrame) -> pd.DataFrame:
             "sd": sd,
             "ci95": stats.t.ppf(0.975, len(values) - 1) * sd / np.sqrt(len(values)),
             "t": t,
-            "p": 2 * stats.t.sf(abs(t), len(values) - 1) if not np.isnan(t) else np.nan,
+            "p": p,
+            "wilcoxon_stat": wilcoxon_stat,
+            "wilcoxon_p": wilcoxon_p,
             "frac_patients_same_sign": (np.sign(values) == np.sign(mean)).mean(),
         }
         tumor_type_means = block.groupby("Metadata_Biology_TumorType")["value"].mean()
@@ -138,6 +193,7 @@ def feature_tests(contrast_df: pd.DataFrame) -> pd.DataFrame:
         rows.append(row)
     test_df = pd.DataFrame(rows)
     test_df["q"] = test_df.groupby("contrast")["p"].transform(bh_fdr)
+    test_df["wilcoxon_q"] = test_df.groupby("contrast")["wilcoxon_p"].transform(bh_fdr)
     # Features with undefined t (zero variance across patients, or a single patient)
     # keep a missing rank; method="min" gives integer ranks so the column can be Int64.
     test_df["rank"] = (
@@ -151,7 +207,21 @@ def feature_tests(contrast_df: pd.DataFrame) -> pd.DataFrame:
 def patient_condition_contrasts(
     log2fc_df: pd.DataFrame, feature_cols: list
 ) -> pd.DataFrame:
-    """Wide table of per patient x MEK condition contrast values (MEKi vs DMSO / comparator)."""
+    """
+    Wide table of per patient x MEK condition contrast values (MEKi vs DMSO / comparator).
+
+    Parameters
+    ----------
+    log2fc_df : pd.DataFrame
+        Long table of per-patient log2 fold change values.
+    feature_cols : list
+        List of feature columns to consider for contrasts.
+
+    Returns
+    -------
+    pd.DataFrame
+        Wide table of per patient x MEK condition contrast values (MEKi vs DMSO / comparator).
+    """
     contrast_list = []
     for _, patient_df in log2fc_df.groupby("Metadata_Biology_PatientTumor"):
         treatment = patient_df["Metadata_Experiment_Treatment"]
@@ -174,7 +244,19 @@ def patient_condition_contrasts(
 
 
 def one_sample_tests(values: pd.DataFrame) -> pd.DataFrame:
-    """Per feature (column): mean and one-sample t-test vs 0 over the rows."""
+    """
+    Per feature (column): mean and one-sample t-test vs 0 over the rows.
+
+    Parameters
+    ----------
+    values : pd.DataFrame
+        DataFrame of feature values to test.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing per feature statistics, including mean, t-test statistic, and p-value.
+    """
     result = stats.ttest_1samp(values.to_numpy(), 0, axis=0)
     return pd.DataFrame(
         {
@@ -188,7 +270,21 @@ def one_sample_tests(values: pd.DataFrame) -> pd.DataFrame:
 
 
 def level_tests(condition_df: pd.DataFrame, feature_cols: list) -> pd.DataFrame:
-    """Per contrast x feature: significance within/across patients and tumor types."""
+    """
+    Per contrast x feature: significance within/across patients and tumor types.
+
+    Parameters
+    ----------
+    condition_df : pd.DataFrame
+        DataFrame containing contrast values for each patient and tumor type.
+    feature_cols : list
+        List of feature columns to consider for significance testing.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing per contrast x feature significance statistics.
+    """
     patient_df = (
         condition_df.groupby(
             ["contrast", "Metadata_Biology_PatientTumor", "Metadata_Biology_TumorType"]

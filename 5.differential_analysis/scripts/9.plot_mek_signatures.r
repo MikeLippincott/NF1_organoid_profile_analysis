@@ -81,7 +81,10 @@ group_label_levels <- level_test_df %>%
     pull(group_label)
 level_test_df$group_label <- factor(level_test_df$group_label, levels = unique(group_label_levels))
 
-category_levels <- sort(unique(level_test_df$feature_category))
+# "Other" always last so it sits at one end of the stacked bars, signaling it is
+# a catch-all rather than a strongly categorized group.
+category_levels <- c(sort(setdiff(unique(level_test_df$feature_category), "Other")), "Other")
+level_test_df$feature_category <- factor(level_test_df$feature_category, levels = category_levels)
 category_palette <- setNames(
     colorRampPalette(brewer.pal(8, "Dark2"))(length(category_levels)),
     category_levels
