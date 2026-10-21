@@ -36,9 +36,6 @@ figures_path <- file.path(root_dir, "4.linear_modeling/figures/variate_class_plo
 dir.create(file.path(figures_path, "upset"), recursive = TRUE, showWarnings = FALSE)
 tag_pdf <- file.path(figures_path, paste0(figure_name, ".pdf"))
 
-# variate_letters (class letter -> model variate) is defined in utils/r_plot_themes.r
-
-
 # Task A: UpSet plots, sets = patients. One pdf per class, one page per treatment.
 # a class's pdf is only rebuilt when it is missing
 upset_summary <- read_result("upset_top_combinations.parquet")

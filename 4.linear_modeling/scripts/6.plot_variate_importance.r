@@ -53,7 +53,6 @@ for (scope in names(scopes)) {
         file.path(figures_path, scope, paste0(scope, ".pdf"))
     }
     if (file.exists(pdf_path)) {
-        cat("skipping", scope, "(pdf exists)\n")
         next
     }
     dir.create(dirname(pdf_path), recursive = TRUE, showWarnings = FALSE)
@@ -130,7 +129,6 @@ for (profile in names(lm_files)) {
         # the full matrix, then the same matrix subset to the MEKi treatments
         pages[[length(pages) + 1]] <- heatmap_grid_page(list(cooccurrence_heatmap(sig, label)))
         pages[[length(pages) + 1]] <- heatmap_grid_page(list(cooccurrence_heatmap(meki_sig, paste0(label, " (MEKi treatments only)"))))
-        cat(profile, model, ":", nrow(sig), "treatment-only significant,", nrow(meki_sig), "in MEKi treatments\n")
     }
 }
 save_plots_pdf(pages, cooccurrence_pdf, width = 15, height = 10)
