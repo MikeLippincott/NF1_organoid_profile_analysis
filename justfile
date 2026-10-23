@@ -36,5 +36,9 @@ linear-modeling:
 drugs-figure:
     bash misc_figures/drugs_figure/run_drugs_figure_local.sh
 
+# update the data viewing app and associated data
+update-app:
+    (cd interactive_dashboard && just all_data)
+
 # Run every module end to end. Pass clean=true to wipe outputs first.
-all clean="false": (clean clean) setup download-data eda viability linear-modeling drugs-figure
+all clean="false": (clean clean) setup download-data eda viability linear-modeling drugs-figure update-app

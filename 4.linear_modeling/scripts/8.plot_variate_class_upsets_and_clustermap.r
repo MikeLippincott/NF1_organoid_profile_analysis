@@ -191,3 +191,4 @@ if (has_treatment_only) {
 
 
 save_plots_pdf(pages, tag_pdf, width = page_w, height = page_h)
+
