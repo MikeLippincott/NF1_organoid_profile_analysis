@@ -19,10 +19,17 @@ exclude_args=( \( -path "$git_root/.git" \
                -o -path "$git_root/data" \
                -o -path "$git_root/.uvr" \) -prune -o )
 
+# Top-level dirs to keep even if their name matches, since they hold source
+# files (e.g. figures/drugs_figure/scripts) alongside generated output.
+top_level_keep_args=()
+for d in "${ARRAY_OF_DIRS_TO_DELETE[@]}"; do
+    top_level_keep_args+=( ! -path "$git_root/$d" )
+done
+
 if [ "$DEL_ALL_RESULTS_AND_FIGURES" = "true" ]; then
     find "$git_root" "${exclude_args[@]}" \
-        -type d \( "${name_args[@]}" \) -prune -exec rm -rf {} +
+        -type d \( "${name_args[@]}" \) "${top_level_keep_args[@]}" -prune -exec rm -rf {} +
 else
     find "$git_root" "${exclude_args[@]}" \
-        -type d \( "${name_args[@]}" \) -prune -print
+        -type d \( "${name_args[@]}" \) "${top_level_keep_args[@]}" -prune -print
 fi

@@ -9,7 +9,7 @@ for (package in packages) {
 
 git_root <- system("git rev-parse --show-toplevel", intern = TRUE)
 
-platemap_figure_file_path <- file.path("../figures/platemap_figure.png")
+platemap_figure_file_path <- file.path(git_root,"figures/drugs_figure/platemap_figure.png")
 if (!file.exists(platemap_figure_file_path)) {
     dir.create(dirname(platemap_figure_file_path), recursive = TRUE)
 }
