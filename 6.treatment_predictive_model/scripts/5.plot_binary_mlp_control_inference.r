@@ -1,4 +1,4 @@
-list_of_packages <- c("ggplot2", "dplyr", "arrow", "ggrastr", "RColorBrewer")
+list_of_packages <- c("ggplot2", "dplyr", "tidyr", "arrow", "ggrastr", "RColorBrewer")
 for (package in list_of_packages) {
     suppressPackageStartupMessages(
         suppressWarnings(
@@ -66,9 +66,8 @@ probability_by_treatment_plot <- (
         inference_df,
         aes(x = Metadata_Experiment_Treatment, y = Metadata_predicted_cytotoxic_probability)
     )
-    + geom_violin(aes(fill = Metadata_Experiment_Treatment), scale = "width", alpha = 0.7)
+    + geom_violin(fill = "grey70", scale = "width", alpha = 0.7)
     + geom_boxplot(width = 0.12, outlier.shape = NA, fill = "white", alpha = 0.6)
-    + scale_fill_manual(values = custom_treatment_palette, guide = "none")
     + labs(
         x = "Treatment",
         y = "Predicted cytotoxic probability",
@@ -132,6 +131,9 @@ per_patient_treatment_summary_df$patient_label <- factor(
     per_patient_treatment_summary_df$patient_label, levels = patient_order_df$patient_label
 )
 
+per_patient_treatment_summary_df <- per_patient_treatment_summary_df %>%
+    complete(patient_label, Metadata_Experiment_Treatment)
+
 heatmap_plot <- (
     ggplot(
         per_patient_treatment_summary_df,
@@ -143,7 +145,8 @@ heatmap_plot <- (
     )
     + geom_tile(colour = "white")
     + scale_fill_distiller(
-        palette = "RdBu", direction = -1, limits = c(0, 1), name = "Mean P(cytotoxic)"
+        palette = "RdBu", direction = -1, limits = c(0, 1), name = "Mean P(cytotoxic)",
+        na.value = "grey80"
     )
     + labs(
         x = "Treatment",
@@ -154,7 +157,8 @@ heatmap_plot <- (
     + theme(
         axis.text.y = element_text(
             colour = tumor_type_palette[patient_order_df$Metadata_Biology_TumorType]
-        )
+        ),
+        panel.grid = element_blank()
     )
 )
 

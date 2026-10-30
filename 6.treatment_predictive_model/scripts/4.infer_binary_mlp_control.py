@@ -86,9 +86,11 @@ print(f"Treatments: {sorted(df[TREATMENT_COL].unique())}")
 # ## Model architecture
 # Must match `1.train_binary_mlp_control.ipynb` exactly so the saved `state_dict`s load correctly.
 
-# In[4]:
+# In[ ]:
 
 
+# hidden dims for the MLP classifier for the given
+# middle input/output dimensions
 HIDDEN_DIMS = (128, 64)
 
 
