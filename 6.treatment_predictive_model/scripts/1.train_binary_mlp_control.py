@@ -11,22 +11,19 @@
 
 import pathlib
 
+import joblib
 import numpy as np
 import pandas as pd
-import torch
-import torch.nn as nn
 from notebook_init_utils import init_notebook
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+from sklearn.metrics import balanced_accuracy_score, f1_score, log_loss, roc_auc_score
+from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
-from torch.utils.data import DataLoader, TensorDataset
+from sklearn.utils import resample
 from tqdm import tqdm
 from tqdm.notebook import tqdm as tqdm_notebook
 
 root_dir, in_notebook = init_notebook()
 progress_bar = tqdm_notebook if in_notebook else tqdm
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-torch.manual_seed(0)
 
 
 # In[2]:
@@ -99,6 +96,7 @@ print(f"Number of features: {len(feature_cols)}")
 
 
 # ## MLP model and training/evaluation helpers
+# Training uses `sklearn.neural_network.MLPClassifier` via `partial_fit`, one epoch at a time, so that early stopping can watch the same held-out `val_df` split used elsewhere in this pipeline (sklearn's own `early_stopping` option instead carves its validation fold out of the training data, which would not match that split). `MLPClassifier` has no dropout layer - `alpha` (L2 weight decay) is the closest packaged equivalent and is kept deliberately, since dropout's regularization effect is being traded for a maintained/packaged solver here. Class imbalance (previously handled with `BCEWithLogitsLoss(pos_weight=...)`) is instead handled by oversampling the minority class before each patient's training run, since `MLPClassifier.partial_fit` does not accept sample weights.
 
 # In[6]:
 
@@ -111,119 +109,90 @@ WEIGHT_DECAY = 1e-4
 HIDDEN_DIMS = (128, 64)
 
 
-class MLPClassifier(nn.Module):
-    """A feed-forward binary classifier over single-cell morphology features."""
+def balance_classes(
+    X: np.ndarray, y: np.ndarray, random_state: int = 0
+) -> tuple[np.ndarray, np.ndarray]:
+    """Oversample the minority class so the training set is 50/50."""
+    n_pos = int(y.sum())
+    n_neg = len(y) - n_pos
+    if n_pos == n_neg:
+        return X, y
 
-    def __init__(self, input_dim: int, hidden_dims: tuple = HIDDEN_DIMS):
-        super().__init__()
-        layers = []
-        prev_dim = input_dim
-        for hidden_dim in hidden_dims:
-            layers += [
-                nn.Linear(prev_dim, hidden_dim),
-                nn.BatchNorm1d(hidden_dim),
-                nn.ReLU(),
-                nn.Dropout(0.3),
-            ]
-            prev_dim = hidden_dim
-        layers.append(nn.Linear(prev_dim, 1))
-        self.network = nn.Sequential(*layers)
+    minority_label = 1 if n_pos < n_neg else 0
+    majority_count = max(n_pos, n_neg)
+    minority_mask = y == minority_label
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.network(x).squeeze(-1)
-
-
-def make_loader(
-    X: np.ndarray,
-    y: np.ndarray,
-    batch_size: int,
-    shuffle: bool,
-    drop_last: bool = False,
-) -> DataLoader:
-    dataset = TensorDataset(
-        torch.tensor(X, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
+    X_minority, y_minority = resample(
+        X[minority_mask],
+        y[minority_mask],
+        replace=True,
+        n_samples=majority_count,
+        random_state=random_state,
     )
-    # drop_last avoids handing BatchNorm1d a final batch of size 1 while
-    # training (it requires >1 sample per channel to compute batch statistics).
-    return DataLoader(
-        dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last
-    )
+    X_balanced = np.concatenate([X[~minority_mask], X_minority])
+    y_balanced = np.concatenate([y[~minority_mask], y_minority])
+    return X_balanced, y_balanced
 
 
 def train_mlp(
-    model: nn.Module,
-    train_loader: DataLoader,
-    val_loader: DataLoader,
-    pos_weight: torch.Tensor | None,
-) -> tuple:
-    optimizer = torch.optim.Adam(
-        model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY
+    X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray
+) -> tuple[MLPClassifier, dict]:
+    X_train, y_train = balance_classes(X_train, y_train)
+
+    model = MLPClassifier(
+        hidden_layer_sizes=HIDDEN_DIMS,
+        activation="relu",
+        solver="adam",
+        alpha=WEIGHT_DECAY,
+        batch_size=BATCH_SIZE,
+        learning_rate_init=LEARNING_RATE,
+        max_iter=1,
+        warm_start=True,
+        random_state=0,
     )
-    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
     best_val_loss = float("inf")
-    best_state = None
+    best_params = None
     epochs_without_improvement = 0
     history = {"train_loss": [], "val_loss": []}
+    rng = np.random.RandomState(0)
 
-    for _ in range(MAX_EPOCHS):
-        model.train()
-        running_loss = 0.0
-        n_train_seen = 0
-        for X_batch, y_batch in train_loader:
-            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-            optimizer.zero_grad()
-            loss = criterion(model(X_batch), y_batch)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item() * X_batch.size(0)
-            n_train_seen += X_batch.size(0)
-        train_loss = running_loss / n_train_seen
+    for epoch in range(MAX_EPOCHS):
+        perm = rng.permutation(len(X_train))
+        if epoch == 0:
+            model.partial_fit(X_train[perm], y_train[perm], classes=[0, 1])
+        else:
+            model.partial_fit(X_train[perm], y_train[perm])
 
-        model.eval()
-        val_running_loss = 0.0
-        with torch.no_grad():
-            for X_batch, y_batch in val_loader:
-                X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-                val_running_loss += criterion(
-                    model(X_batch), y_batch
-                ).item() * X_batch.size(0)
-        val_loss = val_running_loss / len(val_loader.dataset)
-
+        train_loss = log_loss(y_train, model.predict_proba(X_train)[:, 1])
+        val_loss = log_loss(y_val, model.predict_proba(X_val)[:, 1])
         history["train_loss"].append(train_loss)
         history["val_loss"].append(val_loss)
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+            best_params = (
+                [w.copy() for w in model.coefs_],
+                [b.copy() for b in model.intercepts_],
+            )
             epochs_without_improvement = 0
         else:
             epochs_without_improvement += 1
             if epochs_without_improvement >= PATIENCE:
                 break
 
-    model.load_state_dict(best_state)
+    model.coefs_, model.intercepts_ = best_params
     return model, history
 
 
-def evaluate_mlp(model: nn.Module, data_loader: DataLoader) -> dict:
-    model.eval()
-    all_logits, all_labels = [], []
-    with torch.no_grad():
-        for X_batch, y_batch in data_loader:
-            all_logits.append(model(X_batch.to(device)).cpu())
-            all_labels.append(y_batch)
-    logits = torch.cat(all_logits).numpy()
-    labels = torch.cat(all_labels).numpy()
-    probs = 1 / (1 + np.exp(-logits))
+def evaluate_mlp(model: MLPClassifier, X: np.ndarray, y: np.ndarray) -> dict:
+    probs = model.predict_proba(X)[:, 1]
     preds = (probs >= 0.5).astype(int)
 
     metrics = {
-        "accuracy": accuracy_score(labels, preds),
-        "f1": f1_score(labels, preds, zero_division=0),
-        "roc_auc": (
-            roc_auc_score(labels, probs) if len(np.unique(labels)) > 1 else np.nan
-        ),
+        "accuracy": balanced_accuracy_score(y, preds),
+        "f1": f1_score(y, preds, average="macro", zero_division=0),
+        "roc_auc": roc_auc_score(y, probs) if len(np.unique(y)) > 1 else np.nan,
     }
     return metrics
 
@@ -260,25 +229,10 @@ for patient in progress_bar(patients, desc="Training per-patient MLPs"):
     y_val = patient_val[LABEL_COL].values
     y_test = patient_test[LABEL_COL].values
 
-    # drop_last=True only for training, and only when it leaves at least one
-    # batch - otherwise BatchNorm1d can be handed a final training batch of
-    # size 1, which it cannot compute batch statistics from.
-    train_drop_last = len(X_train) > BATCH_SIZE
-    train_loader = make_loader(
-        X_train, y_train, BATCH_SIZE, shuffle=True, drop_last=train_drop_last
-    )
-    val_loader = make_loader(X_val, y_val, BATCH_SIZE, shuffle=False)
-    test_loader = make_loader(X_test, y_test, BATCH_SIZE, shuffle=False)
-
-    n_pos = y_train.sum()
-    n_neg = len(y_train) - n_pos
-    pos_weight = torch.tensor([n_neg / n_pos], dtype=torch.float32, device=device)
-
-    model = MLPClassifier(input_dim=len(feature_cols)).to(device)
-    model, history = train_mlp(model, train_loader, val_loader, pos_weight)
+    model, history = train_mlp(X_train, y_train, X_val, y_val)
     per_patient_histories[patient] = history
 
-    test_metrics = evaluate_mlp(model, test_loader)
+    test_metrics = evaluate_mlp(model, X_test, y_test)
     test_metrics[PATIENT_COL] = patient
     test_metrics["n_train"] = len(patient_train)
     test_metrics["n_val"] = len(patient_val)
@@ -286,8 +240,8 @@ for patient in progress_bar(patients, desc="Training per-patient MLPs"):
     test_metrics["n_epochs_trained"] = len(history["train_loss"])
     per_patient_metrics.append(test_metrics)
 
-    model_output_path = model_output_dir / f"binary_mlp_control_{patient}.pt"
-    torch.save(model.state_dict(), model_output_path)
+    model_output_path = model_output_dir / f"binary_mlp_control_{patient}.joblib"
+    joblib.dump({"model": model, "scaler": scaler}, model_output_path)
 
 metrics_df = pd.DataFrame(per_patient_metrics)
 metrics_df
